@@ -424,7 +424,7 @@ public class Iris : Character {
 		if (flag != null || !isDashing) {
 			return getRunSpeed();
 		}
-		float dashSpeed = 210;
+		float dashSpeed = 3.45f * getRunDebuffs();
 		if (isHyperIris) {
 			dashSpeed *= 1.2f;
 		}
