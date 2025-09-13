@@ -4,6 +4,7 @@ using System.Collections.Generic;
 namespace MMXOnline;
 
 public class HyperCharge : Weapon {
+	public bool active;
 	public const float ammoUsage = 7;
 
 	public HyperCharge() : base() {
@@ -14,8 +15,7 @@ public class HyperCharge : Weapon {
 		weaponSlotIndex = 36;
 		//shootSounds = new string[] { "buster3X3", "buster3X3", "buster3X3", "buster3X3" };
 		fireRate = 120;
-		//switchCooldown = 0.25f;
-		switchCooldownFrames = 15;
+		switchCooldown = 15;
 		ammo = 0;
 		maxAmmo = 28;
 		drawGrayOnLowAmmo = true;
@@ -28,16 +28,20 @@ public class HyperCharge : Weapon {
 	}
 
 	public override float getAmmoUsage(int chargeLevel) {
+		if (chargeLevel >= 3) {
+			return 0;
+		}
 		return 7;
 	}
 
 	public float getChipFactoredAmmoUsage(Player player) {
-		return player.hasChip(3) ? ammoUsage / 2 : ammoUsage;
+		return player.character is MegamanX mmx && mmx.hyperArmArmor == ArmorId.Max ? ammoUsage / 2 : ammoUsage;
 	}
 
 	public static float getRateofFireMod(Player player) {
 		if (player != null && player.hyperChargeSlot < player.weapons.Count &&
-			player.weapons[player.hyperChargeSlot] is XBuster && !player.hasUltimateArmor()
+			player.weapons[player.hyperChargeSlot] is XBuster &&
+			(player.character as MegamanX)?.hasUltimateArmor != true
 		) {
 			return 0.75f;
 		}
@@ -48,11 +52,15 @@ public class HyperCharge : Weapon {
 		return fireRate * getRateofFireMod(player);
 	}
 
-	public override bool canShoot(int chargeLevel, Player player) {
-		return 
-			ammo >= getChipFactoredAmmoUsage(player) && 
-			player.weapons[player.hyperChargeSlot].ammo > 0 && 
-			base.canShoot(chargeLevel, player) && player.character?.flag == null;
+	public override bool canShoot(int chargeLevel, MegamanX mmx) {
+		if (mmx.stockedMaxBusterLv >= 1) {
+			return false;
+		}
+		return (
+			(ammo >= getChipFactoredAmmoUsage(mmx.player) || chargeLevel >= 3) && 
+			mmx.weapons[mmx.player.hyperChargeSlot].ammo > 0 && 
+			base.canShoot(chargeLevel, mmx) && mmx.flag == null
+		);
 	}
 
 	public bool canShootIncludeCooldown(Player player) {
@@ -63,32 +71,35 @@ public class HyperCharge : Weapon {
 	}
 
 	bool changeToWeaponSlot(Weapon wep) {
-		return wep is
+		return (wep is
 			ChameleonSting or
 			RollingShield or
 			BubbleSplash or
 			ParasiticBomb or
-			TornadoFang;
+			TornadoFang
+		);
 	} 
 
 	public override void shoot(Character character, int[] args) {
 		Player player = character.player;
 		MegamanX mmx = character as MegamanX ?? throw new NullReferenceException();
-		Weapon wep = player.weapons[player.hyperChargeSlot];
+		Weapon wep = character.weapons[player.hyperChargeSlot];
 
 		if (wep is XBuster) {
 			character.changeState(new X3ChargeShot(this), true);
+			if (!mmx.hasUltimateArmor)
 			character.playSound("buster3X3");
 		} else {
 			if (changeToWeaponSlot(wep)) player.changeWeaponSlot(player.hyperChargeSlot);
-			wep.shootHypercharge(character, new int[] {3});
+			wep.shoot(character, [3]);
 			wep.addAmmo(-wep.getAmmoUsage(3), player);
-			mmx.shootCooldown = MathF.Max(wep.fireRate, switchCooldownFrames.GetValueOrDefault());
 			if (!string.IsNullOrEmpty(wep.shootSounds[3])) {
 				character.playSound(wep.shootSounds[3]);
 			}
 			
-			if (wep is BubbleSplash bs) bs.hyperChargeDelay = 15;
+			if (wep is BubbleSplash bs) {
+				bs.hyperChargeDelay = 15;
+			}
 		}
 	}
 }

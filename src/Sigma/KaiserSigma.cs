@@ -1,9 +1,11 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.Linq;
 
 namespace MMXOnline;
 
 public partial class KaiserSigma : Character {
+	public bool isVirus => sprite.name.StartsWith("kaisersigma_virus");
 	public bool kaiserWinTauntOnce;
 	public float kaiserMissileShootTime;
 	public Anim kaiserExhaustL = null!;
@@ -26,9 +28,10 @@ public partial class KaiserSigma : Character {
 
 	public KaiserSigma(
 		Player player, float x, float y, int xDir, bool isVisible,
-		ushort? netId, bool ownedByLocalPlayer, bool isWarpIn = false
+		ushort? netId, bool ownedByLocalPlayer, bool isWarpIn = false,
+		bool isRevive = true, int? heartTanks = null, bool isATrans = false
 	) : base(
-		player, x, y, xDir, isVisible, netId, ownedByLocalPlayer, isWarpIn, false, false
+		player, x, y, xDir, isVisible, netId, ownedByLocalPlayer, isWarpIn, heartTanks, isATrans
 	) { 
 		charId = CharIds.KaiserSigma;
 		kaiserExhaustL = new Anim(
@@ -43,6 +46,40 @@ public partial class KaiserSigma : Character {
 		) {
 			visible = false
 		};
+		maxHealth = getMaxHealth();
+		if (!ownedByLocalPlayer || isRevive) {
+			health = maxHealth;
+		}
+		if (!ownedByLocalPlayer) {
+			visible = true;
+		} else {
+			if (isRevive) {
+				useGravity = false;
+				changeSprite("kaisersigma_enter", true);
+				changeState(new KaiserSigmaRevive(player.explodeDieEffect), true);
+			} else {
+				visible = true;
+				changeSprite("kaisersigma_idle", true);
+				changeState(new KaiserSigmaIdleState(), true);
+			}
+		}
+		grounded = false;
+		canBeGrounded = false;
+		altSoundId = AltSoundIds.X3;
+	}
+
+	public override CharState getIdleState() => new KaiserSigmaIdleState();
+	public override CharState getRunState(bool skipInto = false) => new KaiserSigmaWalkState();
+	public override CharState getJumpState() => new KaiserSigmaJumpState();
+	public override CharState getAirJumpState() => new KaiserSigmaJumpState();
+	public override CharState getFallState() => new KaiserSigmaFallState();
+	public override CharState getTauntState() => new KaiserSigmaTauntState();
+
+	public override int getMaxHealth() {
+		if (isATrans) {
+			return base.getMaxHealth();
+		}
+		return MathInt.Ceiling(Player.getModifiedHealth(32) * Player.getHpMod());
 	}
 
 	public override void update() {
@@ -80,6 +117,10 @@ public partial class KaiserSigma : Character {
 			kaiserExhaustL.visible = false;
 			kaiserExhaustR.visible = false;
 		}
+
+		if (weapons.Count > 0 && player.input.isHeld(Control.Down, player)) {
+			player.changeWeaponControls();
+		}
 	}
 
 	public override bool normalCtrl() {
@@ -87,7 +128,7 @@ public partial class KaiserSigma : Character {
 	}
 
 	public override Collider? getGlobalCollider() {
-		if (player.isKaiserViralSigma()) {
+		if (isVirus) {
 			if (sprite.name == "kaisersigma_virus_return") {
 				return null;
 			}
@@ -168,7 +209,7 @@ public partial class KaiserSigma : Character {
 	}
 
 	public override float getLabelOffY() {
-		if (player.isKaiserViralSigma()) {
+		if (isVirus) {
 			return 60;
 		}
 		return 125;
@@ -180,7 +221,8 @@ public partial class KaiserSigma : Character {
 		kaiserBodySprite = sprite.name + "_body";
 		if (Global.sprites.ContainsKey(kaiserBodySprite)) {
 			Global.sprites[kaiserBodySprite].draw(
-				0, pos.x + x, pos.y + y, xDir, 1, null, 1, 1, 1, zIndex - 10
+				0, pos.x + x, pos.y + y,
+				xDir, 1, null, 1, 1, 1, zIndex - 10, useFrameOffsets: true
 			);
 		}
 
@@ -202,41 +244,78 @@ public partial class KaiserSigma : Character {
 	}
 
 	public override Point getAimCenterPos() {
-		if (!player.isKaiserViralSigma()) {
+		if (isVirus) {
 			return pos.addxy(13 * xDir, -95);
 		}
 		return getCenterPos();
 	}
 
+
 	public override string getSprite(string spriteName) {
 		return "kaisersigma_" + spriteName;
 	}
 
-	public override Projectile? getProjFromHitbox(Collider collider, Point centerPoint) {
-		if (sprite.name == "kaisersigma_fall" && collider.isAttack()) {
-			return new GenericMeleeProj(
-				new KaiserStompWeapon(player), centerPoint, ProjIds.Sigma3KaiserStomp, player,
-				damage: 12 * getKaiserStompDamage(), flinch: Global.defFlinch, hitCooldown: 1f
-			);
-		} else if (collider.name == "body") {
-			return new GenericMeleeProj(
-				new Weapon(), centerPoint, ProjIds.Sigma3KaiserSuit, player,
-				damage: 0, flinch: 0, hitCooldown: 1, isShield: true
-			);
+		// Melee IDs for attacks.
+	public enum MeleeIds {
+		None = -1,
+		Suit,
+		Stomp,
+	}
+
+	// This can run on both owners and non-owners. So data used must be in sync.
+	public override int getHitboxMeleeId(Collider hitbox) {
+		if (hitbox.name == "body") {
+			return (int)MeleeIds.Suit;
 		}
-		return null;
+		if (sprite.name == "kaisersigma_fall") {
+			return (int)MeleeIds.Stomp;
+		}
+		return (int)MeleeIds.None;
+	}
+
+	// This can be called from a RPC, so make sure there is no character conditionals here.
+	public override Projectile? getMeleeProjById(int id, Point pos, bool addToLevel = true) {
+		return (MeleeIds)id switch {
+			MeleeIds.Suit => new GenericMeleeProj(
+				new Weapon(), pos, ProjIds.Sigma3KaiserSuit, player,
+				damage: 0, flinch: 0, hitCooldown: 60, isShield: true,
+				addToLevel: addToLevel
+			) {
+				lowPiority = true
+			},
+			MeleeIds.Stomp => new GenericMeleeProj(
+				new KaiserStompWeapon(player), pos, ProjIds.Sigma3KaiserStomp, player,
+				damage: 12, flinch: Global.defFlinch, hitCooldown: 60,
+				addToLevel: addToLevel
+			),
+			_ => null
+		};
 	}
 
 	public override void updateProjFromHitbox(Projectile proj) {
 		if (proj.projId == (int)ProjIds.Sigma3KaiserStomp) {
-			float damagePercent = getKaiserStompDamage();
-			if (damagePercent > 0) {
-				proj.damager.damage = 12 * damagePercent;
-			}
+			proj.damager.damage = getKaiserStompDamage();
 		}
 	}
 
+	public float getKaiserStompDamage() {
+		if (deltaPos.y >= 5) {
+			return 12;
+		}
+		if (deltaPos.y >= 3.5) {
+			return 9;
+		}
+		if (deltaPos.y >= 2.5) {
+			return 6;
+		}
+		return 3;
+	}
+
 	public override bool canPickupFlag() {
+		return false;
+	}
+
+	public override bool canKeepFlag() {
 		return false;
 	}
 
@@ -272,5 +351,68 @@ public partial class KaiserSigma : Character {
 
 	public override Collider? getTerrainCollider() {
 		return null;
+	}
+
+	public override Point getCamCenterPos(bool ignoreZoom = false) {
+		if (sprite.name.StartsWith("kaisersigma_virus")) {
+			return pos.addxy(camOffsetX, -12);
+		}
+		return pos.round().addxy(camOffsetX, -55);
+	}
+
+	public override bool isNonDamageStatusImmune() {
+		return true;
+	}
+
+	public override bool isPushImmune() {
+		return true;
+	}
+	
+	public override void onDeath() {
+		base.onDeath();
+		player.lastDeathWasSigmaHyper = true;
+
+		visible = false;
+		string deathSprite = "";
+		if (lastHyperSigmaSprite.StartsWith("kaisersigma_virus")) {
+			deathSprite = lastHyperSigmaSprite;
+			Point explodeCenterPos = pos.addxy(0, -16);
+			var ede = new ExplodeDieEffect(
+				player, explodeCenterPos, explodeCenterPos,
+				"empty", 1, zIndex, false, 16, 3, false, false
+			);
+			Global.level.addEffect(ede);
+		} else {
+			deathSprite = lastHyperSigmaSprite + "_body";
+			if (!Global.sprites.ContainsKey(deathSprite)) {
+				deathSprite = "kaisersigma_idle";
+			}
+			Point explodeCenterPos = pos.addxy(0, -55);
+			var ede = new ExplodeDieEffect(
+				player, explodeCenterPos, explodeCenterPos, "empty",
+				1, zIndex, false, 60, 3, false, false
+			);
+			Global.level.addEffect(ede);
+
+			var headAnim = new Anim(
+				pos, lastHyperSigmaSprite, 1,
+				player.getNextActorNetId(), true, sendRpc: true
+			);
+			headAnim.ttl = 3;
+			headAnim.blink = true;
+			headAnim.setFrameIndexSafe(lastHyperSigmaFrameIndex);
+			headAnim.xDir = lastHyperSigmaXDir;
+			headAnim.frameSpeed = 0;
+		}
+
+		var anim = new Anim(
+			pos, deathSprite, 1, player.getNextActorNetId(),
+			true, sendRpc: true, zIndex: ZIndex.Background + 1000
+		);
+		anim.ttl = 3;
+		anim.blink = true;
+		anim.setFrameIndexSafe(lastHyperSigmaFrameIndex);
+		anim.xDir = lastHyperSigmaXDir;
+		anim.frameSpeed = 0;
 	}
 }

@@ -5,11 +5,12 @@ using System.Linq;
 namespace MMXOnline;
 
 public class ChillPenguin : Maverick {
-	public ChillPIceShotWeapon iceShotWeapon = new ChillPIceShotWeapon();
-	public ChillPIceStatueWeapon iceStatueWeapon = new ChillPIceStatueWeapon();
-	public ChillPIceBlowWeapon iceWindWeapon = new ChillPIceBlowWeapon();
-	public ChillPBlizzardWeapon blizzardWeapon = new ChillPBlizzardWeapon();
-	public ChillPSlideWeapon slideWeapon;
+	public static Weapon netWeapon = new Weapon(WeaponIds.ChillPGeneric, 93);
+	public ChillPIceShotWeapon iceShotWeapon = new();
+	public ChillPIceStatueWeapon iceStatueWeapon = new();
+	public ChillPIceBlowWeapon iceWindWeapon = new();
+	public ChillPBlizzardWeapon blizzardWeapon = new();
+	public ChillPSlideWeapon slideWeapon = new();
 
 	public ChillPenguin(
 		Player player, Point pos, Point destPos,
@@ -17,11 +18,12 @@ public class ChillPenguin : Maverick {
 	) : base(
 		player, pos, destPos, xDir, netId, ownedByLocalPlayer
 	) {
-		slideWeapon = new ChillPSlideWeapon(player);
-		stateCooldowns.Add(typeof(ChillPIceBlowState), new MaverickStateCooldown(true, false, 2f));
-		stateCooldowns.Add(typeof(ChillPSlideState), new MaverickStateCooldown(true, false, 0.5f));
-		stateCooldowns.Add(typeof(ChillPBlizzardState), new MaverickStateCooldown(false, false, 3f));
-		stateCooldowns.Add(typeof(MShoot), new MaverickStateCooldown(false, true, 0.75f));
+		stateCooldowns = new() {
+			{ typeof(ChillPIceBlowState), new(2 * 60, false, true) },
+			{ typeof(ChillPSlideState), new(30, false, true) },
+			{ typeof(ChillPBlizzardState), new(3 * 60) },
+			{ typeof(MShoot), new(45, true) }
+		};
 		spriteToCollider["slide"] = getDashCollider();
 
 		weapon = new Weapon(WeaponIds.ChillPGeneric, 93);
@@ -66,7 +68,7 @@ public class ChillPenguin : Maverick {
 				} else if (specialPressed()) {
 					changeState(new ChillPIceBlowState());
 				} else if (input.isPressed(Control.Dash, player)) {
-					changeState(new ChillPSlideState(false));
+					changeState(new ChillPSlideState());
 				}
 			} else if (state is MJump || state is MFall) {
 				if (input.isHeld(Control.Special1, player)) {
@@ -86,34 +88,41 @@ public class ChillPenguin : Maverick {
 	public MaverickState getShootState(bool isAI) {
 		var mshoot = new MShoot((Point pos, int xDir) => {
 			new ChillPIceProj(
-				iceShotWeapon, pos, xDir, player,
+				pos, xDir, this, player,
 				input.isHeld(Control.Down, player) ? 1 : 0, player.getNextActorNetId(), rpc: true
 			);
-		}, null);
+		}, null!);
 		if (isAI) {
 			mshoot.consecutiveData = new MaverickStateConsecutiveData(0, 4, 0.5f);
 		}
 		return mshoot;
 	}
 
-	public override MaverickState[] aiAttackStates() {
-		return new MaverickState[]
-		{
-				getShootState(true),
-				new ChillPIceBlowState(),
-				new ChillPSlideState(true),
-		};
+	public override MaverickState[] strikerStates() {
+		return [
+			getShootState(true),
+			new ChillPIceBlowState(),
+			new ChillPSlideState(),
+			new ChillPBlizzardState(true)
+		];
 	}
 
-	public override MaverickState getRandomAttackState() {
-		var attacks = new MaverickState[]
-		{
-				getShootState(true),
-				new ChillPIceBlowState(),
-			//new ChillPSlideState(true),
-			//new ChillPBlizzardState(true),
-		};
-		return attacks.GetRandomItem();
+	public override MaverickState[] aiAttackStates() {
+		float enemyDist = 300;
+		if (target != null) {
+			enemyDist = MathF.Abs(target.pos.x - pos.x);
+		}
+		List<MaverickState> aiStates = [
+			getShootState(false),
+			new ChillPIceBlowState()
+		];
+		if (enemyDist <= 180) {
+			aiStates.Add(new ChillPSlideState());
+		}
+		if (Helpers.randomRange(0, 2) == 0 && grounded && player.iceStatues.Count >= 1) {
+			aiStates.Add(new ChillPBlizzardState(true));
+		}
+		return aiStates.ToArray();
 	}
 
 	/*
@@ -127,22 +136,39 @@ public class ChillPenguin : Maverick {
 	}
 	*/
 
-	public override Projectile getProjFromHitbox(Collider hitbox, Point centerPoint) {
-		Projectile proj = null;
-		if (isSlidingAndCanDamage()) {
-			proj = new GenericMeleeProj(slideWeapon, centerPoint, ProjIds.ChillPSlide, player);
-		}
-
-		return proj;
-	}
-
 	public bool isSlidingAndCanDamage() {
 		return sprite.name.EndsWith("slide") && MathF.Abs(deltaPos.x) > 1.66f;
+	}
+	
+	// Melee IDs for attacks.
+	public enum MeleeIds {
+		None = -1,
+		Slide,
+	}
+
+	// This can run on both owners and non-owners. So data used must be in sync.
+	public override int getHitboxMeleeId(Collider hitbox) {
+		return (int)(sprite.name switch {
+			"chillp_slide" => MeleeIds.Slide,
+			_ => MeleeIds.None
+		});
+	}
+
+	// This can be called from a RPC, so make sure there is no character conditionals here.
+	public override Projectile? getMeleeProjById(int id, Point pos, bool addToLevel = true) {
+		return (MeleeIds)id switch {
+			MeleeIds.Slide => new GenericMeleeProj(
+				slideWeapon, pos, ProjIds.ChillPSlide, player,
+				3, Global.defFlinch, addToLevel: addToLevel
+			),
+			_ => null
+		};
 	}
 }
 
 #region weapons
 public class ChillPIceShotWeapon : Weapon {
+	public static ChillPIceShotWeapon netWeapon = new();
 	public ChillPIceShotWeapon() {
 		index = (int)WeaponIds.ChillPIceShot;
 		killFeedIndex = 93;
@@ -150,6 +176,7 @@ public class ChillPIceShotWeapon : Weapon {
 }
 
 public class ChillPIceBlowWeapon : Weapon {
+	public static ChillPIceBlowWeapon netWeapon = new();
 	public ChillPIceBlowWeapon() {
 		index = (int)WeaponIds.ChillPIceBlow;
 		killFeedIndex = 93;
@@ -157,6 +184,7 @@ public class ChillPIceBlowWeapon : Weapon {
 }
 
 public class ChillPIceStatueWeapon : Weapon {
+	public static ChillPIceStatueWeapon netWeapon = new();
 	public ChillPIceStatueWeapon() {
 		index = (int)WeaponIds.ChillPIcePenguin;
 		killFeedIndex = 93;
@@ -164,6 +192,7 @@ public class ChillPIceStatueWeapon : Weapon {
 }
 
 public class ChillPBlizzardWeapon : Weapon {
+	public static ChillPBlizzardWeapon netWeapon = new();
 	public ChillPBlizzardWeapon() {
 		index = (int)WeaponIds.ChillPBlizzard;
 		killFeedIndex = 93;
@@ -171,10 +200,10 @@ public class ChillPBlizzardWeapon : Weapon {
 }
 
 public class ChillPSlideWeapon : Weapon {
-	public ChillPSlideWeapon(Player player) {
+	public static ChillPSlideWeapon netWeapon = new();
+	public ChillPSlideWeapon() {
 		index = (int)WeaponIds.ChillPSlide;
 		killFeedIndex = 93;
-		damager = new Damager(player, 3, Global.defFlinch, 0.75f);
 	}
 }
 
@@ -183,19 +212,22 @@ public class ChillPSlideWeapon : Weapon {
 #region projectiles
 public class ChillPIceProj : Projectile {
 	public int type = 0;
-	public Character hitChar;
+	public Character? hitChar;
 	public ChillPIceProj(
-		Weapon weapon, Point pos, int xDir, Player player,
-		int type, ushort netProjId, Character hitChar = null, bool rpc = false
+		Point pos, int xDir, Actor owner, Player player, int type,
+		ushort netProjId, Character? hitChar = null, bool rpc = false
 	) : base(
-		weapon, pos, xDir, 250, 3, player, "chillp_proj_ice",
-		0, 0.01f, netProjId, player.ownedByLocalPlayer
+		pos, xDir, owner, "chillp_proj_ice", netProjId, player
 	) {
+		weapon = ChillPIceShotWeapon.netWeapon;
+		damager.damage = 3;
+		damager.hitCooldown = 1;
+		vel = new Point(250 * xDir, 0);
 		projId = (int)ProjIds.ChillPIceShot;
 		maxTime = 0.75f;
 		this.hitChar = hitChar;
 		this.type = type;
-		collider.wallOnly = true;
+		if (collider != null) { collider.wallOnly = true; }
 		isShield = true;
 		if (type == 1) {
 			useGravity = true;
@@ -205,8 +237,15 @@ public class ChillPIceProj : Projectile {
 		}
 
 		if (rpc) {
-			rpcCreate(pos, player, netProjId, xDir, (byte)type);
+			rpcCreate(pos, owner, ownerPlayer, netId, xDir, (byte)type);
 		}
+	}
+	public static Projectile rpcInvoke(ProjParameters args) {
+		return new ChillPIceProj(
+			args.pos, args.xDir, args.owner, 
+			args.player, args.extraData[0],
+			args.netId, null
+		);
 	}
 
 	public override void update() {
@@ -272,28 +311,39 @@ public class ChillPIceStatueProj : Projectile, IDamagable {
 	public float maxHealth = 8;
 
 	public ChillPIceStatueProj(
-		Weapon weapon, Point pos, int xDir, Player player, ushort netProjId, bool sendRpc = false
+		Point pos, int xDir, Actor owner, Player player, ushort? netId, bool rpc = false
 	) : base(
-		weapon, pos, xDir, 0, 2, player, "chillp_proj_statue",
-		0, 0, netProjId, player.ownedByLocalPlayer
+		pos, xDir, owner, "chillp_proj_statue", netId, player
 	) {
+		weapon = ChillPIceStatueWeapon.netWeapon;
+		damager.damage = 2;
+		vel = new Point(0 * xDir, 0);
 		projId = (int)ProjIds.ChillPIcePenguin;
 		fadeSound = "iceBreak";
 		shouldShieldBlock = false;
 		destroyOnHit = true;
 
-		if (sendRpc) {
-			rpcCreate(pos, player, netProjId, xDir);
+		if (rpc) {
+			rpcCreate(pos, owner, ownerPlayer, netId, xDir);
 		}
+	}
+	public static Projectile rpcInvoke(ProjParameters args) {
+		return new ChillPIceStatueProj(
+			args.pos, args.xDir, args.owner, args.player, args.netId
+		);
+	}
+
+	public override void preUpdate() {
+		base.preUpdate();
+		updateProjectileCooldown();
 	}
 
 	public override void update() {
 		base.update();
-		updateProjectileCooldown();
 
 		if (sprite.isAnimOver()) {
 			useGravity = true;
-			collider.wallOnly = true;
+			if (collider != null) { collider.wallOnly = true; }
 			damager.flinch = Global.defFlinch;
 			damager.damage = 4;
 		}
@@ -338,24 +388,33 @@ public class ChillPIceStatueProj : Projectile, IDamagable {
 
 	public void heal(Player healer, float healAmount, bool allowStacking = true, bool drawHealText = false) {
 	}
+
+	public bool isPlayableDamagable() {
+		return false;
+	}
 }
 
 public class ChillPBlizzardProj : Projectile {
 	const float pushSpeed = 150;
 	public ChillPBlizzardProj(
-		Weapon weapon, Point pos, int xDir, Player player, ushort netProjId, bool rpc = false
+		Point pos, int xDir, Actor owner, Player player, ushort? netId, bool rpc = false
 	) : base(
-		weapon, pos, xDir, 0, 0, player, "chillp_wind",
-		0, 0f, netProjId, player.ownedByLocalPlayer
+		pos, xDir, owner, "chillp_wind", netId, player
 	) {
+		weapon = ChillPBlizzardWeapon.netWeapon;
 		projId = (int)ProjIds.ChillPBlizzard;
 		shouldShieldBlock = false;
 		destroyOnHit = false;
 		shouldVortexSuck = false;
 
 		if (rpc) {
-			rpcCreate(pos, player, netProjId, xDir);
+			rpcCreate(pos, owner, ownerPlayer, netId, xDir);
 		}
+	}
+	public static Projectile rpcInvoke(ProjParameters args) {
+		return new ChillPBlizzardProj(
+			args.pos, args.xDir, args.owner, args.player, args.netId
+		);
 	}
 
 	public override void update() {
@@ -374,32 +433,47 @@ public class ChillPBlizzardProj : Projectile {
 
 	public override void onHitDamagable(IDamagable damagable) {
 		base.onHitDamagable(damagable);
-		if (damagable is not Character character) return;
-		if (character.charState.invincible) return;
-		if (character.charState.immuneToWind) return;
-		if (immuneToKnockback) return;
-		if (character.isCCImmune()) return;
-
+		if (!damagable.isPlayableDamagable()) { return; }
+		if (damagable is not Actor actor || !actor.ownedByLocalPlayer) {
+			return;
+		}
 		float modifier = 1;
-		if (character.grounded) modifier = 0.5f;
-		if (character.charState is Crouch) modifier = 0.25f;
-		character.move(new Point(pushSpeed * xDir * modifier, 0));
-		character.pushedByTornadoInFrame = true;
+		if (actor.grounded) { modifier = 0.5f; };
+		if (damagable is Character character) {
+			if (character.isPushImmune()) { return; }
+			if (character.charState is Crouch) { modifier = 0.25f; }
+		}
+		actor.move(new Point(pushSpeed * xDir * modifier, 0));
 	}
 }
 #endregion
 
 #region states
-public class ChillPIceBlowState : MaverickState {
+public class PenguinMState : MaverickState {
+	public ChillPenguin IcyPenguigo = null!;
+	public PenguinMState(
+		string sprite, string transitionSprite = ""
+	) : base(
+		sprite, transitionSprite
+	) {
+	}
+
+	public override void onEnter(MaverickState oldState) {
+		base.onEnter(oldState);
+		IcyPenguigo = maverick as ChillPenguin ?? throw new NullReferenceException();
+
+	}
+}
+public class ChillPIceBlowState : PenguinMState {
 	float shootTime;
 	bool soundOnce;
 	bool statueOnce;
-	public ChillPIceBlowState() : base("blow", "") {
+	public ChillPIceBlowState() : base("blow") {
 	}
 
 	public override void update() {
 		base.update();
-		if (player == null) return;
+		if (IcyPenguigo == null) return;
 
 		Helpers.decrementTime(ref shootTime);
 
@@ -408,8 +482,8 @@ public class ChillPIceBlowState : MaverickState {
 			if (shootPos != null) {
 				shootTime = 0.1f;
 				new ShotgunIceProjCharged(
-					(maverick as ChillPenguin).iceWindWeapon, shootPos.Value,
-					maverick.xDir, player, 1, true, player.getNextActorNetId(), rpc: true
+					shootPos.Value, maverick.xDir, IcyPenguigo,
+					player, 1, true, player.getNextActorNetId(), rpc: true
 				);
 				if (!soundOnce) {
 					soundOnce = true;
@@ -443,8 +517,9 @@ public class ChillPIceBlowState : MaverickState {
 
 	public void addIceStatueIfSpace(Point pos) {
 		player.iceStatues.Add(new ChillPIceStatueProj(
-			(maverick as ChillPenguin).iceStatueWeapon, pos,
-			maverick.xDir, player, player.getNextActorNetId(), sendRpc: true)
+				pos, maverick.xDir, IcyPenguigo,
+				player, player.getNextActorNetId(), rpc: true
+			)
 		);
 		/*
 		var rect = new Rect(pos.addxy(-14, -32), pos.addxy(14, 0));
@@ -458,12 +533,12 @@ public class ChillPIceBlowState : MaverickState {
 	}
 }
 
-public class ChillPBlizzardState : MaverickState {
+public class ChillPBlizzardState : PenguinMState {
 	Point? switchPos;
 	int state;
 	new bool isAI;
 	public const float switchSpriteHeight = 60;
-	public ChillPBlizzardState(bool isAI) : base("jump", "") {
+	public ChillPBlizzardState(bool isAI) : base("jump") {
 		this.isAI = isAI;
 	}
 
@@ -482,7 +557,6 @@ public class ChillPBlizzardState : MaverickState {
 
 	public override void onEnter(MaverickState oldState) {
 		base.onEnter(oldState);
-
 		if (!isAI) {
 			state = 1;
 		} else {
@@ -497,43 +571,47 @@ public class ChillPBlizzardState : MaverickState {
 
 	public override void update() {
 		base.update();
-		if (player == null) return;
-
-		if (state == 0) {
-			if (maverick.pos.y - switchSpriteHeight <= switchPos.Value.y + 5) {
-				state = 1;
-			}
-		} else if (state == 1) {
-			if (!maverick.sprite.name.Contains("switch")) {
-				maverick.changeSpriteFromName("switch", true);
-				maverick.changePos(new Point(maverick.pos.x, switchPos.Value.y + switchSpriteHeight));
-			}
-			maverick.useGravity = false;
-			maverick.stopMoving();
-			if (!once && maverick.frameIndex == 3) {
-				once = true;
-				float topY = Global.level.getTopScreenY(maverick.pos.y);
-				if (player.isPuppeteer() && player.currentMaverick == maverick) topY = maverick.pos.y - 80;
-				new ChillPBlizzardProj(
-					(maverick as ChillPenguin).blizzardWeapon, new Point(maverick.pos.x, topY),
-					maverick.xDir, player, player.getNextActorNetId(), rpc: true
-				);
-				maverick.playSound("chillpBlizzard", sendRpc: true);
-			}
-			if (maverick.sprite.isAnimOver()) {
-				maverick.changeState(new MFall());
+		if (IcyPenguigo == null) return;
+		if (switchPos != null) {
+			if (state == 0) {
+				if (maverick.pos.y - switchSpriteHeight <= switchPos.Value.y + 5) {
+					state = 1;
+				}
+			} else if (state == 1) {
+				if (!maverick.sprite.name.Contains("switch")) {
+					maverick.changeSpriteFromName("switch", true);
+					maverick.changePos(new Point(maverick.pos.x, switchPos.Value.y + switchSpriteHeight));
+				}
+				maverick.useGravity = false;
+				maverick.stopMovingS();
+				if (!once && maverick.frameIndex == 3) {
+					once = true;
+					float topY = Global.level.getTopScreenY(maverick.pos.y);
+					if (maverick.controlMode == MaverickModeId.Puppeteer && player.currentMaverick == maverick) {
+						topY = maverick.pos.y - 80;
+					}
+					new ChillPBlizzardProj(
+						new Point(maverick.pos.x, topY), maverick.xDir, IcyPenguigo,
+						player, player.getNextActorNetId(), rpc: true
+					);
+					
+					maverick.playSound("chillpBlizzard", sendRpc: true);
+				}
+				if (maverick.sprite.isAnimOver()) {
+					maverick.changeState(new MFall());
+				}
 			}
 		}
 	}
 }
 
-public class ChillPSlideState : MaverickState {
+public class ChillPSlideState : PenguinMState {
 	public float slideTime;
 	float slideSpeed = 350;
 	const float timeBeforeSlow = 0.75f;
 	const float slowTime = 0.5f;
 	bool soundOnce;
-	public ChillPSlideState(bool isAI) : base("slide", "") {
+	public ChillPSlideState() : base("slide") {
 	}
 
 	public override bool canEnter(Maverick maverick) {
@@ -593,9 +671,11 @@ public class ChillPSlideState : MaverickState {
 	}
 }
 
-public class ChillPBurnState : MaverickState {
+public class ChillPBurnState : PenguinMState {
 	Point pushDir;
 	public ChillPBurnState() : base("burn") {
+		aiAttackCtrl = true;
+		canBeCanceled = false;
 	}
 
 	public override void update() {

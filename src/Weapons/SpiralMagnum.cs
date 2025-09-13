@@ -7,11 +7,13 @@ public class SpiralMagnum : AxlWeapon {
 	public SpiralMagnum(int altFire) : base(altFire) {
 		shootSounds = new string[] { "spiralMagnum", "spiralMagnum", "spiralMagnum", "sniperMissile" };
 		fireRate = 45;
-		altFireCooldown = 2;
+		altFireCooldown = 120;
 		index = (int)WeaponIds.SpiralMagnum;
 		weaponBarBaseIndex = 34;
 		weaponSlotIndex = 54;
 		killFeedIndex = 69;
+		rechargeAmmoCooldown = 120;
+		altRechargeAmmoCooldown = 200;
 
 		sprite = "axl_arm_spiralmagnum2";
 		flashSprite = "axl_pistol_flash";
@@ -19,7 +21,7 @@ public class SpiralMagnum : AxlWeapon {
 
 		if (altFire == 1) {
 			sprite = "axl_arm_spiralmagnum";
-			altFireCooldown = 1;
+			altFireCooldown = 60;
 			shootSounds[1] = "spiralMagnum";
 		}
 	}
@@ -56,7 +58,7 @@ public class SpiralMagnum : AxlWeapon {
 		} else {
 			float jumpDist = 0;
 			if (headshotTarget != null || target != null) {
-				bulletPos = player.axlGenericCursorWorldPos;
+				bulletPos = axl.axlGenericCursorWorldPos;
 				jumpDist = bulletPos.distanceTo(bulletPos);
 			}
 			bullet = new SpiralMagnumProj(weapon, bulletPos, jumpDist, 1, player, bulletDir.Value, target, headshotTarget, netId);			
@@ -95,9 +97,9 @@ public class SpiralMagnumShell : Anim {
 				stopped = true;
 			}
 		}
-		if (!stopped && angle != null) {
+		if (!stopped) {
 			angle += angularVel * Global.spf;
-			angle = Helpers.to360(angle.Value);
+			angle = Helpers.to360(angle);
 		} else {
 			angle = 0;
 		}
@@ -179,7 +181,7 @@ public class SpiralMagnumProj : Projectile {
 			maxDist = player.adjustedZoomRange;
 			dist = jumpDist;
 			damager.damage += MathF.Round(6 * (axl?.zoomCharge ?? 0));
-			if (axl?.hasScopedTarget() != true) {
+			if (axl?.hasScopedTarget() != true && target == null) { // i have so many questions
 				damager.damage = 0;
 			}
 		}
@@ -261,7 +263,7 @@ public class SpiralMagnumProj : Projectile {
 			var hitChar = victim as Character;
 
 			bool canBlock = (
-				reflectable && !weakness && hitChar != null && hitChar.player.isZero && (
+				reflectable && !weakness && hitChar != null && hitChar is Zero && (
 					hitChar.sprite.name == "zero_block" ||
 					(hitChar.sprite.name.Contains("zero_attack") &&
 					hitChar.sprite.frameHitboxes[hitChar.sprite.getFrameIndexSafe()].Length > 0)
@@ -406,60 +408,58 @@ public class SniperMissileProj : Projectile, IDamagable {
 	}
 
 	public void updateVel() {
-		if (angle != null) {
-			vel.x = Helpers.cosd(angle.Value) * speed;
-			vel.y = Helpers.sind(angle.Value) * speed;
-		}
+		vel.x = Helpers.cosd(angle) * speed;
+		vel.y = Helpers.sind(angle) * speed;
+	}
+
+	public override void preUpdate() {
+		base.preUpdate();
+		updateProjectileCooldown();
 	}
 
 	public override void update() {
 		base.update();
-
-		updateProjectileCooldown();
-
 		speed += (Global.spf * 25);
 
 		if (blinkTime > 0) {
 			blinkTime -= Global.spf;
 			if (blinkTime < 0) {
 				blinkTime = maxBlinkTime * (1 - (time / maxTime));
-				addRenderEffect(RenderEffectType.Hit, 0.05f, 0.05f);
+				addRenderEffect(RenderEffectType.Hit, 3, 6);
 			}
 		}
 
 		if (!ownedByLocalPlayer) return;
 
-		if (owner.isMainPlayer && time > 0.25f) {
+		if (owner.isMainPlayer && time > 0.25f && axl != null) {
 			if (Options.main.axlAimMode == 2) {
-				if (pos.distanceTo(owner.axlCursorWorldPos) > 25) {
+				if (pos.distanceTo(axl.axlCursorWorldPos) > 25) {
 					//vel = Point.lerp(vel, pos.directionToNorm(owner.axlCursorWorldPos).times(speed), Global.spf * 2.5f);
 
-					float destAngle = pos.directionToNorm(owner.axlCursorWorldPos).angle;
-					if (angle != null) {
-						if (MathF.Abs(angle.Value - destAngle) > 3) {
-							angle = Helpers.moveAngle(angle.Value, destAngle, Global.spf * 200 * turnSpeed);
-						}
+					float destAngle = pos.directionToNorm(axl.axlCursorWorldPos).angle;
+					if (MathF.Abs(angle - destAngle) > 3) {
+						angle = Helpers.moveAngle(angle, destAngle, Global.spf * 200 * turnSpeed);
 					}
 				}
 				updateVel();
 			} else {
-				if (owner.input.isHeld(Control.Up, owner) && angle != null) {
+				if (owner.input.isHeld(Control.Up, owner)) {
 					int sign = -1;
 					if (holdStartAngle == null) holdStartAngle = angle;
 					if (holdStartAngle < 90 || holdStartAngle > 270) {
 						sign = 1;
 					}
 					angle -= sign * Global.spf * 150 * turnSpeed;
-					angle = Helpers.to360(angle.Value);
+					angle = Helpers.to360(angle);
 					updateVel();
-				} else if (owner.input.isHeld(Control.Down, owner) && angle != null) {
+				} else if (owner.input.isHeld(Control.Down, owner)) {
 					int sign = -1;
 					if (holdStartAngle == null) holdStartAngle = angle;
 					if (holdStartAngle < 90 || holdStartAngle > 270) {
 						sign = 1;
 					}
 					angle += sign * Global.spf * 150 * turnSpeed;
-					angle = Helpers.to360(angle.Value);
+					angle = Helpers.to360(angle);
 					updateVel();
 				} else {
 					holdStartAngle = null;
@@ -518,6 +518,10 @@ public class SniperMissileProj : Projectile, IDamagable {
 		health += healAmount;
 		if (health > maxHealth) health = maxHealth;
 	}
+
+	public bool isPlayableDamagable() {
+		return false;
+	}
 }
 
 public class SniperMissileExplosionProj : Projectile {
@@ -556,35 +560,33 @@ public class SniperMissileExplosionProj : Projectile {
 	}
 
 	public override DamagerMessage? onDamage(IDamagable damagable, Player attacker) {
-		Character? character = damagable as Character;
+		if (damagable is not Character character) {
+			return null;
+		}
+		bool directHit = this.directHit == character;
+		Point victimCenter = character.getCenterPos();
+		Point bombCenter = pos;
+		if (directHit) {
+			bombCenter.x = victimCenter.x - (directHitXDir * 5);
+		}
+		Point dirTo = bombCenter.directionTo(victimCenter);
+		float distFactor = Helpers.clamp01(1 - (bombCenter.distanceTo(victimCenter) / 60f));
 
-		if (character != null) {
-			bool directHit = this.directHit == character;
-			int directHitXDir = this.directHitXDir;
-			float ownAxlFactor = 1;
+		if (character == attacker.character) {
+			character.pushEffect(new Point(0.6f, 0.4f) * dirTo * distFactor);
+		} else {
+			character.pushEffect(new Point(0.3f, -0.3f) * dirTo * distFactor);
+		}
 
-			var victimCenter = character.getCenterPos();
-			var bombCenter = pos;
-			if (directHit) {
-				bombCenter.x = victimCenter.x - (directHitXDir * 5);
+		if (character == attacker.character) {
+			float damage = damager.damage;
+			if (axl?.isWhiteAxl() == true) {
+				damage = 0;
 			}
-			var dirTo = bombCenter.directionTo(victimCenter);
-			var distFactor = Helpers.clamp01(1 - (bombCenter.distanceTo(victimCenter) / 60f));
-
-			character.vel.y = dirTo.y * 25 * distFactor * ownAxlFactor;
-			if (character == attacker.character) {
-				character.xSwingVel = dirTo.x * 12 * distFactor * ownAxlFactor;
-				float damage = damager.damage;
-				if (axl?.isWhiteAxl() == true) {
-					damage = 0;
-				}
-				return new DamagerMessage() {
-					damage = damage,
-					flinch = 0
-				};
-			} else {
-				character.xPushVel = dirTo.x * 25 * distFactor * ownAxlFactor;
-			}
+			return new DamagerMessage() {
+				damage = damage,
+				flinch = 0
+			};
 		}
 
 		return null;

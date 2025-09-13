@@ -7,6 +7,7 @@ public class BoomerangCutter : Weapon {
 	public static BoomerangCutter netWeapon = new BoomerangCutter();
 
 	public BoomerangCutter() : base() {
+		displayName = "Boomerang Cutter";
 		index = (int)WeaponIds.BoomerangCutter;
 		killFeedIndex = 7;
 		weaponBarBaseIndex = 7;
@@ -16,11 +17,13 @@ public class BoomerangCutter : Weapon {
 		shootSounds = new string[] { "boomerang", "boomerang", "boomerang", "buster3" };
 		fireRate = 30;
 		damage = "2/2";
-		effect = "Charged: Doesn't destroy on hit.";
+		effect = "U:Your ammo refills when you retrieve the projectile.\nC:Projectile won't destroy on hit nor give assists.";
 		hitcooldown = "0/0.5";
-		Flinch = "0/26";
+		flinch = "0/26";
 	}
 	public override void shoot(Character character, int[] args) {
+		MegamanX mmx = character as MegamanX ?? throw new NullReferenceException();
+
 		int chargeLevel = args[0];
 		Point pos = character.getShootPos();
 		int xDir = character.getShootXDir();
@@ -29,21 +32,21 @@ public class BoomerangCutter : Weapon {
 		if (chargeLevel < 3) {
 			if (character.ownedByLocalPlayer) {
 				new BoomerangProj(
-					this, pos, xDir, player, player.getNextActorNetId(), character.grounded ? 1 : -1, sendRpc: true
+					pos, xDir, mmx, player, player.getNextActorNetId(), character.grounded ? 1 : -1, rpc: true
 				);
 			}
 		} else {
 			player.setNextActorNetId(player.getNextActorNetId());
 
-			var twin1 = new BoomerangProjCharged(this, pos.addxy(0, 5), null, xDir, player, 90, 1, player.getNextActorNetId(true), null, true);
-			var twin2 = new BoomerangProjCharged(this, pos.addxy(5, 0), null, xDir, player, 0, 1, player.getNextActorNetId(true), null, true);
-			var twin3 = new BoomerangProjCharged(this, pos.addxy(0, -5), null, xDir, player, -90, 1, player.getNextActorNetId(true), null, true);
-			var twin4 = new BoomerangProjCharged(this, pos.addxy(-5, 0), null, xDir, player, -180, 1, player.getNextActorNetId(true), null, true);
-
-			var a = new BoomerangProjCharged(this, pos.addxy(0, 5), pos.addxy(0, 35), xDir, player, 90, 0, player.getNextActorNetId(true), twin1, true);
-			var b = new BoomerangProjCharged(this, pos.addxy(5, 0), pos.addxy(35, 0), xDir, player, 0, 0, player.getNextActorNetId(true), twin2, true);
-			var c = new BoomerangProjCharged(this, pos.addxy(0, -5), pos.addxy(0, -35), xDir, player, -90, 0, player.getNextActorNetId(true), twin3, true);
-			var d = new BoomerangProjCharged(this, pos.addxy(-5, 0), pos.addxy(-35, 0), xDir, player, -180, 0, player.getNextActorNetId(true), twin4, true);
+			var twin1 = new BoomerangProjCharged(pos.addxy(0, 5), null, xDir, mmx, player, 90, 1, player.getNextActorNetId(true), null, true);
+			var twin2 = new BoomerangProjCharged(pos.addxy(5, 0), null, xDir, mmx, player, 0, 1, player.getNextActorNetId(true), null, true);
+			var twin3 = new BoomerangProjCharged(pos.addxy(0, -5), null, xDir, mmx, player, -90, 1, player.getNextActorNetId(true), null, true);
+			var twin4 = new BoomerangProjCharged(pos.addxy(-5, 0), null, xDir, mmx, player, -180, 1, player.getNextActorNetId(true), null, true);
+			
+			var a = new BoomerangProjCharged(pos.addxy(0, 5), pos.addxy(0, 35), xDir, mmx, player, 90, 0, player.getNextActorNetId(true), twin1, true);
+			var b = new BoomerangProjCharged(pos.addxy(5, 0), pos.addxy(35, 0), xDir, mmx, player, 0, 0, player.getNextActorNetId(true), twin2, true);
+			var c = new BoomerangProjCharged(pos.addxy(0, -5), pos.addxy(0, -35), xDir, mmx, player, -90, 0, player.getNextActorNetId(true), twin3, true);
+			var d = new BoomerangProjCharged(pos.addxy(-5, 0), pos.addxy(-35, 0), xDir, mmx, player, -180, 0, player.getNextActorNetId(true), twin4, true);
 
 			twin1.twin = a;
 			twin2.twin = b;
@@ -59,20 +62,21 @@ public class BoomerangProj : Projectile {
 	public Pickup? pickup;
 	public float maxSpeed = 250;
 	public BoomerangProj(
-		Weapon weapon, Point pos, int xDir, Player player, 
-		ushort netProjId, int turnDir, bool sendRpc = false
+		Point pos, int xDir, Actor owner, Player player, ushort? netId, int turnDir, bool rpc = false
 	) : base(
-		weapon, pos, xDir, 250, 2, player, "boomerang", 
-		0, 0, netProjId, player.ownedByLocalPlayer
+		pos, xDir, owner, "boomerang", netId, player	
 	) {
+		weapon = BoomerangCutter.netWeapon;
+		damager.damage = 2;
+		vel = new Point(250 * xDir, 0);
 		projId = (int)ProjIds.Boomerang;
 		customAngleRendering = true;
 		angle = 0;
 		if (xDir == -1) angle = -180;
 		this.turnDir = turnDir;
 
-		if (sendRpc) {
-			rpcCreate(pos, player, netProjId, xDir, new byte[] { (byte)(turnDir + 1) });
+		if (rpc) {
+			rpcCreate(pos, owner, ownerPlayer, netId, xDir, new byte[] { (byte)(turnDir + 1) });
 		}
 	}
 
@@ -98,9 +102,12 @@ public class BoomerangProj : Projectile {
 				pickup.changePos(character.getCenterPos());
 			}
 			destroySelf();
-			if (character.player.weapon is BoomerangCutter) {
-				if (character.player.hasChip(3)) character.player.weapon.ammo += 0.5f;
-				else character.player.weapon.ammo++;
+			if (character.currentWeapon is BoomerangCutter bcWeapon) {
+				if (character is MegamanX mmx && mmx.hyperArmArmor == ArmorId.Max) {
+					bcWeapon.ammo += 0.5f;
+				} else {
+					bcWeapon.ammo++;
+				}
 			}
 		}
 	}
@@ -109,7 +116,9 @@ public class BoomerangProj : Projectile {
 		base.onDestroy();
 		if (pickup != null) {
 			pickup.useGravity = true;
-			pickup.collider.isTrigger = false;
+			if (pickup.collider != null) {
+				pickup.collider.isTrigger = false;
+			}
 		}
 	}
 
@@ -121,7 +130,9 @@ public class BoomerangProj : Projectile {
 		base.update();
 
 		if (!destroyed && pickup != null) {
-			pickup.collider.isTrigger = true;
+			if (pickup.collider != null) {
+				pickup.collider.isTrigger = true;
+			}
 			pickup.useGravity = false;
 			pickup.changePos(pos);
 		}
@@ -131,24 +142,24 @@ public class BoomerangProj : Projectile {
 				var angInc = (-xDir * turnDir) * Global.spf * 300;
 				angle += angInc;
 				angleDist += MathF.Abs(angInc);
-				vel.x = Helpers.cosd((float)angle!) * maxSpeed;
-				vel.y = Helpers.sind((float)angle) * maxSpeed;
+				vel.x = Helpers.cosd(angle!) * maxSpeed;
+				vel.y = Helpers.sind(angle) * maxSpeed;
 			} else if (damager.owner.character != null) {
 				var dTo = pos.directionTo(damager.owner.character.getCenterPos()).normalize();
 				var destAngle = MathF.Atan2(dTo.y, dTo.x) * 180 / MathF.PI;
 				destAngle = Helpers.to360(destAngle);
-				angle = Helpers.lerpAngle((float)angle!, destAngle, Global.spf * 10);
-				vel.x = Helpers.cosd((float)angle) * maxSpeed;
-				vel.y = Helpers.sind((float)angle) * maxSpeed;
+				angle = Helpers.lerpAngle(angle!, destAngle, Global.spf * 10);
+				vel.x = Helpers.cosd(angle) * maxSpeed;
+				vel.y = Helpers.sind(angle) * maxSpeed;
 			} else {
 				destroySelf();
 			}
 		}
 	}
 
-	public static Projectile rpcInvoke(ProjParameters arg) {
+	public static Projectile rpcInvoke(ProjParameters args) {
 		return new BoomerangProj(
-			BoomerangCutter.netWeapon, arg.pos, arg.xDir, arg.player, arg.netId, arg.extraData[0] - 1
+			args.pos, args.xDir, args.owner, args.player, args.netId, args.extraData[0] - 1
 		);
 	}
 }
@@ -166,12 +177,16 @@ public class BoomerangProjCharged : Projectile {
 	public float lerpTime;
 
 	public BoomerangProjCharged(
-		Weapon weapon, Point pos, Point? lerpToPos, int xDir, Player player, 
-		float angle, int type, ushort netProjId, BoomerangProjCharged? twin, bool rpc = false
+		Point pos, Point? lerpToPos, int xDir, Actor owner, Player player,
+		float angle, int type, ushort? netProjId, BoomerangProjCharged? twin, bool rpc = false
 	) : base(
-		weapon, pos, xDir, 0, 2, player, type == 0 ? "boomerang_charge" : "boomerang_charge2", 
-		Global.defFlinch, 0.5f, netProjId, player.ownedByLocalPlayer
+		pos, xDir, owner, type == 0 ? "boomerang_charge" : "boomerang_charge2", netProjId, player 
 	) {
+		weapon = BoomerangCutter.netWeapon;
+		damager.damage = 2;
+		damager.flinch = Global.defFlinch;
+		damager.hitCooldown = 30;
+		vel = new Point(240 * xDir, 0);
 		projId = (int)ProjIds.BoomerangCharged;
 		maxTime = 1.2f;
 		customAngleRendering = true;
@@ -185,14 +200,15 @@ public class BoomerangProjCharged : Projectile {
 		if (lerpToPos != null) {
 			lerpOffset = lerpToPos.Value.subtract(pos);
 		}
-
-		if (rpc) rpcCreate(pos, player, netProjId, xDir, (byte)type);
+		if (rpc) {
+			rpcCreate(pos, owner, ownerPlayer, netId, xDir, (byte)type);
+		}
 	}
 
-	public static Projectile rpcInvoke(ProjParameters arg) {
+	public static Projectile rpcInvoke(ProjParameters args) {
 		return new BoomerangProjCharged(
-			BoomerangCutter.netWeapon, arg.pos, null, arg.xDir, arg.player,
-			arg.angle, arg.extraData[0], arg.netId, null
+			args.pos, null, args.xDir, args.owner, args.player,
+			args.angle, args.extraData[0], args.netId, null
 		);
 	}
 
@@ -206,8 +222,8 @@ public class BoomerangProjCharged : Projectile {
 			incPos(lerpOffset.times(Global.spf * 15));
 			lerpTime += Global.spf * 15;
 		}
-		vel.x = Helpers.cosd((float)angle!) * maxSpeed;
-		vel.y = Helpers.sind((float)angle) * maxSpeed;
+		vel.x = Helpers.cosd(angle!) * maxSpeed;
+		vel.y = Helpers.sind(angle) * maxSpeed;
 		if (type == 0) {
 			if (time > 0.1 && time < 0.72) {
 				angle += Global.spf * 500;

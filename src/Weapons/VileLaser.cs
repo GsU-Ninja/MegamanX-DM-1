@@ -1,5 +1,7 @@
 ﻿using System;
+using System.Linq;
 using System.Collections.Generic;
+using System.Text;
 using SFML.Graphics;
 
 namespace MMXOnline;
@@ -13,6 +15,9 @@ public enum VileLaserType {
 
 public class VileLaser : Weapon {
 	public float vileAmmoUsage;
+	public static VileLaser netWeaponRS = new VileLaser(VileLaserType.RisingSpecter);
+	public static VileLaser netWeaponNB = new VileLaser(VileLaserType.NecroBurst);
+	public static VileLaser netWeaponSN = new VileLaser(VileLaserType.StraightNightmare);
 	public VileLaser(VileLaserType vileLaserType) : base() {
 		index = (int)WeaponIds.VileLaser;
 		type = (int)vileLaserType;
@@ -21,6 +26,10 @@ public class VileLaser : Weapon {
 			displayName = "None";
 			description = new string[] { "Do not equip a Laser." };
 			killFeedIndex = 126;
+			ammousage = 0;
+			vileAmmoUsage = 0;
+			fireRate = 0;
+			vileWeight = 0;
 		} else if (vileLaserType == VileLaserType.RisingSpecter) {
 			index = (int)WeaponIds.RisingSpecter;
 			displayName = "Rising Specter";
@@ -28,6 +37,11 @@ public class VileLaser : Weapon {
 			description = new string[] { "It cannot be aimed,", "but its wide shape covers a large area." };
 			killFeedIndex = 120;
 			vileWeight = 3;
+			ammousage = 24;
+			damage = "6";
+			hitcooldown = "0.5";
+			flinch = "26";
+			effect = "Insane Hitbox.";
 		} else if (vileLaserType == VileLaserType.NecroBurst) {
 			index = (int)WeaponIds.NecroBurst;
 			displayName = "Necro Burst";
@@ -35,6 +49,11 @@ public class VileLaser : Weapon {
 			description = new string[] { "Use up all your energy at once to", "unleash a powerful energy burst." };
 			killFeedIndex = 75;
 			vileWeight = 3;
+			ammousage = 32;
+			damage = "6";
+			hitcooldown = "0.5";
+			flinch = "26";
+			effect = "Self Damages.";
 		} else if (vileLaserType == VileLaserType.StraightNightmare) {
 			index = (int)WeaponIds.StraightNightmare;
 			displayName = "Straight Nightmare";
@@ -42,6 +61,10 @@ public class VileLaser : Weapon {
 			description = new string[] { "Though slow, this laser can burn", "through multiple enemies in a row." };
 			killFeedIndex = 171;
 			vileWeight = 3;
+			ammousage = 24;
+			damage = "1";
+			hitcooldown = "0.15";
+			effect = "Won't destroy on hit.";
 		}
 	}
 
@@ -54,6 +77,8 @@ public class VileLaser : Weapon {
 	}
 
 	public override void vileShoot(WeaponIds weaponInput, Vile vile) {
+		if (type == (int)VileLaserType.None) return;
+
 		if (type == (int)VileLaserType.NecroBurst && vile.charState is InRideArmor inRideArmor) {
 			NecroBurstAttack.shoot(vile);
 			vile.rideArmor?.explode(shrapnel: inRideArmor.isHiding);
@@ -73,7 +98,7 @@ public class RisingSpecterState : CharState {
 	bool shot = false;
 	bool grounded;
 
-	public RisingSpecterState(bool grounded) : base(grounded ? "idle_shoot" : "fall", "", "", "") {
+	public RisingSpecterState(bool grounded) : base(grounded ? "idle_shoot" : "fall") {
 		this.grounded = grounded;
 	}
 
@@ -108,8 +133,8 @@ public class RisingSpecterState : CharState {
 
 		if (vile.tryUseVileAmmo(vile.laserWeapon.getAmmoUsage(0))) {
 			new RisingSpecterProj(
-				new VileLaser(VileLaserType.RisingSpecter), shootPos, vile.xDir,
-				vile.player, vile.player.getNextActorNetId(), rpc: true
+				shootPos, vile.xDir, vile, vile.player, 
+				vile.player.getNextActorNetId(), rpc: true
 			);
 			vile.playSound("risingSpecter", sendRpc: true);
 		}
@@ -120,8 +145,15 @@ public class RisingSpecterProj : Projectile {
 	public Point destPos;
 	public float sinDampTime = 1;
 	public Anim muzzle;
-	public RisingSpecterProj(Weapon weapon, Point poi, int xDir, Player player, ushort netProjId, bool rpc = false) :
-		base(weapon, poi, xDir, 0, 6, player, "empty", Global.defFlinch, 0.5f, netProjId, player.ownedByLocalPlayer) {
+	public RisingSpecterProj(
+		Point poi, int xDir, Actor owner, Player player, ushort? netId, bool rpc = false
+	) : base(
+		poi, xDir, owner, "empty", netId, player
+	) {
+		weapon = VileLaser.netWeaponRS;
+		damager.damage = 6;
+		damager.flinch = Global.defFlinch;
+		damager.hitCooldown = 30;
 		maxTime = 0.5f;
 		destroyOnHit = false;
 		shouldShieldBlock = false;
@@ -156,11 +188,16 @@ public class RisingSpecterProj : Projectile {
 			points.Add(new Point(poi.x - sideX, poi.y + sideY));
 		}
 
-		globalCollider = new Collider(points, true, null, false, false, 0, Point.zero);
+		globalCollider = new Collider(points, true, null!, false, false, 0, Point.zero);
 
 		if (rpc) {
-			rpcCreate(pos, player, netProjId, xDir);
+			rpcCreate(poi, owner, ownerPlayer, netId, xDir);
 		}
+	}
+	public static Projectile rpcInvoke(ProjParameters args) {
+		return new RisingSpecterProj(
+			args.pos, args.xDir, args.owner, args.player, args.netId
+		);
 	}
 
 	public override void onDestroy() {
@@ -207,21 +244,19 @@ public class RisingSpecterProj : Projectile {
 	}
 }
 
-public class NecroBurstAttack : CharState {
+public class NecroBurstAttack : VileState {
 	bool shot = false;
-	Vile vile = null!;
 
-	public NecroBurstAttack(bool grounded) : base(grounded ? "idle_shoot" : "cannon_air", "", "", "") {
+	public NecroBurstAttack(bool grounded) : base(grounded ? "idle_shoot" : "cannon_air") {
 	}
 
 	public override void update() {
 		base.update();
-
 		if (!shot) {
 			shot = true;
 			shoot(vile);
+			character.applyDamage(8, player, character, (int)WeaponIds.NecroBurst, (int)ProjIds.NecroBurst);
 		}
-
 		if (character.sprite.isAnimOver()) {
 			character.changeToIdleOrFall();
 		}
@@ -232,24 +267,27 @@ public class NecroBurstAttack : CharState {
 			Point shootPos = vile.setCannonAim(new Point(1, 0));
 			//character.vileAmmoRechargeCooldown = 3;
 			new NecroBurstProj(
-				new VileLaser(VileLaserType.NecroBurst), shootPos,
-				vile.xDir, vile.player, vile.player.getNextActorNetId(), rpc: true
+				shootPos, vile.xDir, vile, vile.player,
+				vile.player.getNextActorNetId(), rpc: true
 			);
 			vile.playSound("necroburst", sendRpc: true);
 		}
-	}
-
-	public override void onEnter(CharState oldState) {
-		base.onEnter(oldState);
-		vile = character as Vile ?? throw new NullReferenceException();
 	}
 }
 
 public class NecroBurstProj : Projectile {
 	public float radius = 10;
 	public float attackRadius { get { return radius + 15; } }
-	public NecroBurstProj(Weapon weapon, Point pos, int xDir, Player player, ushort netProjId, bool rpc = false) :
-		base(weapon, pos, xDir, 0, 6, player, "empty", Global.defFlinch, 0.5f, netProjId, player.ownedByLocalPlayer) {
+	public float overrideDamage;
+	public NecroBurstProj(
+		Point pos, int xDir, Actor owner, Player player, ushort? netId, bool rpc = false
+	) : base(
+		pos, xDir, owner, "empty", netId, player
+	) {
+		weapon = VileLaser.netWeaponNB;
+		damager.damage = 6;
+		damager.flinch = Global.defFlinch;
+		damager.hitCooldown = 30;
 		maxTime = 0.5f;
 		destroyOnHit = false;
 		shouldShieldBlock = false;
@@ -258,8 +296,13 @@ public class NecroBurstProj : Projectile {
 		shouldVortexSuck = false;
 
 		if (rpc) {
-			rpcCreate(pos, player, netProjId, xDir);
+			rpcCreate(pos, owner, ownerPlayer, netId, xDir);
 		}
+	}
+	public static Projectile rpcInvoke(ProjParameters args) {
+		return new NecroBurstProj(
+			args.pos, args.xDir, args.owner, args.player, args.netId
+		);
 	}
 
 	public override void update() {
@@ -299,8 +342,16 @@ public class NecroBurstProj : Projectile {
 }
 
 public class RAShrapnelProj : Projectile {
-	public RAShrapnelProj(Weapon weapon, Point pos, string spriteName, int xDir, bool hasRaColorShader, Player player, ushort netProjId, bool rpc = false) :
-		base(weapon, pos, xDir, 0, 4, player, spriteName, Global.defFlinch, 0.5f, netProjId, player.ownedByLocalPlayer) {
+	public RAShrapnelProj(
+		Point pos, string spriteName, int xDir, bool hasRaColorShader,
+		Actor owner, Player player, ushort? netId, bool rpc = false
+	) : base(
+		pos, xDir, owner, spriteName, netId, player
+	) {
+		weapon = VileLaser.netWeaponNB;
+		damager.damage = 6;
+		damager.flinch = Global.defFlinch;
+		damager.hitCooldown = 30;
 		maxTime = 0.35f;
 		vel = new Point();
 		projId = (int)ProjIds.NecroBurstShrapnel;
@@ -317,36 +368,45 @@ public class RAShrapnelProj : Projectile {
 				Global.spriteIndexByName.GetValueOrCreate(spriteName, ushort.MaxValue)
 			);
 			byte hasRaColorShaderByte = hasRaColorShader ? (byte)1 : (byte)0;
-			rpcCreate(pos, player, netProjId, xDir, spriteIndexBytes[0], spriteIndexBytes[1], hasRaColorShaderByte);
+			rpcCreate(pos, owner, ownerPlayer, netId, xDir, new byte[] {
+				spriteIndexBytes[0], spriteIndexBytes[1], hasRaColorShaderByte}
+			);
 		}
+	}
+	public static Projectile rpcInvoke(ProjParameters args) {
+		string spriteIndexBytes = Encoding.ASCII.GetString(args.extraData[0..]);
+		return new RAShrapnelProj(
+			args.pos, spriteIndexBytes, args.xDir, 
+			args.extraData[1] == 1, args.owner, args.player, args.netId
+		);
 	}
 }
 
 public class StraightNightmareAttack : CharState {
 	bool shot = false;
-	public StraightNightmareAttack(bool grounded) : base(grounded ? "idle_shoot" : "cannon_air", "", "", "") {
+	public StraightNightmareAttack(bool grounded) : base(grounded ? "idle_shoot" : "cannon_air") {
 		enterSound = "straightNightmareShoot";
 	}
 
 	public override void update() {
 		base.update();
-
 		if (!shot) {
 			shot = true;
 			if (character is Vile vile) {
 				shoot(vile);
 			}
 		}
-
 		if (character.sprite.isAnimOver()) {
 			character.changeToIdleOrFall();
 		}
 	}
-
 	public static void shoot(Vile vile) {
 		if (vile.tryUseVileAmmo(vile.laserWeapon.getAmmoUsage(0))) {
 			Point shootPos = vile.setCannonAim(new Point(1, 0));
-			new StraightNightmareProj(new VileLaser(VileLaserType.StraightNightmare), shootPos.addxy(-8 * vile.xDir, 0), vile.xDir, vile.player, vile.player.getNextActorNetId(), sendRpc: true);
+			new StraightNightmareProj(
+				shootPos.addxy(-8 * vile.xDir, 0), vile.xDir, vile, 
+				vile.player, vile.player.getNextActorNetId(), rpc: true
+			);
 		}
 	}
 }
@@ -360,8 +420,15 @@ public class StraightNightmareProj : Projectile {
 	public float blowModifier = 0.25f;
 	public float soundTime;
 
-	public StraightNightmareProj(Weapon weapon, Point pos, int xDir, Player player, ushort netProjId, bool sendRpc = false) :
-		base(weapon, pos, xDir, 150, 1, player, "straightnightmare_proj", 0, 0.15f, netProjId, player.ownedByLocalPlayer) {
+	public StraightNightmareProj(
+		Point pos, int xDir, Actor owner, Player player, ushort? netId, bool rpc = false
+	) : base(
+		pos, xDir, owner, "straightnightmare_proj", netId, player
+	) {
+		weapon = VileLaser.netWeaponSN;
+		damager.damage = 1;
+		damager.hitCooldown = 9;
+		vel = new Point (150 * xDir, 0);		
 		projId = (int)ProjIds.StraightNightmare;
 		maxTime = 2;
 		sprite.visible = false;
@@ -373,9 +440,14 @@ public class StraightNightmareProj : Projectile {
 		destroyOnHit = false;
 		shouldShieldBlock = false;
 
-		if (sendRpc) {
-			rpcCreate(pos, player, netProjId, xDir);
+		if (rpc) {
+			rpcCreate(pos, owner, ownerPlayer, netId, xDir);
 		}
+	}
+	public static Projectile rpcInvoke(ProjParameters args) {
+		return new StraightNightmareProj(
+			args.pos, args.xDir, args.owner, args.player, args.netId
+		);
 	}
 
 	public override void render(float x, float y) {
@@ -425,19 +497,19 @@ public class StraightNightmareProj : Projectile {
 	}
 
 	public override void onHitDamagable(IDamagable damagable) {
-		if (damagable is not Character character) return;
-		if (character.charState.invincible) return;
-		if (character.isImmuneToKnockback()) return;
-
-		//character.damageHistory.Add(new DamageEvent(damager.owner, weapon.killFeedIndex, true, Global.frameCount));
-		if (character.isClimbingLadder()) {
-			character.setFall();
-		} else if (!character.pushedByTornadoInFrame) {
-			float modifier = 1;
-			if (character.grounded) modifier = 0.5f;
-			if (character.charState is Crouch) modifier = 0.25f;
-			character.move(new Point(maxSpeed * 0.9f * xDir * modifier * blowModifier, 0));
+		base.onHitDamagable(damagable);
+		if (!damagable.isPlayableDamagable()) { return; }
+		if (damagable is not Actor actor || !actor.ownedByLocalPlayer) {
+			return;
+		}
+		float modifier = 1;
+		if (actor.grounded) { modifier = 0.5f; };
+		if (damagable is Character character) {
+			if (character.isPushImmune()) { return; }
+			if (character.charState is Crouch) { modifier = 0.25f; }
 			character.pushedByTornadoInFrame = true;
 		}
+		//character.damageHistory.Add(new DamageEvent(damager.owner, weapon.killFeedIndex, true, Global.frameCount));
+		actor.move(new Point(maxSpeed * 0.9f * xDir * modifier * blowModifier, 0));
 	}
 }

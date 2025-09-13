@@ -9,6 +9,7 @@ public class XBuster : Weapon {
 	public bool isUnpoBuster;
 
 	public XBuster() : base() {
+		displayName = "X-Buster";
 		index = (int)WeaponIds.Buster;
 		killFeedIndex = 0;
 		weaponBarBaseIndex = 0;
@@ -19,12 +20,13 @@ public class XBuster : Weapon {
 		canHealAmmo = false;
 		drawAmmo = false;
 		drawCooldown = false;
-		effect = "You only need this to win any match.";
-		hitcooldown = "0/0/0/1";
+		//effect = "Mega Buster Mark 17";
+		hitcooldown = "0/0/0/60";
 		damage = "1/2/3/4";
-		Flinch = "0/0/13/26";
-		FlinchCD = "0";
+		flinch = "0/0/13/26";
+		flinchCD = "0";
 	}
+
 	public void setUnpoBuster(MegamanX mmx) {
 		isUnpoBuster = true;
 		fireRate = 45;
@@ -44,11 +46,6 @@ public class XBuster : Weapon {
 		// HUD.
 		drawAmmo = true;
 		drawCooldown = true;
-		
-		// Remove charge.
-		mmx.stockedCharge = false;
-		mmx.stockedX3Buster = false;
-		mmx.stockedXSaber = false;
 	}
 
 	public static bool isNormalBuster(Weapon weapon) {
@@ -60,9 +57,6 @@ public class XBuster : Weapon {
 	}
 
 	public override bool canShoot(int chargeLevel, Player player) {
-		if ((player.character as MegamanX)?.isHyperX == true && ammo < getAmmoUsage(chargeLevel)) {
-			return false;
-		}
 		if (!base.canShoot(chargeLevel, player)) return false;
 		if (chargeLevel > 1) {
 			return true;
@@ -82,155 +76,33 @@ public class XBuster : Weapon {
 	}
 
 	public override void shoot(Character character, int[] args) {
-		int chargeLevel = args[0];
-		Point pos = character.getShootPos();
-		int xDir = character.getShootXDir();
-		Player player = character.player;
-		bool isUA = (character as MegamanX)?.hasUltimateArmor == true;
-		string sound = "";
-
-		if (chargeLevel == 0) {
-			lemonsOnField.Add(new BusterProj(this, pos, xDir, 0, player, player.getNextActorNetId(), true));
-			sound = "buster";
-		} else if (chargeLevel == 1) {
-			new Buster2Proj(this, pos, xDir, player, player.getNextActorNetId(), true);
-			sound = "buster2";
-		} else if (chargeLevel == 2) {
-			new Buster3Proj(this, pos, xDir, 0, player, player.getNextActorNetId(), true);
-			sound = "buster3";
-		} else if (chargeLevel >= 3) {
-			if (isUA) {
-				new Anim(pos.clone(), "buster4_muzzle_flash", xDir, null, true);
-				new BusterPlasmaProj(this, pos, xDir, player, player.getNextActorNetId(), true);
-				sound = "plasmaShot";
-			} else {
-				new Anim(pos.clone(), "buster4_muzzle_flash", xDir, null, true);
-				//Create the buster effect
-				int xOff = xDir * -5;
-				player.setNextActorNetId(player.getNextActorNetId());
-				// Create first line instantly.
-				createBuster4Line(pos.x + xOff, pos.y, xDir, player, 0f);
-				// Create 2nd with a delay.
-				Global.level.delayedActions.Add(new DelayedAction(delegate {
-					createBuster4Line(pos.x + xOff, pos.y, xDir, player, 10f / 60f);
-				}, 2.8f / 60f));
-				// Use smooth spawn on the 3rd.
-				Global.level.delayedActions.Add(new DelayedAction(delegate {
-					createBuster4Line(pos.x + xOff, pos.y, xDir, player, 5f / 60f, true);
-				}, 5.8f / 60f));
-				sound = "buster4";
-			}
-		}
-
-		if (!string.IsNullOrEmpty(sound)) character.playSound(sound, sendRpc: true);	
-	}
-
-	public override void shootSecond(Character character, int[] args) {
-		int chargeLevel = args[0];
-		Point pos = character.getShootPos();
-		int xDir = character.getShootXDir();
-		Player player = character.player;
-		MegamanX mmx = character as MegamanX ?? throw new NullReferenceException();
-		string sound = "";
-
-		if (chargeLevel == 0) {
-			lemonsOnField.Add(new BusterProj(this, pos, xDir, 0, player, player.getNextActorNetId(), true));
-			sound = "buster";
-		} else if (chargeLevel == 1) {
-			new Buster2Proj(this, pos, xDir, player, player.getNextActorNetId(), true);
-			sound = "buster2";
-		} else if (chargeLevel == 2) {
-			new Buster3Proj(this, pos, xDir, 0, player, player.getNextActorNetId(), true);
-			sound = "buster3";
-		} else if (chargeLevel >= 3) {	
-			if (player.ownedByLocalPlayer) {
-				if (mmx.hasUltimateArmor && !mmx.stockedCharge) {
-					character.changeState(new X2ChargeShot(2), true);
-				} else {
-					if (character.charState is not WallSlide) {
-						mmx.shootCooldown = 0;
-					}
-					int type = mmx.stockedCharge ? 1 : 0;
-					character.changeState(new X2ChargeShot(type), true);
-				}
-			}
-		}
-
-		if (!string.IsNullOrEmpty(sound)) character.playSound(sound, sendRpc: true);
-	}
-
-	public override void shootMax(Character character, int[] args) {
-		int chargeLevel = args[0];
-		Point pos = character.getShootPos();
-		int xDir = character.getShootXDir();
-		Player player = character.player;
-		MegamanX mmx = character as MegamanX ?? throw new NullReferenceException();
-		string sound = "";
-
-		if (mmx.stockedX3Buster || mmx.stockedCharge) {
-			mmx.changeState(new X3ChargeShot(null) {state = 1}, true);
-		} else if (chargeLevel == 0) {
-			lemonsOnField.Add(new BusterProj(this, pos, xDir, 0, player, player.getNextActorNetId(), true));
-			sound = "buster";
-		} else if (chargeLevel == 1) {
-			new Buster2Proj(this, pos, xDir, player, player.getNextActorNetId(), true);
-			sound = "buster2";
-		} else if (chargeLevel == 2) {
-			new Buster3Proj(this, pos, xDir, 0, player, player.getNextActorNetId(), true);
-			sound = "buster3";
-		} else if (chargeLevel == 3) {
-			if (player.ownedByLocalPlayer) {
-				if (character.charState is not WallSlide) {
-				mmx.shootCooldown = 0;
-			}
-
-			character.changeState(new X3ChargeShot(null), true);
-			}
-		}
-
-		if (!string.IsNullOrEmpty(sound)) character.playSound(sound, sendRpc: true);
-	}
-
-	/* public override void shoot(Character character, int[] args) {
-		int chargeLevel = args[0];
-		Point pos = character.getShootPos();
-		int xDir = character.getShootXDir();
-		Player player = character.player;
-
-		string shootSound = "buster";
 		if (character is not MegamanX mmx) {
 			return;
 		}
-		if (player.hasArmArmor(ArmorId.Light) || player.hasArmArmor(ArmorId.None) || player.hasUltimateArmor())
+		int chargeLevel = args[0];
+		bool isStock = args[1] == 1;
+		Point pos = character.getShootPos();
+		int xDir = character.getShootXDir();
+		Player player = character.player;
+		
+		string shootSound = "buster";
+		shootSound = chargeLevel switch {
+			0 => "buster",
+			1 => "buster2",
+			2 => "buster3",
+			_ when isStock || mmx.armArmor == ArmorId.Giga => "buster4X2",
+			_ => "buster4"
+		};
+		if (mmx.armArmor == ArmorId.Giga && !isStock) {
 			shootSound = chargeLevel switch {
-				_ when (
-						mmx.stockedCharge
-				) => "",
-				0 => "buster",
-				1 => "buster2",
-				2 => "buster3",
-				3 => "buster4",
-				_ => ""
-			};
-		if (player.hasArmArmor(ArmorId.Giga)) {
-			shootSound = chargeLevel switch {
-				_ when (
-					mmx.stockedCharge
-				) => "",
-				0 => "buster",
+				0 => "busterX2",
 				1 => "buster2X2",
 				2 => "buster3X2",
-				3 => "",
+				3 => "buster4X2",
 				_ => shootSound
 			};
-		} else if (player.hasArmArmor(ArmorId.Max)) {
+		} else if (mmx.armArmor == ArmorId.Max && !isStock) {
 			shootSound = chargeLevel switch {
-				_ when (
-					mmx.stockedCharge
-				) => "",
-				_ when (
-					mmx.stockedX3Buster
-				) => "",
 				0 => "busterX3",
 				1 => "buster2X3",
 				2 => "buster3X3",
@@ -238,95 +110,132 @@ public class XBuster : Weapon {
 				_ => shootSound
 			};
 		}
-		if (mmx.stockedX3Buster) {
-			if (player.ownedByLocalPlayer) {
-				if (character.charState is not WallSlide) {
-					mmx.shootCooldown = 0;
-				}
-				character.changeState(new X3ChargeShot(null), true);
-				shootSound = "";
-			}
+
+		if (mmx.hasUltimateArmor && chargeLevel >= 3 && !isStock && mmx.armArmor != ArmorId.Max) {
+			new Anim(pos, "buster4_muzzle_flash", xDir, null, true);
+			new BusterPlasmaProj(pos, xDir, mmx, player, player.getNextActorNetId(), true);
+			character.playSound("plasmaShot", sendRpc: true);	
 			return;
 		}
-		bool hasUltArmor = ((character as MegamanX)?.hasUltimateArmor == true);
-		bool isHyperX = ((character as MegamanX)?.isHyperX == true);
-
-		if (isHyperX) {
-			new BusterUnpoProj(this, pos, xDir, player, player.getNextActorNetId(), true);
-			new Anim(pos, "buster_unpo_muzzle", xDir, null, true);
-			shootSound = "buster2";
-		} else if (mmx.stockedCharge) {
-			if (player.ownedByLocalPlayer) {
-				character.changeState(new X2ChargeShot(1), true);
+		else if (mmx.stockedMaxBusterLv >= 1) {
+			if (mmx.charState.attackCtrl && mmx.charState.normalCtrl) {
+				mmx.changeState(new X3ChargeShot(null));
+				return;
 			}
-		} else if (chargeLevel == 0) {
-			lemonsOnField.Add(new BusterProj(this, pos, xDir, 0, player, player.getNextActorNetId(), true));
+			if (mmx.stockedMaxBusterLv % 2 == 0) {
+				new Anim(
+					pos, "buster4_x3_muzzle", xDir,
+					player.getNextActorNetId(), true, sendRpc: true
+				);
+				new Buster4MaxProj(
+					pos, xDir, mmx, player, player.getNextActorNetId(), true
+				);
+			} else {
+				createX3SpreadShot(mmx, xDir);
+			}
+			shootSound = "buster3X3";
+			mmx.stockedMaxBusterLv--;
+		}
+		else if (chargeLevel == 0) {
+			lemonsOnField.Add(new BusterProj(pos, xDir, mmx, player, player.getNextActorNetId(), true));
 		} else if (chargeLevel == 1) {
-			new Buster2Proj(this, pos, xDir, player, player.getNextActorNetId(), true);
+			new Buster2Proj(pos, xDir, mmx, player, player.getNextActorNetId(), true);
 		} else if (chargeLevel == 2) {
-			new Buster3Proj(this, pos, xDir, 0, player, player.getNextActorNetId(), true);
+			if (mmx.armArmor == ArmorId.Light || mmx.armArmor == ArmorId.None) {
+				new Buster3LightProj(pos, xDir, mmx, player, player.getNextActorNetId(), true);
+			} else if (mmx.armArmor == ArmorId.Giga) {
+				new Buster3GigaProj(pos, xDir, mmx, player, player.getNextActorNetId(), true);
+			} else if (mmx.armArmor == ArmorId.Max) {
+				new Buster3MaxProj(pos, xDir, mmx, player, player.getNextActorNetId(), true);
+			}
 		} else if (chargeLevel >= 3) {
-			if (hasUltArmor && !player.hasArmArmor(3)) {
-				if (player.hasArmArmor(2)) {
-					if (player.ownedByLocalPlayer) {
-						character.changeState(new X2ChargeShot(2), true);
-					}
-					shootSound = "";
+			if (isStock) {
+				new Buster4Giga2Proj(pos, xDir, mmx, player, player.getNextActorNetId(), true);
+			}
+			else if (mmx.armArmor == ArmorId.Max) {
+				mmx.stockedMaxBusterLv += 2;
+				if (!mmx.charState.attackCtrl ||
+					!mmx.charState.normalCtrl ||
+					mmx.charState is WallSlide
+				) {
+					new Anim(
+						pos, "buster4_x3_muzzle", xDir, player.getNextActorNetId(),
+						true, sendRpc: true
+					);
+					new Buster4MaxProj(
+						pos, xDir, mmx, player,
+						player.getNextActorNetId(), true
+					);
+					mmx.stockedMaxBusterLv--;
 				} else {
-					new Anim(pos.clone(), "buster4_muzzle_flash", xDir, null, true);
-					new BusterPlasmaProj(this, pos, xDir, player, player.getNextActorNetId(), true);
-					shootSound = "plasmaShot";
-				}
-			} else if (player.hasArmArmor(3)) {
-				if (player.ownedByLocalPlayer) {
-					if (character.charState is not WallSlide) {
-						mmx.shootCooldown = 0;
-					}
-					character.changeState(new X3ChargeShot(null), true);
-					shootSound = "";
-				}
-			} else if (player.hasArmArmor(0) || player.hasArmArmor(1)) {
-				new Anim(pos.clone(), "buster4_muzzle_flash", xDir, null, true);
-				//Create the buster effect
-				int xOff = xDir * -5;
-				player.setNextActorNetId(player.getNextActorNetId());
-				// Create first line instantly.
-				createBuster4Line(pos.x + xOff, pos.y, xDir, player, 0f);
-				// Create 2nd with a delay.
-				Global.level.delayedActions.Add(new DelayedAction(delegate {
-					createBuster4Line(pos.x + xOff, pos.y, xDir, player, 10f / 60f);
-				}, 2.8f / 60f));
-				// Use smooth spawn on the 3rd.
-				Global.level.delayedActions.Add(new DelayedAction(delegate {
-					createBuster4Line(pos.x + xOff, pos.y, xDir, player, 5f / 60f, true);
-				}, 5.8f / 60f));
-			} else if (player.hasArmArmor(2)) {
-				if (player.ownedByLocalPlayer) {
-					if (character.charState is not WallSlide) {
-						mmx.shootCooldown = 0;
-					}
-					character.changeState(new X2ChargeShot(0), true);
-					shootSound = "";
+					mmx.changeState(new X3ChargeShot(null));
+					return;
 				}
 			}
+			else if (mmx.armArmor == ArmorId.Giga) {
+				new Buster4GigaProj(pos, xDir, mmx, player, player.getNextActorNetId(), true);
+			} else {
+				shootLightBuster4(mmx, pos, xDir);
+			}
 		}
+		if (shootSound != "") {
+			character.playSound(shootSound, sendRpc: true);	
+		}
+	}
 
-		if (character?.ownedByLocalPlayer == true && shootSound != "") {
-			character.playSound(shootSound, sendRpc: true);
-		}
-	} */
+	public static void createX3SpreadShot(Character character, int xDir) {
+		Player player = character.player;
+		MegamanX mmx = character as MegamanX ?? throw new NullReferenceException();
+		new BusterX3Proj2(
+			character.getShootPos().addxy(6 * xDir, -2), character.getShootXDir(), 0, mmx,
+			player, player.getNextActorNetId(), rpc: true
+		);
+		new BusterX3Proj2(
+			character.getShootPos().addxy(6 * xDir, -2), character.getShootXDir(), 1, mmx,
+			player, player.getNextActorNetId(), rpc: true
+		);
+		new BusterX3Proj2(
+			character.getShootPos().addxy(6 * xDir, -2), character.getShootXDir(), 2, mmx,
+			player, player.getNextActorNetId(), rpc: true
+		);
+		new BusterX3Proj2(
+			character.getShootPos().addxy(6 * xDir, -2), character.getShootXDir(), 3, mmx,
+			player, player.getNextActorNetId(), rpc: true
+		);
+	}
+
+	public void shootLightBuster4(MegamanX mmx, Point pos, int xDir) {
+		Player player = mmx.player;
+		new Anim(pos, "buster4_muzzle_flash", xDir, null, true);
+		//Create the buster effect
+		int xOff = xDir * -5;
+		player.setNextActorNetId(player.getNextActorNetId());
+		// Create first line instantly.
+		createBuster4Line(pos.x + xOff, pos.y, xDir, mmx, 0f);
+		// Create 2nd with a delay.
+		Global.level.delayedActions.Add(new DelayedAction(delegate {
+			createBuster4Line(pos.x + xOff, pos.y, xDir, mmx, 10);
+		}, 2.8f / 60f));
+		// Use smooth spawn on the 3rd.
+		Global.level.delayedActions.Add(new DelayedAction(delegate {
+			createBuster4Line(pos.x + xOff, pos.y, xDir, mmx, 5, true);
+		}, 5.8f / 60f));
+	}
+	
 	public void createBuster4Line(
-		float x, float y, int xDir, Player player,
+		float x, float y, int xDir, MegamanX mmx,
 		float offsetTime, bool smoothStart = false
 	) {
+		Player player = mmx.player;
+
 		new Buster4Proj(
-			this, new Point(x + xDir, y), xDir,
+			new Point(x + xDir, y), xDir, mmx,
 			player, 0, offsetTime,
 			player.getNextActorNetId(allowNonMainPlayer: true), smoothStart, true
 		);
 		Global.level.delayedActions.Add(new DelayedAction(delegate {
 			new Buster4Proj(
-				this, new Point(x + xDir, y), xDir,
+				new Point(x + xDir, y), xDir, mmx,
 				player, 1, offsetTime,
 				player.getNextActorNetId(allowNonMainPlayer: true), smoothStart, true
 			);
@@ -334,7 +243,7 @@ public class XBuster : Weapon {
 		));
 		Global.level.delayedActions.Add(new DelayedAction(delegate {
 			new Buster4Proj(
-				this, new Point(x + xDir, y), xDir,
+				new Point(x + xDir, y), xDir, mmx,
 				player, 2, offsetTime,
 				player.getNextActorNetId(allowNonMainPlayer: true), smoothStart, true
 			);
@@ -342,7 +251,7 @@ public class XBuster : Weapon {
 		));
 		Global.level.delayedActions.Add(new DelayedAction(delegate {
 			new Buster4Proj(
-				this, new Point(x + xDir, y), xDir,
+				new Point(x + xDir, y), xDir, mmx,
 				player, 2, offsetTime,
 				player.getNextActorNetId(allowNonMainPlayer: true), smoothStart, true
 			);
@@ -350,7 +259,7 @@ public class XBuster : Weapon {
 		));
 		Global.level.delayedActions.Add(new DelayedAction(delegate {
 			new Buster4Proj(
-				this, new Point(x + xDir, y), xDir,
+				new Point(x + xDir, y), xDir,mmx,
 				player, 3, offsetTime,
 				player.getNextActorNetId(allowNonMainPlayer: true), smoothStart, true
 			);

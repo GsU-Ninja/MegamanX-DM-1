@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.Linq;
 
 namespace MMXOnline;
@@ -8,6 +9,7 @@ public class MagnetMine : Weapon {
 	public const int maxMinesPerPlayer = 10;
 
 	public MagnetMine() : base() {
+		displayName = "Magnet Mine";
 		shootSounds = new string[] { "magnetMine", "magnetMine", "magnetMine", "magnetMineCharged" };
 		fireRate = 45;
 		index = (int)WeaponIds.MagnetMine;
@@ -16,11 +18,11 @@ public class MagnetMine : Weapon {
 		weaponSlotIndex = 15;
 		killFeedIndex = 20 + (index - 9);
 		weaknessIndex = (int)WeaponIds.SilkShot;
-		effect = "C: Can absorb projectiles and grow it's size.";
-		hitcooldown = "0/0.2";
+		effect = "U:Planted mines have a limit of 10.\nC:Can absorb projectiles and grow its size.\nGrowth depends on the damage absorbed.";
+		hitcooldown = "0/12";
 		damage = "2,4/1,2,4";
-		Flinch = "0/26";
-		FlinchCD = "0/1";
+		flinch = "0/26";
+		flinchCD = "0/1";
 	}
 
 	public override void shoot(Character character, int[] args) {
@@ -28,15 +30,17 @@ public class MagnetMine : Weapon {
 		Point pos = character.getShootPos();
 		int xDir = character.getShootXDir();
 		Player player = character.player;
+		MegamanX mmx = character as MegamanX ?? throw new NullReferenceException();
 
 		if (chargeLevel < 3) {
-			var magnetMineProj = new MagnetMineProj(this, pos, xDir, player, player.getNextActorNetId(), true);
-			player.magnetMines.Add(magnetMineProj);
-			if (player.magnetMines.Count > maxMinesPerPlayer) {
-				player.magnetMines[0].destroySelf();
+			var magnetMineProj = new MagnetMineProj(pos, xDir, mmx, player, player.getNextActorNetId(), true);
+			mmx.magnetMines.Add(magnetMineProj);
+			if (mmx.magnetMines.Count > maxMinesPerPlayer) {
+				mmx.magnetMines[0].destroySelf();
+				mmx.magnetMines.RemoveAt(0);
 			}
 		} else {
-			new MagnetMineProjCharged(this, pos, xDir, player, player.getNextActorNetId(), true);
+			new MagnetMineProjCharged(pos, xDir, mmx, player, player.getNextActorNetId(), true);
 		}
 	}
 }
@@ -48,35 +52,40 @@ public class MagnetMineProj : Projectile, IDamagable {
 	float maxSpeed = 150;
 
 	public MagnetMineProj(
-		Weapon weapon, Point pos, int xDir,
-		Player player, ushort netProjId, bool rpc = false
+		Point pos, int xDir, Actor owner, Player player, ushort? netId, bool rpc = false
 	) : base(
-		weapon, pos, xDir, 75, 2, player, "magnetmine_proj",
-		0, 0, netProjId, player.ownedByLocalPlayer
+		pos, xDir, owner, "magnetmine_proj", netId, player	
 	) {
+		weapon = MagnetMine.netWeapon;
+		damager.damage = 2;
+		vel = new Point(75 * xDir, 0);
 		//maxTime = 2f;
 		maxDistance = 224;
 		fadeSprite = "explosion";
-		fadeSound = "explosion";
+		fadeSound = "explosionX2";
 		reflectable = false;
 		projId = (int)ProjIds.MagnetMine;
 		this.player = player;
 		if (rpc) {
-			rpcCreate(pos, player, netProjId, xDir);
+			rpcCreate(pos, owner, ownerPlayer, netId, xDir);
 		}
 		canBeLocal = false;
 		destroyOnHit = true;
 	}
 
-	public static Projectile rpcInvoke(ProjParameters arg) {
+	public static Projectile rpcInvoke(ProjParameters args) {
 		return new MagnetMineProj(
-			MagnetMine.netWeapon, arg.pos, arg.xDir, arg.player, arg.netId
+			args.pos, args.xDir, args.owner, args.player, args.netId
 		);
+	}
+
+	public override void preUpdate() {
+		base.preUpdate();
+		updateProjectileCooldown();
 	}
 
 	public override void update() {
 		base.update();
-		updateProjectileCooldown();
 
 		if (landed && ownedByLocalPlayer) {
 			moveWithMovingPlatform();
@@ -149,39 +158,51 @@ public class MagnetMineProj : Projectile, IDamagable {
 	}
 
 	public override void onDestroy() {
-		player.magnetMines.Remove(this);
+		if (!ownedByLocalPlayer) {
+			return;
+		}
+		(player.character as MegamanX)?.magnetMines.Remove(this);
 	}
 
 	public bool canBeSucked(int alliance) {
 		if (player.alliance == alliance) return false;
 		return true;
 	}
+
+	public bool isPlayableDamagable() {
+		return false;
+	}
 }
 
 public class MagnetMineProjCharged : Projectile {
 	public float size;
+	public int phase;
 
 	float soundTime;
 	float startY;
 	public MagnetMineProjCharged(
-		Weapon weapon, Point pos, int xDir, Player player, ushort netProjId, bool rpc = false
+		Point pos, int xDir, Actor owner, Player player, ushort? netId, bool rpc = false
 	) : base(
-		weapon, pos, xDir, 50, 1, player, "magnetmine_charged",
-		Global.defFlinch, 0.2f, netProjId, player.ownedByLocalPlayer
+		pos, xDir, owner, "magnetmine_charged", netId, player	
 	) {
+		weapon = MagnetMine.netWeapon;
+		damager.damage = 1;
+		damager.hitCooldown = 12;
+		damager.flinch = Global.defFlinch;
+		vel = new Point(50 * xDir, 0);
 		maxTime = 4f;
 		destroyOnHit = false;
 		shouldShieldBlock = false;
 		projId = (int)ProjIds.MagnetMineCharged;
 		startY = pos.y;
 		if (rpc) {
-			rpcCreate(pos, player, netProjId, xDir);
+			rpcCreate(pos, owner, ownerPlayer, netId, xDir);
 		}
 	}
 
-	public static Projectile rpcInvoke(ProjParameters arg) {
+	public static Projectile rpcInvoke(ProjParameters args) {
 		return new MagnetMineProjCharged(
-			MagnetMine.netWeapon, arg.pos, arg.xDir, arg.player, arg.netId
+			args.pos, args.xDir, args.owner, args.player, args.netId
 		);
 	}
 
@@ -228,27 +249,55 @@ public class MagnetMineProjCharged : Projectile {
 
 	public override void onCollision(CollideData other) {
 		base.onCollision(other);
-		if (!ownedByLocalPlayer) return;
-		var go = other.gameObject;
-		if (go is Projectile) {
-			var proj = go as Projectile;
-			if (proj != null) {
-				if (!proj.shouldVortexSuck) return;
-				if (proj is MagnetMineProj magnetMine && !magnetMine.canBeSucked(damager.owner.alliance)) return;
-				size += proj.damager.damage;
-				proj.destroySelfNoEffect(doRpcEvenIfNotOwned: true);
+		if (!ownedByLocalPlayer) {
+			return;
+		}
+		if (other.gameObject is Projectile proj && !proj.destroyed && proj is not MagnetMineProjCharged &&
+			(damager.owner.alliance != owner.alliance || damager.owner == owner && size < 10)
+		) {
+			if (!proj.shouldVortexSuck) { return; }
+			if (proj is MagnetMineProj magnetMine && !magnetMine.canBeSucked(damager.owner.alliance)) { return; }
+
+			if (proj.ownedByLocalPlayer && proj is MagnetMineProjCharged mineCharged) {
+				if (damager.owner.alliance != mineCharged.damager.owner.alliance &&
+					mineCharged.size != 0 && size <= mineCharged.size
+				) {
+					return;
+				}
+				if (mineCharged.damager.owner == damager.owner && size < mineCharged.size) {
+					return;
+				}
+				size += 12;
 			}
-			
-			
-			if (size > 10) {
-				changeSprite("magnetmine_charged3", true);
-				updateDamager(4);
-				forceNetUpdateNextFrame = true;
-			} else if (size > 5) {
-				changeSprite("magnetmine_charged2", true);
-				updateDamager(2);
+			size += proj.damager.damage;
+			proj.destroySelfNoEffect(doRpcEvenIfNotOwned: true);
+
+			if (updateSizeAndDamage()) {
 				forceNetUpdateNextFrame = true;
 			}
 		}
+	}
+
+	public override List<byte>? getCustomActorNetData() {
+		List<byte>? customData = base.getCustomActorNetData();
+		customData?.Add((byte)MathF.Floor(size));
+
+		return customData;
+	}
+
+	public override void updateCustomActorNetData(byte[] data) {
+		size = data[0];
+		updateSizeAndDamage();
+	}
+
+	public bool updateSizeAndDamage() {
+		if (size >= 10 && phase < 2) {
+			changeSprite("magnetmine_charged3", true);
+			damager.damage = 4;
+		} else if (size >= 5 && phase < 1) {
+			changeSprite("magnetmine_charged2", true);
+			damager.damage = 2;
+		}
+		return false;
 	}
 }

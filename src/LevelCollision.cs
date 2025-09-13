@@ -281,7 +281,7 @@ public partial class Level {
 			var actorChar = actor as Character;
 			var goChar = gameObject as Character;
 
-			if (actorChar.isCrystalized || goChar.isCrystalized) return false;
+			if (actorChar.isCrystalized || goChar.isCrystalized) return true;
 			//if (actorChar.sprite.name.Contains("frozen") || goChar.sprite.name.Contains("frozen")) return false;
 			return true;
 		}
@@ -352,25 +352,32 @@ public partial class Level {
 
 	public Point? getMtvDir(
 		Actor actor, float inX, float inY, Point? vel,
-		bool pushIncline, List<CollideData> overrideCollideDatas = null
+		bool pushIncline, List<CollideData>? overrideCollideDatas = null
 	) {
-		var collideDatas = overrideCollideDatas;
-		if (collideDatas == null) {
-			collideDatas = Global.level.checkTerrainCollision(actor, inX, inY, vel);
+		Collider? terrainCollider = actor.getTerrainCollider() ?? actor.physicsCollider ?? actor.collider;
+
+		if (terrainCollider == null) {
+			return null;
 		}
 
-		var onlyWalls = collideDatas.Where(cd => !(cd.gameObject is Wall)).Count() == 0;
-		//var onlyWalls = (_.filter(collideDatas, (cd) => { return !(cd.gameObject is Wall); })).Count == 0;
-
-		var actorShape = actor.collider.shape.clone(inX, inY);
+		List<CollideData> collideDatas;
+		if (overrideCollideDatas == null) {
+			collideDatas = Global.level.checkTerrainCollision(actor, inX, inY, vel);
+		} else {
+			collideDatas = overrideCollideDatas;
+		}
+		bool onlyWalls = collideDatas.Where(cd => !(cd.gameObject is Wall)).Count() == 0;
+		Shape actorShape = terrainCollider.shape.clone(inX, inY);
 		Point? pushDir = null;
 
 		if (vel != null) {
 			pushDir = vel?.times(-1).normalize();
 			if (collideDatas.Count > 0) {
 				foreach (var collideData in collideDatas) {
-					if (collideData.hitData != null && collideData.hitData.normal != null && ((Point)collideData.hitData.normal).isAngled() && pushIncline && onlyWalls) {
-						pushDir = new Point(0, -1); //Helpers.getInclinePushDir(collideData.hitData.normal, vel);
+					if (collideData.hitData != null && collideData.hitData.normal != null &&
+						((Point)collideData.hitData.normal).isAngled() && pushIncline && onlyWalls
+					) {
+						pushDir = new Point(0, -1);
 					}
 				}
 			}
@@ -379,7 +386,7 @@ public partial class Level {
 		if (collideDatas.Count > 0) {
 			float maxMag = 0;
 			Point? maxMtv = null;
-			foreach (var collideData in collideDatas) {
+			foreach (CollideData collideData in collideDatas) {
 				actor.registerCollision(collideData);
 				int hash = GetHashCode() ^ collideData.gameObject.GetHashCode();
 				if (!Global.level.collidedGObjs.Contains(hash)) {
@@ -400,7 +407,7 @@ public partial class Level {
 		}
 	}
 
-	public CollideData checkCollisionPoint(Point point, List<GameObject> exclusions) {
+	public CollideData? checkCollisionPoint(Point point, List<GameObject> exclusions) {
 		var points = new List<Point>();
 		points.Add(point);
 		points.Add(point.addxy(1, 0));
@@ -410,14 +417,17 @@ public partial class Level {
 		return checkCollisionShape(shape, exclusions);
 	}
 
-	public CollideData checkCollisionShape(Shape shape, List<GameObject>? exclusions) {
-		var gameObjects = getTerrainInSameCell(shape);
+	public CollideData? checkCollisionShape(Shape? shape, List<GameObject>? exclusions) {
+		if (shape == null) {
+			return null;
+		}
+		var gameObjects = getTerrainInSameCell(shape.Value);
 		foreach (var go in gameObjects) {
 			if (go.collider == null) continue;
 			if (go is not Actor && go.collider.isTrigger) continue;
 			if (go is Actor && (go.collider.isTrigger || go.collider.wallOnly)) continue;
 			if (exclusions != null && exclusions.Contains(go)) continue;
-			var hitData = shape.intersectsShape(go.collider.shape);
+			var hitData = shape.Value.intersectsShape(go.collider.shape);
 			if (hitData != null) {
 				return new CollideData(null, go.collider, null, false, go, hitData);
 			}
@@ -546,6 +556,26 @@ public partial class Level {
 		return triggers;
 	}
 
+	public List<CollideData> getTerrainTriggerList(Shape shape, params Type[] classTypes) {
+		var triggers = new List<CollideData>();
+		var gameObjects = getTerrainInSameCell(shape);
+		foreach (var go in gameObjects) {
+			if (classTypes.Length > 0 && !classTypes.Contains(go.GetType())) continue;
+			var otherColliders = go.getAllColliders();
+			if (otherColliders.Count == 0) continue;
+
+			foreach (var otherCollider in otherColliders) {
+				var isTrigger = otherCollider.isTrigger;
+				if (!isTrigger) continue;
+				var hitData = shape.intersectsShape(otherCollider.shape, null);
+				if (hitData != null) {
+					triggers.Add(new CollideData(null, otherCollider, null, isTrigger, go, hitData));
+				}
+			}
+		}
+		return triggers;
+	}
+
 
 	public List<CollideData> getTerrainTriggerList(
 		Actor actor, Point posIncrease, params Type[] classTypes
@@ -596,7 +626,7 @@ public partial class Level {
 			var goCollider = go.collider;
 
 			// Fix a one-off case where charge beam wouldn't lock onto Kaiser's head
-			if (isChargeBeam && go is Character chr && chr.player.isKaiserNonViralSigma()) {
+			if (isChargeBeam && go is KaiserSigma { isVirus: false }) {
 				goCollider = go.getAllColliders().FirstOrDefault(c => c.name == "head");
 				if (goCollider == null) continue;
 			}
@@ -635,11 +665,11 @@ public partial class Level {
 		return results;
 	}
 
-	public CollideData raycast(Point pos1, Point pos2, List<Type> classNames) {
+	public CollideData? raycast(Point pos1, Point pos2, List<Type> classNames) {
 		var hits = raycastAll(pos1, pos2, classNames);
 
 		float minDist = float.MaxValue;
-		CollideData best = null;
+		CollideData? best = null;
 		foreach (var collideData in hits) {
 			float? dist = collideData.hitData.hitPoint?.distanceTo(pos1);
 			if (dist == null) continue;
@@ -679,7 +709,7 @@ public partial class Level {
 				if (character.player.isDead) continue;
 				if (!includeAllies && character.player.alliance == alliance) continue;
 				if (character.player.alliance != alliance &&
-					character.player.isDisguisedAxl && gameMode.isTeamMode
+					character.isATrans && gameMode.isTeamMode
 				) {
 					if (!isRequesterAI) continue;
 					else if (!character.disguiseCoverBlown) continue;
@@ -795,31 +825,27 @@ public partial class Level {
 	) {
 		List<CollideData> collideDatas = new List<CollideData>();
 		// Use custom terrain collider by default.
-		Collider? terrainCollider = actor.getTerrainCollider();
-		// If terrain collider is not used or is null we use the default colliders.
-		if (terrainCollider == null) {
-			terrainCollider = actor.standartCollider;
-		}
+		Collider? terrainCollider = actor.getTerrainCollider() ?? actor.physicsCollider ?? actor.collider;
 		// If there is no collider we return.
-		if (actor.standartCollider == null) {
+		if (terrainCollider == null) {
 			return collideDatas;
 		}
 		if (autoVel && vel == null) {
 			vel = new Point(incX, incY);
 		}
-		Shape actorShape = actor.collider.shape.clone(incX, incY);
+		Shape actorShape = terrainCollider.shape.clone(incX, incY);
 		List<GameObject> gameObjects = getTerrainInSameCell(actorShape);
 		foreach (GameObject go in gameObjects) {
 			if (go == actor) continue;
 			if (go.collider == null) continue;
-			bool isTrigger = shouldTrigger(actor, go, actor.collider, go.collider, new Point(incX, incY));
+			bool isTrigger = shouldTrigger(actor, go, terrainCollider, go.collider, new Point(incX, incY));
 			if (go is Actor goActor && goActor.isPlatform && checkPlatforms) {
 				isTrigger = false;
 			}
 			if (isTrigger) continue;
 			HitData? hitData = actorShape.intersectsShape(go.collider.shape, vel);
 			if (hitData != null) {
-				collideDatas.Add(new CollideData(actor.collider, go.collider, vel, isTrigger, go, hitData));
+				collideDatas.Add(new CollideData(terrainCollider, go.collider, vel, isTrigger, go, hitData));
 				if (returnOne) {
 					return collideDatas;
 				}
@@ -939,7 +965,7 @@ public partial class Level {
 				if (!isTrigger1 || !isTrigger2) {
 					continue;
 				}
-				HitData hitData = collider1.shape.intersectsShape(collider2.shape);
+				HitData? hitData = collider1.shape.intersectsShape(collider2.shape);
 				if (hitData != null) {
 					triggers1.Add(new CollideData(collider1, collider2, null, isTrigger1, secondObj, hitData));
 					triggers2.Add(new CollideData(collider2, collider1, null, isTrigger2, firstObj, hitData));
@@ -972,16 +998,16 @@ public partial class Level {
 
 	public List<CollideData> organizeTriggers(List<CollideData> triggerList) {
 		// Prioritize certain colliders over others, running them first
-			return triggerList.OrderBy(trigger => {
-				if (trigger.gameObject is GenericMeleeProj && trigger.otherCollider.flag == (int)HitboxFlag.None &&
-					(trigger.otherCollider.originalSprite == "sigma_block" || trigger.otherCollider.originalSprite == "zero_block")) {
-					return 0;
-				} else if (trigger.otherCollider.originalSprite?.StartsWith("kaisersigma") == true && trigger.otherCollider.name == "head") {
-					return 0;
-				} else if (trigger.gameObject is GenericMeleeProj && trigger.otherCollider.flag == (int)HitboxFlag.None && trigger.otherCollider.originalSprite == "drdoppler_absorb") {
-					return 0;
-				}
-				return 1;
-			}).ToList();
+		return triggerList.OrderBy(trigger => {
+			if (trigger.gameObject is GenericMeleeProj && trigger.otherCollider.flag == (int)HitboxFlag.None &&
+				(trigger.otherCollider.originalSprite == "sigma_block" || trigger.otherCollider.originalSprite == "zero_block")) {
+				return 0;
+			} else if (trigger.otherCollider.originalSprite.StartsWith("kaisersigma") == true && trigger.otherCollider.name == "head") {
+				return 0;
+			} else if (trigger.gameObject is GenericMeleeProj && trigger.otherCollider.flag == (int)HitboxFlag.None && trigger.otherCollider.originalSprite == "drdoppler_absorb") {
+				return 0;
+			}
+			return 1;
+		}).ToList();
 	}
 }

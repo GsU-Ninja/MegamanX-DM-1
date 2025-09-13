@@ -14,15 +14,16 @@ public class MorphMothCocoon : Maverick {
 	public int scrapAbsorbed;
 	public bool isBurned { get { return sprite.name.Contains("_burn"); } }
 	public float smokeTime;
-
 	public MorphMothCocoon(
 		Player player, Point pos, Point destPos, int xDir,
 		ushort? netId, bool ownedByLocalPlayer, bool sendRpc = false
 	) : base(
 		player, pos, destPos, xDir, netId, ownedByLocalPlayer
 	) {
-		stateCooldowns.Add(typeof(MShoot), new MaverickStateCooldown(false, true, 0.75f));
-		stateCooldowns.Add(typeof(MorphMCThreadState), new MaverickStateCooldown(false, true, 0.75f));
+		stateCooldowns = new() {
+			{ typeof(MShoot), new(45, true) },
+			{ typeof(MorphMCThreadState), new(45, true) }
+		};
 
 		weapon = getWeapon();
 		angle = 0;
@@ -46,6 +47,7 @@ public class MorphMothCocoon : Maverick {
 		barIndexes = (52, 41);
 
 		armorClass = ArmorClass.Light;
+		gameMavs = GameMavs.X2;
 	}
 
 	public float selfDestructTime;
@@ -58,6 +60,9 @@ public class MorphMothCocoon : Maverick {
 		if (selfDestructTime > 0) {
 			addRenderEffect(RenderEffectType.Shake);
 			addRenderEffect(RenderEffectType.Hit);
+		}
+		if (controlMode == MaverickModeId.Striker) {
+			ammo = maxAmmo;
 		}
 
 		xScale = 1 + (scrapAbsorbed / 64f);
@@ -96,6 +101,16 @@ public class MorphMothCocoon : Maverick {
 				RPC.actorToggle.sendRpc(netId, RPCActorToggleType.MorphMothCocoonSelfDestruct);
 			}
 		}
+		if (controlMode == MaverickModeId.Striker) {
+			if (player.input.isHeld(Control.Special1, player)) {
+				var mmw = player.weapons.FirstOrDefault(w => w is MorphMothWeapon mmw) as MorphMothWeapon;
+				if (mmw != null) {
+					bool wasCocoon = ownerChar?.currentMaverick == this;
+					mmw.isMoth = true;
+				}
+			}
+		}
+
 
 		if (selfDestructTime > 0) {
 			selfDestructTime += Global.spf;
@@ -103,12 +118,12 @@ public class MorphMothCocoon : Maverick {
 			if (selfDestructTime > 1.1f) {
 				var mmw = player.weapons.FirstOrDefault(w => w is MorphMothWeapon mmw) as MorphMothWeapon;
 				if (mmw != null) {
-					bool wasCocoon = player.currentMaverick == this;
+					bool wasCocoon = ownerChar?.currentMaverick == this;
 					mmw.isMoth = true;
 					//Point spawnPos = getCenterPos().addxy(0, 27 * yScale);
 					Point spawnPos = getCenterPos().addxy(0, 0);
 					mmw.summon(player, spawnPos, spawnPos, xDir, isMothHatch: true);
-					mmw.maverick.invulnTime = 0.5f;
+					mmw.maverick!.invulnTime = 0.5f;
 					mmw.maverick.health = health;
 
 					if (wasCocoon) {
@@ -121,8 +136,8 @@ public class MorphMothCocoon : Maverick {
 						getCenterPos().addxy(0, 0), "morphmc_part_left",
 						1, player.getNextActorNetId(), false, sendRpc: true
 						) {
-							vel = new Point(-100, 100), ttl = 1f, xScale = xScale, yScale = yScale
-						};
+						vel = new Point(-100, 100), ttl = 1f, xScale = xScale, yScale = yScale
+					};
 					new Anim(
 						getCenterPos().addxy(0, 0), "morphmc_part_right",
 						1, player.getNextActorNetId(), false, sendRpc: true
@@ -136,7 +151,6 @@ public class MorphMothCocoon : Maverick {
 			}
 			return;
 		}
-
 		if (aiBehavior == MaverickAIBehavior.Control) {
 			if (state is MIdle or MRun or MLand) {
 				if (input.isPressed(Control.Special1, player)) {
@@ -160,16 +174,23 @@ public class MorphMothCocoon : Maverick {
 		return pos.addxy(0, (height * yScale) / 2f);
 	}
 
-	public override MaverickState[] aiAttackStates() {
-		var attacks = new MaverickState[]
-		{
-				new MorphMCSpinState(),
-		};
-		return attacks;
+	
+	public override MaverickState[] strikerStates() {
+		return [
+			new MorphMCSpinState(stateAI: 0),
+			new MorphMCSpinState(stateAI: 1),
+			new MorphMCSpinState(stateAI: 2),
+			new MorphMCThreadState(stateAI: 1),
+			new MorphMCThreadState(stateAI: 2),
+		];
 	}
 
-	public override MaverickState getRandomAttackState() {
-		return aiAttackStates().GetRandomItem();
+	public override MaverickState[] aiAttackStates() {
+		return [
+			new MorphMCSpinState(stateAI: 1),
+			new MorphMCThreadState(stateAI: 1),
+			new MorphMCThreadState(stateAI: 2),
+		];
 	}
 
 	public override Collider getGlobalCollider() {
@@ -182,13 +203,35 @@ public class MorphMothCocoon : Maverick {
 		return new Collider(rect.getPoints(), false, this, false, false, HitboxFlag.Hurtbox, new Point(0, 0));
 	}
 
-	public override Projectile? getProjFromHitbox(Collider hitbox, Point centerPoint) {
-		if (sprite.name.Contains("spin")) {
-			return new GenericMeleeProj(weapon, centerPoint, ProjIds.MorphMCSpin, player, 1, 0, 0.5f);
-		} else if (sprite.name.Contains("hang")) {
-			return new GenericMeleeProj(weapon, centerPoint, ProjIds.MorphMCSwing, player, 0, Global.defFlinch, 0.5f);
-		}
-		return null;
+	// Melee IDs for attacks.
+	public enum MeleeIds {
+		None = -1,
+		Spin,
+		Hang,
+	}
+
+	// This can run on both owners and non-owners. So data used must be in sync.
+	public override int getHitboxMeleeId(Collider hitbox) {
+		return (int)(sprite.name switch {
+			"morphmc_spin" => MeleeIds.Spin,
+			"morphmc_hang" or "morphmc_burn_hang" => MeleeIds.Hang,
+			_ => MeleeIds.None
+		});
+	}
+
+	// This can be called from a RPC, so make sure there is no character conditionals here.
+	public override Projectile? getMeleeProjById(int id, Point pos, bool addToLevel = true) {
+		return (MeleeIds)id switch {
+			MeleeIds.Spin => new GenericMeleeProj(
+				weapon, pos, ProjIds.MorphMCSpin, player,
+				1, 0, addToLevel: addToLevel
+			),
+			MeleeIds.Hang => new GenericMeleeProj(
+				weapon, pos, ProjIds.MorphMCSwing, player,
+				0, Global.defFlinch, addToLevel: addToLevel
+			),
+			_ => null
+		};
 	}
 
 	public override void updateProjFromHitbox(Projectile proj) {
@@ -250,9 +293,12 @@ public class MorphMothCocoon : Maverick {
 		if (scrapAbsorbed > 32) {
 			scrapAbsorbed = 32;
 		}
+		if (isAI && controlMode == MaverickModeId.Striker) {
+			scrapAbsorbed = 0;
+		}
 	}
 
-	public MaverickState burn() {
+	public MaverickState? burn() {
 		if (isBurned) return null;
 		if (isUnderwater()) return null;
 		playSound("morphmBurn", sendRpc: true);
@@ -271,17 +317,16 @@ public class MorphMothCocoon : Maverick {
 		);
 		return targets.FirstOrDefault((t) => {
 			if (t is Character chr) {
-				return chr.player.alliance != player.alliance || chr.player.health < chr.player.maxHealth;
+				return chr.player.alliance != player.alliance || chr.health < chr.maxHealth;
 			}
-			/*
+			
 			// GMTODO: use an "isAtMaxHealth" boolstate
 			else if (t is Maverick mvk) {
-				return mvk.player.alliance != player.alliance || mvk.health < mvk.maxHealth;
+				return mvk?.player?.alliance != player.alliance || mvk.health < mvk.maxHealth;
 			}
 			else if (t is RideArmor ra) {
-				return ra.player.alliance != player.alliance || ra.health < ra.maxHealth;
+				return ra?.player?.alliance != player.alliance || ra.health < ra.maxHealth;
 			}
-			*/
 			return false;
 		});
 	}
@@ -358,21 +403,52 @@ public class MorphMCScrapProj : Projectile {
 		}
 	}
 }
+public class MothMState : MaverickState {
+	public MorphMothCocoon MetamorMothmeanos = null!;
+	public MothMState(
+		string sprite, string transitionSprite = ""
+	) : base(
+		sprite, transitionSprite
+	) {
+	}
 
-public class MorphMCSpinState : MaverickState {
-	public MorphMothCocoon mmCocoon;
+	public override void onEnter(MaverickState oldState) {
+		base.onEnter(oldState);
+		MetamorMothmeanos = maverick as MorphMothCocoon ?? throw new NullReferenceException();
+
+	}
+}
+
+public class MorphMCSpinState : MothMState {
 	float xPushVel;
 	float shootTime;
 	float soundTime;
+	public int stateAI;
+	public float speedAI;
+	public bool hit;
+	public float hit2;
 
-	public MorphMCSpinState() : base("spin", "") {
+	public MorphMCSpinState(int stateAI = -1) : base("spin") {
+		canJump = true;
+		canStopJump = true;
+		this.stateAI = stateAI;
+	}
+
+	public override void onEnter(MaverickState oldState) {
+		base.onEnter(oldState);
+		if (maverick.controlMode == MaverickModeId.Striker) {
+			if (stateAI == 0) {
+				maverick.maxStrikerTime = 105;
+			} else {
+				maverick.maxStrikerTime = 180;
+			}
+		}
 	}
 
 	public override void update() {
 		base.update();
 
 		Point airMove = new Point(0, 0);
-		genericJumpCode();
 		if (!maverick.grounded) {
 			if (Global.level.checkTerrainCollisionOnce(maverick, 0, -1) != null && maverick.vel.y < 0) {
 				maverick.vel.y = 0;
@@ -398,16 +474,16 @@ public class MorphMCSpinState : MaverickState {
 		}
 
 		Helpers.decrementTime(ref shootTime);
-		if ((isAI || input.isHeld(Control.Shoot, player)) && mmCocoon.ammo > 0) {
+		if ((isAI || input.isHeld(Control.Shoot, player)) && MetamorMothmeanos.ammo > 0) {
 			if (shootTime == 0) {
 				shootTime = 0.15f;
 				Point vel = new Point(Helpers.randomRange(-75, 75), Helpers.randomRange(-300, -250));
 				new MorphMCScrapProj(
-					mmCocoon.weapon, maverick.getFirstPOIOrDefault(),
-					MathF.Sign(vel.x), vel, 0.75f, false, null, player, player.getNextActorNetId(), rpc: true
+					MetamorMothmeanos.weapon, maverick.getFirstPOIOrDefault(),
+					MathF.Sign(vel.x), vel, 0.75f, false, MetamorMothmeanos, player, player.getNextActorNetId(), rpc: true
 				);
-				mmCocoon.ammo--;
-				mmCocoon.currencyRegenTime = 0;
+				MetamorMothmeanos.ammo--;
+				MetamorMothmeanos.currencyRegenTime = 0;
 			}
 		}
 
@@ -428,28 +504,48 @@ public class MorphMCSpinState : MaverickState {
 				xPushVel = Helpers.lerp(xPushVel, 0, Global.spf * 5);
 			}
 		}
-
-		maverick.move(new Point(xPushVel, 0));
-
-		var wall = checkCollisionSlide(xPushVel * Global.spf, -2);
-		if (wall != null && wall.gameObject is Wall) {
-			//if (MathF.Abs(xPushVel) >= 200) mmCocoon.crash();
-			xPushVel = 0;
+		int xDir = maverick.xDir;
+		speedAI += Global.speedMul * 2 * xDir;
+		speedAI = Math.Clamp(speedAI, -150, 150);
+		Helpers.decrementFrames(ref hit2);
+		if (hit2 <= 0) hit = false;
+		var wall = Global.level.raycast(
+			maverick.pos,
+			maverick.pos.addxy(15 * xDir, 0),
+			new List<Type>() { typeof(Wall) }
+		);
+		if (maverick.controlMode == MaverickModeId.Striker || 
+			maverick.controlMode == MaverickModeId.Summoner) {
+			if (isAI) {
+				if (wall != null) {
+					MetamorMothmeanos.crash();
+					hit = true;
+					hit2 = 60;
+					maverick.xDir *= -1;
+					maverick.move(new Point(speedAI, 0));
+				} else if (!hit) {
+					if (stateAI == 1)
+						maverick.move(new Point(speedAI, 0));
+					else if (stateAI == 2) {
+						bool shouldJump =
+						(stateTime > 8f / 60f && stateTime < 12f / 60f) ||
+						(stateTime > 72f / 60f && stateTime < 76f / 60f);
+						if (shouldJump) {
+							maverick.vel.y = -maverick.getJumpPower();
+						}
+						maverick.move(new Point(speedAI, 0));
+					}
+				}
+			}
 		}
 
-		if (isAI) {
-			if (mmCocoon.getHealTarget() == null) {
-				maverick.changeToIdleOrFall();
-			}
-		} else if (!input.isHeld(Control.Dash, player) && !input.isHeld(Control.Shoot, player)) {
+
+		maverick.move(new Point(xPushVel, 0));
+		if (stateAI == -1 && !input.isHeld(Control.Dash, player) && !input.isHeld(Control.Shoot, player)) {
 			maverick.changeToIdleOrFall();
 		}
 	}
 
-	public override void onEnter(MaverickState oldState) {
-		base.onEnter(oldState);
-		mmCocoon = maverick as MorphMothCocoon;
-	}
 }
 
 public class MorphMCThreadProj : Projectile {
@@ -459,19 +555,26 @@ public class MorphMCThreadProj : Projectile {
 	float reverseDist;
 	float range = 200;
 	public MorphMCThreadProj(
-		Weapon weapon, Point pos, int xDir, Player player, ushort netProjId, bool rpc = false
+		Point pos, int xDir, Actor owner, Player player, ushort? netId, bool rpc = false
 	) : base(
-		weapon, pos, xDir, 0, 2, player, "morphmc_silk_spike", 0, 0.5f, netProjId, player.ownedByLocalPlayer
+		pos, xDir, owner, "morphmc_silk_spike", netId, player
 	) {
-		projId = (int)ProjIds.MorphMCThread;
-		vel = new Point(0, -200);
+		weapon = MorphMothCocoon.getWeapon();
+		damager.damage = 2;
+		damager.hitCooldown = 30;
 		origin = pos;
+		projId = (int)ProjIds.MorphMCThread;
+		vel = new Point(0, -300);
 		setIndestructableProperties();
 
 		if (rpc) {
-			rpcCreate(pos, player, netProjId, xDir);
+			rpcCreate(pos, owner, ownerPlayer, netId, xDir);
 		}
-		canBeLocal = false;
+	}
+	public static Projectile rpcInvoke(ProjParameters args) {
+		return new MorphMCThreadProj(
+			args.pos, args.xDir, args.owner, args.player, args.netId
+		);
 	}
 
 	public override void update() {
@@ -519,9 +622,11 @@ public class MorphMCThreadProj : Projectile {
 	}
 }
 
-public class MorphMCThreadState : MaverickState {
-	MorphMCThreadProj proj;
-	public MorphMCThreadState() : base("idle", "") {
+public class MorphMCThreadState : MothMState {
+	MorphMCThreadProj? proj;
+	public int stateAI;
+	public MorphMCThreadState(int stateAI = -1) : base("idle") {
+		this.stateAI = stateAI;
 	}
 
 	public override void update() {
@@ -532,24 +637,24 @@ public class MorphMCThreadState : MaverickState {
 			return;
 		}
 
-		if (input.isPressed(Control.Special1, player)) {
-			proj.reverse();
+		if (input.isPressed(Control.Shoot, player)) {
+			proj?.reverse();
 		}
 
-		if (proj.hitCeiling) {
+		if (proj != null && proj.hitCeiling) {
 			var latchPos = new Point(maverick.pos.x, proj.pos.y);
-			(maverick as MorphMothCocoon).setLatchPos(latchPos);
+			MetamorMothmeanos.setLatchPos(latchPos);
 			float latchDestY = ((maverick.getFirstPOIOrDefault().y + latchPos.y) / 2) + 10;
-			maverick.changeState(new MorphMCLatchState(latchDestY));
+			maverick.changeState(new MorphMCLatchState(latchDestY, stateAI));
 		}
 	}
 
 	public override void onEnter(MaverickState oldState) {
 		base.onEnter(oldState);
-		maverick.stopMoving();
+		maverick.stopMovingS();
 		proj = new MorphMCThreadProj(
-			maverick.weapon, maverick.getFirstPOIOrDefault(),
-			1, player, player.getNextActorNetId(), rpc: true
+			maverick.getFirstPOIOrDefault(), 1, MetamorMothmeanos, 
+			player, player.getNextActorNetId(), rpc: true
 		);
 	}
 
@@ -559,26 +664,27 @@ public class MorphMCThreadState : MaverickState {
 	}
 }
 
-public class MorphMCLatchState : MaverickState {
+public class MorphMCLatchState : MothMState {
 	float latchDestY;
-	public MorphMCLatchState(float latchDestY) : base("latch", "") {
+	public int stateAI;
+	public MorphMCLatchState(float latchDestY, int stateAI = -1) : base("latch") {
 		this.latchDestY = latchDestY;
+		this.stateAI = stateAI;
 	}
 
 	public override void update() {
 		base.update();
-
 		maverick.move(new Point(0, -100));
 		if (maverick.pos.y < latchDestY) {
 			maverick.incPos(new Point(0, -14 * maverick.yScale));
-			(maverick as MorphMothCocoon).setLatchLen();
-			maverick.changeState(new MorphMCHangState());
+			MetamorMothmeanos.setLatchLen();
+			maverick.changeState(new MorphMCHangState(stateAI));
 		}
 	}
 
 	public override void onEnter(MaverickState oldState) {
 		base.onEnter(oldState);
-		maverick.stopMoving();
+		maverick.stopMovingS();
 		maverick.useGravity = false;
 		maverick.grounded = false;
 		maverick.canBeGrounded = false;
@@ -592,15 +698,22 @@ public class MorphMCLatchState : MaverickState {
 	}
 }
 
-public class MorphMCHangState : MaverickState {
+public class MorphMCHangState : MothMState {
 	float shootTime;
-	MorphMothCocoon mmCocoon;
 	Point latchPos;
 	float len;
 	Point origin;
 	Point swingVel;
 	float suckSoundTime;
-	public MorphMCHangState() : base("hang", "") {
+	public int stateAI;
+	public float velXAI;
+	public float timeAI;
+	public int xdirAI = 1;
+
+	public MorphMCHangState(int stateAI = -1) : base("hang") {
+		aiAttackCtrl = true;
+		canBeCanceled = false;
+		this.stateAI = stateAI;
 	}
 
 	float suckAngle;
@@ -611,7 +724,7 @@ public class MorphMCHangState : MaverickState {
 
 		Helpers.decrementTime(ref shootTime);
 		Helpers.decrementTime(ref suckSoundTime);
-		if (input.isHeld(Control.Shoot, player) && mmCocoon.ammo > 0) {
+		if ((isAI && stateAI == 1) || input.isHeld(Control.Shoot, player) && MetamorMothmeanos.ammo > 0) {
 			if (shootTime == 0) {
 				shootTime = 0.15f;
 				Point vel = new Point(Helpers.randomRange(-75, 75), Helpers.randomRange(-300, -250));
@@ -619,15 +732,15 @@ public class MorphMCHangState : MaverickState {
 					maverick.weapon, maverick.getFirstPOIOrDefault(),
 					MathF.Sign(vel.x), vel, 1.5f, false, null, player, player.getNextActorNetId(), rpc: true
 				);
-				mmCocoon.ammo--;
-				mmCocoon.currencyRegenTime = 0;
+				MetamorMothmeanos.ammo--;
+				MetamorMothmeanos.currencyRegenTime = 0;
 			}
-		} else if (input.isHeld(Control.Special1, player)) {
+		} else if ((isAI && stateAI == 2) || input.isHeld(Control.Special1, player)) {
 			suckAngle += Global.spf * 100;
 			if (suckAngle >= 360) suckAngle = 0;
 			if (suckSoundTime <= 0) {
 				suckSoundTime = 0.269f;
-				mmCocoon.playSound("morphmVacuum", sendRpc: true);
+				MetamorMothmeanos.playSound("morphmVacuum", sendRpc: true);
 			}
 			if (shootTime == 0) {
 				shootTime = 0.1f;
@@ -635,26 +748,26 @@ public class MorphMCHangState : MaverickState {
 				Point vel = suckPos.directionToNorm(maverick.getCenterPos()).times(350);
 				new MorphMCScrapProj(
 					maverick.weapon, suckPos, MathF.Sign(vel.x),
-					vel, 0.5f, true, mmCocoon, player, player.getNextActorNetId(), rpc: true
+					vel, 0.5f, true, MetamorMothmeanos, player, player.getNextActorNetId(), rpc: true
 				);
-				mmCocoon.currencyRegenTime = 0;
+				MetamorMothmeanos.currencyRegenTime = 0;
 			}
 		}
 
 		var inputDir = input.getInputDir(player);
 		if (inputDir.y != 0) {
-			float oldLatchLen = mmCocoon.latchLen;
-			mmCocoon.latchLen += inputDir.y * Global.spf * 100;
-			mmCocoon.latchLen = Helpers.clamp(mmCocoon.latchLen, 10, 200);
+			float oldLatchLen = MetamorMothmeanos.latchLen;
+			MetamorMothmeanos.latchLen += inputDir.y * Global.spf * 100;
+			MetamorMothmeanos.latchLen = Helpers.clamp(MetamorMothmeanos.latchLen, 10, 200);
 
-			float angle = mmCocoon.latchPos.directionToNorm(maverick.pos).angle;
-			if (Global.level.checkTerrainCollisionOnce(mmCocoon, Helpers.cosd(angle) * 5, Helpers.sind(angle) * 5) != null) {
-				mmCocoon.latchLen = oldLatchLen;
+			float angle = MetamorMothmeanos.latchPos.directionToNorm(maverick.pos).angle;
+			if (Global.level.checkTerrainCollisionOnce(MetamorMothmeanos, Helpers.cosd(angle) * 5, Helpers.sind(angle) * 5) != null) {
+				MetamorMothmeanos.latchLen = oldLatchLen;
 			}
 		}
 
-		latchPos = mmCocoon.latchPos;
-		len = mmCocoon.latchLen;
+		latchPos = MetamorMothmeanos.latchPos;
+		len = MetamorMothmeanos.latchLen;
 		origin = latchPos.addxy(0, len);
 
 		float swingMod = Helpers.clamp01(len / 75);
@@ -664,12 +777,34 @@ public class MorphMCHangState : MaverickState {
 		Point leftNorm = vec.leftNormal();
 		Point rightNorm = vec.rightNormal();
 		Point norm = (leftNorm.y > rightNorm.y) ? leftNorm : rightNorm;
-
+		if (maverick.controlMode == MaverickModeId.Striker ||
+			maverick.controlMode == MaverickModeId.Summoner) {
+			timeAI += Global.speedMul * 2.7f;
+			if (isAI) {
+				var hit2 = Global.level.raycast(
+				maverick.pos,
+				maverick.pos.addxy(0, -40),
+				new List<Type>() { typeof(Wall) }
+				);
+				if (hit2 != null) {
+					xdirAI *= -1;
+					timeAI = timeAI / 3;
+				}
+				velXAI = timeAI * xdirAI;
+			}
+			Helpers.decrementFrames(ref timeAI);
+		}
 		if (inputDir.x != 0) {
 			swingVel.x += inputDir.x * 150 * swingMod * Global.spf;
+		}
+		else if (stateAI != -1) {
+			swingVel.x = Helpers.lerp(velXAI, 0, Global.spf / swingMod);
 		} else {
-			if (swingMod == 0) swingVel.x = 0;
-			else swingVel.x = Helpers.lerp(swingVel.x, 0, Global.spf / swingMod);
+			if (swingMod == 0) {
+				swingVel.x = 0;
+			} else {
+				swingVel.x = Helpers.lerp(swingVel.x, 0, Global.spf / swingMod);
+			}
 		}
 
 		swingVel = swingVel.project(norm);
@@ -703,7 +838,7 @@ public class MorphMCHangState : MaverickState {
 		if (input.isPressed(Control.Jump, player)) {
 			snapPosOnExit(destPos);
 			maverick.changeToIdleOrFall();
-			maverick.xSwingVel = swingVel.x;
+			maverick.xSwingVel = swingVel.x / 60f;
 			maverick.vel.y = swingVel.y;
 		}
 	}
@@ -711,16 +846,20 @@ public class MorphMCHangState : MaverickState {
 	public void snapPosOnExit(Point destPos) {
 		float newAngle = latchPos.directionToNorm(destPos).angle;
 		Point snapPos = new Point();
-		snapPos.x = latchPos.x + Helpers.cosd(newAngle) * (len + (14 * mmCocoon.xScale));
-		snapPos.y = latchPos.y + Helpers.sind(newAngle) * (len + (14 * mmCocoon.yScale));
-		mmCocoon.changePos(snapPos);
+		snapPos.x = latchPos.x + Helpers.cosd(newAngle) * (len + (14 * MetamorMothmeanos.xScale));
+		snapPos.y = latchPos.y + Helpers.sind(newAngle) * (len + (14 * MetamorMothmeanos.yScale));
+		MetamorMothmeanos.changePos(snapPos);
 	}
 
 	public override void onEnter(MaverickState oldState) {
 		base.onEnter(oldState);
-		maverick.stopMoving();
+		maverick.stopMovingS();
 		maverick.angle = 0;
-		mmCocoon = maverick as MorphMothCocoon;
+		if (maverick.controlMode == MaverickModeId.Striker) {
+			if (stateAI >= 0) {
+				maverick.maxStrikerTime = 450;
+			}
+		}
 	}
 
 	public override void onExit(MaverickState newState) {
@@ -729,8 +868,10 @@ public class MorphMCHangState : MaverickState {
 	}
 }
 
-public class MorphMCBurnState : MaverickState {
-	public MorphMCBurnState() : base("burn", "") {
+public class MorphMCBurnState : MothMState {
+	public MorphMCBurnState() : base("burn") {
+		aiAttackCtrl = true;
+		canBeCanceled = false;
 	}
 
 	public override void update() {

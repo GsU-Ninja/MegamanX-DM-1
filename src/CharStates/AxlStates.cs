@@ -1,20 +1,22 @@
 using System.Linq;
+using System;
 
 namespace MMXOnline;
 
 public class HyperAxlStart : CharState {
 	public float radius = 200;
 	public float time;
-	public Axl axl;
+	public Axl axl = null!;
 
-	public HyperAxlStart(bool isGrounded) : base(isGrounded ? "hyper_start" : "hyper_start_air", "", "", "") {
+	public HyperAxlStart(bool isGrounded) : base(isGrounded ? "hyper_start" : "hyper_start_air") {
 		invincible = true;
+		statusEffectImmune = true;
 	}
 
 	public override void update() {
 		base.update();
 
-		foreach (var weapon in player.weapons) {
+		foreach (var weapon in character.weapons) {
 			for (int i = 0; i < 10; i++) weapon.rechargeAmmo(0.1f);
 		}
 
@@ -32,7 +34,8 @@ public class HyperAxlStart : CharState {
 
 	public override void onEnter(CharState oldState) {
 		base.onEnter(oldState);
-		axl = character as Axl;
+		character.clenaseAllDebuffs();
+		axl = character as Axl ?? throw new NullReferenceException() ;
 		if (!axl.hyperAxlUsed) {
 			axl.hyperAxlUsed = true;
 			axl.player.currency -= 10;
@@ -42,7 +45,7 @@ public class HyperAxlStart : CharState {
 		axl.fillHealthToMax();
 	}
 
-	public override void onExit(CharState newState) {
+	public override void onExit(CharState? newState) {
 		base.onExit(newState);
 		axl.useGravity = true;
 		if (axl != null) {
@@ -52,10 +55,10 @@ public class HyperAxlStart : CharState {
 }
 
 public class Hover : CharState {
-	public SoundWrapper sound;
+	public SoundWrapper? sound;
 	float hoverTime;
-	Anim hoverExhaust;
-	Axl axl;
+	Anim? hoverExhaust;
+	public Axl axl = null!;
 
 	public Hover() : base("hover", "hover", "hover", "hover") {
 		exitOnLanding = true;
@@ -84,12 +87,14 @@ public class Hover : CharState {
 		}
 
 		hoverTime += Global.spf;
-		hoverExhaust.changePos(exhaustPos());
-		hoverExhaust.xDir = axl.getAxlXDir();
+		if (hoverExhaust != null) {
+			hoverExhaust.changePos(exhaustPos());
+			hoverExhaust.xDir = axl.getAxlXDir();
+		}
 		if ((hoverTime > 2 && !axl.isWhiteAxl()) ||
 			!character.player.input.isHeld(Control.Jump, character.player)
 		) {
-			character.changeState(new Fall(), true);
+			character.changeState(character.getFallState(), true);
 		}
 	}
 
@@ -101,7 +106,7 @@ public class Hover : CharState {
 
 	public override void onEnter(CharState oldState) {
 		base.onEnter(oldState);
-		axl = character as Axl;
+		axl = character as Axl ?? throw new NullReferenceException() ;
 		character.useGravity = false;
 		character.vel = new Point();
 		hoverExhaust = new Anim(
@@ -109,14 +114,14 @@ public class Hover : CharState {
 		);
 		hoverExhaust.setzIndex(ZIndex.Character - 1);
 		if (character.ownedByLocalPlayer) {
-			sound = character.playSound("axlHover", forcePlay: false, sendRpc: true);
+			sound = character.playSound("axlHover", forcePlay: false, sendRpc: false);
 		}
 	}
 
-	public override void onExit(CharState newState) {
+	public override void onExit(CharState? newState) {
 		base.onExit(newState);
 		character.useGravity = true;
-		hoverExhaust.destroySelf();
+		hoverExhaust?.destroySelf();
 		if (sound != null && !sound.deleted) {
 			sound.sound?.Stop();
 		}
@@ -127,36 +132,35 @@ public class Hover : CharState {
 public class DodgeRoll : CharState {
 	public float dashTime = 0;
 	public int initialDashDir;
-	Axl axl;
+	public Axl axl = null!;
 
-	public DodgeRoll() : base("roll", "", "") {
+	public DodgeRoll() : base("roll") {
 		attackCtrl = true;
 		normalCtrl = true;
+		specialId = SpecialStateIds.AxlRoll;
 	}
 
 	public override void onEnter(CharState oldState) {
 		base.onEnter(oldState);
-		axl = character as Axl;
+		axl = character as Axl ?? throw new NullReferenceException() ;
 		character.isDashing = true;
 		character.burnTime -= 1;
 		if (character.burnTime < 0) {
 			character.burnTime = 0;
 		}
-
 		initialDashDir = character.xDir;
 		if (player.input.isHeld(Control.Left, player)) initialDashDir = -1;
 		else if (player.input.isHeld(Control.Right, player)) initialDashDir = 1;
-		character.specialState = (int)SpecialStateIds.AxlRoll;
 	}
 
-	public override void onExit(CharState newState) {
+	public override void onExit(CharState? newState) {
 		base.onExit(newState);
-		axl.dodgeRollCooldown = Axl.maxDodgeRollCooldown;
-		character.specialState = (int)SpecialStateIds.None;
+		axl.dodgeRollCooldown = Global.customSettings?.axlDodgerollCooldown ?? Axl.maxDodgeRollCooldown;
 	}
 
 	public override void update() {
 		base.update();
+		axl.dodgeRollCooldown = Global.customSettings?.axlDodgerollCooldown ?? Axl.maxDodgeRollCooldown;
 
 		if (character.isAnimOver()) {
 			character.changeToIdleOrFall();
@@ -178,29 +182,43 @@ public class DodgeRoll : CharState {
 }
 
 public class SniperAimAxl : CharState {
-	public Axl axl;
+	public Axl axl = null!;
 
-	public SniperAimAxl() : base("crouch", "", "") {
+	public SniperAimAxl() : base("crouch") {
 
 	}
 
 	public override void update() {
 		base.update();
-		if (!axl.isZooming()) {
-			axl.changeToIdleOrFall();
+		if (!axl?.isZooming() == true) {
+			axl?.changeToIdleOrFall();
 		}
 	}
 
 	public override void onEnter(CharState oldState) {
 		base.onEnter(oldState);
-		axl = character as Axl;
+		axl = character as Axl ?? throw new NullReferenceException() ;
 	}
 
-	public override void onExit(CharState newState) {
+	public override void onExit(CharState? newState) {
 		base.onExit(newState);
-		if (axl.isZooming()) {
-			axl.zoomOut();
+		if (axl?.isZooming() == true) {
+			axl?.zoomOut();
 		}
 	}
 }
+public class AxlTaunt : CharState {
+	public AxlTaunt() : base("win") {
 
+	}
+	public override void update() {
+		base.update();
+		if (character.isAnimOver() && !Global.level.gameMode.playerWon(player)) {
+			character.changeToIdleOrFall();
+		}
+		if (!once) {
+			once = true;
+			character.playSound("ching", sendRpc: true);
+		}
+	}
+}

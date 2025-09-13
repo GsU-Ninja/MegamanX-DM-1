@@ -2,11 +2,8 @@ using System;
 
 namespace MMXOnline;
 
-public abstract class ZeroGenericMeleeState : CharState {
-	public Zero zero = null!;
-
+public abstract class ZeroGenericMeleeState : ZeroState {
 	public int comboFrame = Int32.MaxValue;
-
 	public string sound = "";
 	public bool soundPlayed;
 	public int soundFrame = Int32.MaxValue;
@@ -32,7 +29,6 @@ public abstract class ZeroGenericMeleeState : CharState {
 	public override void onEnter(CharState oldState) {
 		base.onEnter(oldState);
 		character.turnToInput(player.input, player);
-		zero = character as Zero ?? throw new NullReferenceException();
 	}
 
 	public virtual bool altCtrlUpdate(bool[] ctrls) {
@@ -109,19 +105,21 @@ public class ZeroSlash3State : ZeroGenericMeleeState {
 public class ZeroAirSlashState : ZeroGenericMeleeState {
 	public ZeroAirSlashState() : base("attack_air") {
 		sound = "saber1";
+		airSprite = "attack_air";
+		landSprite = "attack_air_ground";
 		soundFrame = 3;
 		comboFrame = 7;
 
 		airMove = true;
 		canJump = true;
-		exitOnLanding = true;
+		exitOnLanding = false;
 		useDashJumpSpeed = true;
 		canStopJump = true;
 	}
 
 	public override void update() {
 		base.update();
-		if (character.sprite.frameIndex >= comboFrame) {
+		if (character.sprite.frameIndex >= comboFrame && !character.grounded) {
 			attackCtrl = true;
 		}
 	}
@@ -146,6 +144,10 @@ public class ZeroRollingSlashtate : ZeroGenericMeleeState {
 			character.changeToIdleOrFall();
 			return;
 		}
+	}
+	public override void onExit(CharState? newState) {
+		base.onExit(newState);
+		zero.kuuenzanCooldown = 30;
 	}
 }
 
@@ -198,15 +200,14 @@ public class ZeroMeleeWall : WallSlideAttack {
 	}
 }
 
-public class ZeroDoubleBuster : CharState {
-	bool fired1;
-	bool fired2;
-	bool isSecond;
-	bool shootPressedAgain;
-	bool isPinkCharge;
-	Zero zero = null!;
+public class ZeroDoubleBuster : ZeroState {
+	public bool fired1;
+	public bool fired2;
+	public bool isSecond;
+	public bool shootPressedAgain;
+	public bool isPinkCharge;
 
-	public ZeroDoubleBuster(bool isSecond, bool isPinkCharge) : base("doublebuster", "", "", "") {
+	public ZeroDoubleBuster(bool isSecond, bool isPinkCharge) : base("doublebuster") {
 		this.isSecond = isSecond;
 		superArmor = true;
 		this.isPinkCharge = isPinkCharge;
@@ -228,13 +229,13 @@ public class ZeroDoubleBuster : CharState {
 				character.playSound("buster3X3", sendRpc: true);
 				new ZBuster4Proj(
 					character.getShootPos(),
-					character.getShootXDir(), 1, player, player.getNextActorNetId(), rpc: true
+					character.getShootXDir(), zero, player, player.getNextActorNetId(), rpc: true
 				);
 			} else {
 				character.playSound("buster2X3", sendRpc: true);
 				new ZBuster2Proj(
 					character.getShootPos(), character.getShootXDir(),
-					0, player, player.getNextActorNetId(), rpc: true
+					zero, player, player.getNextActorNetId(), rpc: true
 				);
 			}
 		}
@@ -248,7 +249,7 @@ public class ZeroDoubleBuster : CharState {
 			character.playSound("buster3X3", sendRpc: true);
 			new ZBuster4Proj(
 				character.getShootPos(), character.getShootXDir(),
-				0, player, player.getNextActorNetId(), rpc: true
+				zero, player, player.getNextActorNetId(), rpc: true
 			);
 		}
 
@@ -273,7 +274,6 @@ public class ZeroDoubleBuster : CharState {
 
 	public override void onEnter(CharState oldState) {
 		base.onEnter(oldState);
-		zero = character as Zero ?? throw new NullReferenceException();
 
 		if (!isPinkCharge) {
 			//character.stockSaber(true);
@@ -293,7 +293,7 @@ public class ZeroDoubleBuster : CharState {
 		}
 	}
 
-	public override void onExit(CharState newState) {
+	public override void onExit(CharState? newState) {
 		base.onExit(newState);
 		if (isSecond && character is Zero zero) {
 			//zero.doubleBusterDone = true;
@@ -301,7 +301,7 @@ public class ZeroDoubleBuster : CharState {
 	}
 }
 
-public class AwakenedZeroHadangeki : CharState {
+public class AwakenedZeroHadangeki : ZeroState {
 	bool fired;
 
 	public AwakenedZeroHadangeki() : base("projswing") {
@@ -321,7 +321,8 @@ public class AwakenedZeroHadangeki : CharState {
 			character.playSound("zerosaberx3", sendRpc: true);
 			fired = true;
 			new ZSaberProj(
-				character.pos.addxy(30 * character.xDir, -20), character.xDir,
+				character.pos.addxy(30 * character.xDir, -20), character.xDir, 
+				isAZ: zero.isAwakened ? true : false, zero,
 				player, player.getNextActorNetId(), rpc: true
 			);
 		}
@@ -349,13 +350,9 @@ public class AwakenedZeroHadangeki : CharState {
 			character.changeSpriteFromName(sprite, true);
 		}
 	}
-
-	public override void onExit(CharState oldState) {
-		base.onExit(oldState);
-	}
 }
 
-public class AwakenedZeroHadangekiWall : CharState {
+public class AwakenedZeroHadangekiWall : ZeroState {
 	bool fired;
 	public int wallDir;
 	public Collider wallCollider;
@@ -374,6 +371,7 @@ public class AwakenedZeroHadangekiWall : CharState {
 			fired = true;
 			new ZSaberProj(
 				character.pos.addxy(30 * -wallDir, -20), -wallDir,
+				isAZ: zero.isAwakened ? true : false, zero,
 				player, player.getNextActorNetId(), rpc: true
 			);
 		}
@@ -383,13 +381,13 @@ public class AwakenedZeroHadangekiWall : CharState {
 		}
 	}
 
-	public override void onExit(CharState oldState) {
-		base.onExit(oldState);
+	public override void onExit(CharState? newState) {
+		base.onExit(newState);
 		useGravity = true;
 	}
 }
 
-public class GenmureiState : CharState {
+public class GenmureiState : ZeroState {
 	bool fired;
 	public GenmureiState() : base("genmu") { }
 
@@ -400,12 +398,14 @@ public class GenmureiState : CharState {
 			fired = true;
 			character.playSound("genmureix5", sendRpc: true);
 			new GenmuProj(
-				character.pos.addxy(30 * character.xDir, -25),
-				character.xDir, 0, player, player.getNextActorNetId(), rpc: true
+				character.pos.addxy(30 * character.xDir, -25), character.xDir, 0, 
+				isAZ: zero.isAwakened ? true : false,
+				zero, player, player.getNextActorNetId(), rpc: true
 			);
 			new GenmuProj(
-				character.pos.addxy(30 * character.xDir, -25),
-				character.xDir, 1, player, player.getNextActorNetId(), rpc: true
+				character.pos.addxy(30 * character.xDir, -25), character.xDir, 1, 
+				isAZ: zero.isAwakened ? true : false,
+				zero, player, player.getNextActorNetId(), rpc: true
 			);
 		}
 		if (character.isAnimOver()) {

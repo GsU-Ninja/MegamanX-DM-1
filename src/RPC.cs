@@ -12,6 +12,10 @@ public class RPC {
 	public bool isString;
 	public bool toHostOnly;
 	public bool isServerMessage;
+	public bool isPreUpdate;
+	public bool isCollision;
+	public bool levelless;
+	public bool allowBreakMtuLimit;
 	public int index;
 
 	// Need templates? Use these:
@@ -22,11 +26,9 @@ public class RPC {
 	public static RPCUpdateActor updateActor = new();
 	public static RPCApplyDamage applyDamage = new();
 	public static RPCDecShieldAmmo decShieldAmmo = new();
-	public static RPCShoot shoot =  new RPCShoot(NetDeliveryMethod.ReliableOrdered);
-	public static RPCShoot shootFast = new RPCShoot(NetDeliveryMethod.Unreliable);
 	public static RPCDestroyActor destroyActor = new();
 	public static RPCPlayerToggle playerToggle = new();
-	public static RPCDestroyPlayer destroyCharacter = new();
+	public static RPCDestroyCharacter destroyCharacter = new();
 	public static RPCKillPlayer killPlayer = new();
 	public static RPCCreateAnim createAnim = new();
 	public static RPCCreateProj createProj = new();
@@ -107,7 +109,7 @@ public class RPC {
 		reportPlayerResponse,
 		kickPlayerRequest,
 		kickPlayerResponse,
-		updatePlayer, 
+		updatePlayer,
 		addBot,
 		removeBot,
 		makeSpectator,
@@ -160,8 +162,6 @@ public class RPC {
 		syncControlPoints,
 		// XOD Only stuff.
 		decShieldAmmo,
-		shoot,
-		shootFast,
 		axlShoot,
 		axlDisguise,
 		setHyperAxlTime,
@@ -212,6 +212,7 @@ public class RPCSendString : RPC {
 	public RPCSendString() {
 		netDeliveryMethod = NetDeliveryMethod.ReliableOrdered;
 		isString = true;
+		levelless = true;
 	}
 }
 
@@ -219,6 +220,7 @@ public class RPCStartLevel : RPC {
 	public RPCStartLevel() {
 		netDeliveryMethod = NetDeliveryMethod.ReliableOrdered;
 		isString = true;
+		levelless = true;
 	}
 
 	public override void invoke(string message) {
@@ -253,7 +255,7 @@ public class BackloggedSpawns {
 	public byte[] extraData;
 
 	public BackloggedSpawns(
-		int charNum, byte[] extraData, int playerId, 
+		int charNum, byte[] extraData, int playerId,
 		Point spawnPoint, int xDir, ushort charNetId
 	) {
 		this.charNum = charNum;
@@ -281,14 +283,15 @@ public class BackloggedSpawns {
 public class RPCSpawnCharacter : RPC {
 	public RPCSpawnCharacter() {
 		netDeliveryMethod = NetDeliveryMethod.ReliableOrdered;
+		isPreUpdate = true;
 	}
 
 	public override void invoke(params byte[] arguments) {
-		float x = BitConverter.ToSingle(new byte[] { arguments[0], arguments[1], arguments[2], arguments[3] }, 0);
-		float y = BitConverter.ToSingle(new byte[] { arguments[4], arguments[5], arguments[6], arguments[7] }, 0);
+		float x = BitConverter.ToSingle(arguments.AsSpan()[0..4]);
+		float y = BitConverter.ToSingle(arguments.AsSpan()[4..8]);
 		int xDir = arguments[8] - 128;
 		int playerId = arguments[9];
-		ushort charNetId = BitConverter.ToUInt16(new byte[] { arguments[10], arguments[11] }, 0);
+		ushort charNetId = BitConverter.ToUInt16(arguments.AsSpan()[10..12]);
 		int charNum = arguments[12];
 		byte[] extraData;
 		if (arguments.Length > 13) {
@@ -301,7 +304,8 @@ public class RPCSpawnCharacter : RPC {
 		if (player != null) {
 			player.spawnCharAtPoint(
 				charNum, extraData,
-				new Point(x, y), xDir, charNetId, false
+				new Point(x, y), xDir, charNetId, false,
+				forceSpawn: true, isWarpIn: false
 			);
 		} else {
 			Global.level.backloggedSpawns.Add(
@@ -314,22 +318,23 @@ public class RPCSpawnCharacter : RPC {
 	}
 
 	public void sendRpc(int charNum, byte[] extraData, Point spawnPos, int xDir, int playerId, ushort charNetId) {
-		if (Global.serverClient == null) return;
-		List<byte> sendBytes = new();
-
-		sendBytes.AddRange(BitConverter.GetBytes(spawnPos.x));
-		sendBytes.AddRange(BitConverter.GetBytes(spawnPos.y));
-		sendBytes.Add((byte)(xDir + 128));
-		sendBytes.Add((byte)playerId);
-		sendBytes.AddRange(BitConverter.GetBytes(charNetId));
-		sendBytes.Add((byte)charNum);
-		sendBytes.AddRange(extraData);
-
-		Global.serverClient.rpc(this, sendBytes.ToArray());
+		if (Global.serverClient == null) {
+			return;
+		}
+		byte[] sendBytes = [
+			.. BitConverter.GetBytes(spawnPos.x),
+			.. BitConverter.GetBytes(spawnPos.y),
+			(byte)(xDir + 128),
+			(byte)playerId,
+			.. BitConverter.GetBytes(charNetId),
+			(byte)charNum,
+			.. extraData,
+		];
+		Global.serverClient.rpc(this, sendBytes);
 	}
 }
 
-public class FailedSpawn {
+/*public class FailedSpawn {
 	public Point spawnPos;
 	public int xDir;
 	public ushort netId;
@@ -339,35 +344,26 @@ public class FailedSpawn {
 		this.xDir = xDir;
 		this.netId = netId;
 	}
-}
+}*/
 
 public class RPCApplyDamage : RPC {
 	public RPCApplyDamage() {
 		netDeliveryMethod = NetDeliveryMethod.ReliableOrdered;
+		isCollision = true;
 	}
 
 	public override void invoke(params byte[] arguments) {
 		int ownerId = arguments[0];
-		float damage = BitConverter.ToSingle(
-			new byte[] { arguments[1], arguments[2], arguments[3], arguments[4] }, 0
-		);
-		float hitCooldown = BitConverter.ToSingle(
-			new byte[] { arguments[5], arguments[6], arguments[7], arguments[8] }, 0
-		);
+		float damage = BitConverter.ToSingle(arguments[1..5]);
+		float hitCooldown = BitConverter.ToSingle(arguments[5..9]);
 		int flinch = arguments[9];
-		ushort victimId = BitConverter.ToUInt16(
-			new byte[] { arguments[10], arguments[11] }, 0
-		);
-		bool weakness = arguments[12] == 1;
+		ushort victimId = BitConverter.ToUInt16(arguments[10..12]);
+		bool crit = arguments[12] == 1;
 		int weaponIndex = arguments[13];
 		int weaponKillFeedIndex = arguments[14];
-		ushort actorId = BitConverter.ToUInt16(
-			new byte[] { arguments[15], arguments[16] }, 0
-		);
-		ushort projId = BitConverter.ToUInt16(
-			new byte[] { arguments[17], arguments[18] }, 0
-		);
-		byte linkedMeleeId = arguments[19];
+		ushort actorId = BitConverter.ToUInt16(arguments[15..17]);
+		ushort projId = BitConverter.ToUInt16(arguments[17..19]);
+		int linkedMeleeId = arguments[19];
 		bool isLinkedMelee = (linkedMeleeId != byte.MaxValue);
 
 		var player = Global.level.getPlayerById(ownerId);
@@ -376,92 +372,100 @@ public class RPCApplyDamage : RPC {
 		// For when the projectile was a melee without a NetID.
 		if (isLinkedMelee) {
 			Actor? mainActor = Global.level.getActorByNetId(actorId, true);
-			List<Projectile> projs = new();
 			if (mainActor != null) {
-				// We try to search anything with a matching MeleeID.
-				actor = mainActor.getMeleeProjById(linkedMeleeId, mainActor.pos, false);
-
-				// If that fails... screw it we create one.
-				if (actor == null) {
-					actor = new GenericMeleeProj(
-						new Weapon(), mainActor.pos, (ProjIds)projId,
-						player, damage, flinch, hitCooldown, mainActor,
-						addToLevel: false
-					);
-				}
+				actor = searchMeleeProj(mainActor, linkedMeleeId, player, projId, damage, flinch, hitCooldown);
 			}
 		}
 		// For normal projectiles.
 		else {
 			actor = (actorId == 0 ? null : Global.level.getActorByNetId(actorId, true));
+			linkedMeleeId = -1;
+		}
+		if (player == null || victim == null) {
+			return;
 		}
 
-		if (player != null && victim != null) {
-			Damager.applyDamage(
-				player,
-				damage,
-				hitCooldown,
-				flinch,
-				victim,
-				weakness,
-				weaponIndex,
-				weaponKillFeedIndex,
-				actor,
-				projId,
-				sendRpc: false);
+		// Add code for delayed projectile here.
+		if (actor == null && actorId != 0) {
+			Global.level.backloggedDamages.Add(new BackloggedDamage(
+				actorId, linkedMeleeId,
+				(Actor? damagerActor, int linkedMeleeId) => {
+					if (damagerActor != null && linkedMeleeId >= 0) {
+						damagerActor = searchMeleeProj(
+							damagerActor, linkedMeleeId,
+							player, projId, damage, flinch, hitCooldown
+						);
+					}
+					Damager.applyDamage(
+						player,
+						damage,
+						hitCooldown,
+						flinch,
+						victim,
+						crit,
+						weaponIndex,
+						weaponKillFeedIndex,
+						damagerActor,
+						projId,
+						sendRpc: false
+					);
+				}
+			));
+			return;
 		}
+
+		Damager.applyDamage(
+			player,
+			damage,
+			hitCooldown,
+			flinch,
+			victim,
+			crit,
+			weaponIndex,
+			weaponKillFeedIndex,
+			actor,
+			projId,
+			sendRpc: false
+		);
 	}
 
 	public void sendRpc(byte[] byteArray) {
 		Global.serverClient?.rpc(applyDamage, byteArray);
 	}
+
+	public static Actor searchMeleeProj(
+		Actor mainActor, int meleeId,
+		Player player, int projId,
+		float damage, int flinch, float hitCooldown
+	) {
+		// We try to search anything with a matching MeleeID.
+		Actor? actor = mainActor.getMeleeProjById(meleeId, mainActor.pos, false);
+
+		// If that fails... screw it we create one.
+		if (actor == null) {
+			actor = new GenericMeleeProj(
+				new Weapon(), mainActor.pos, (ProjIds)projId,
+				player, damage, flinch, hitCooldown, mainActor,
+				addToLevel: false
+			) {
+				meleeId = meleeId,
+				owningActor = mainActor
+			};
+		}
+		return actor;
+	}
 }
 
 public class BackloggedDamage {
 	public ushort actorId;
-	public Action<Actor> damageAction;
+	public int meleeId;
+	public Action<Actor?, int> damageAction;
 	public float time;
-	public BackloggedDamage(ushort actorId, Action<Actor> damageAction) {
+	public BackloggedDamage(ushort actorId, int meleeId, Action<Actor?, int> damageAction) {
 		this.actorId = actorId;
+		this.meleeId = meleeId;
 		this.damageAction = damageAction;
-	}
-}
 
-public class RPCDecShieldAmmo : RPC {
-	public RPCDecShieldAmmo() {
-		netDeliveryMethod = NetDeliveryMethod.ReliableOrdered;
-	}
-
-	public override void invoke(params byte[] arguments) {
-		int playerId = arguments[0];
-		float decAmmoAmount = BitConverter.ToSingle(new byte[] { arguments[1], arguments[2], arguments[3], arguments[4] }, 0);
-
-		var player = Global.level.getPlayerById(playerId);
-
-		if ((player?.character as MegamanX)?.chargedRollingShieldProj != null) {
-			(player.character as MegamanX).chargedRollingShieldProj.decAmmo(decAmmoAmount);
-		}
-	}
-}
-
-public class RPCShoot : RPC {
-	public RPCShoot(NetDeliveryMethod netDeliveryMethod) {
-		this.netDeliveryMethod = netDeliveryMethod;
-	}
-
-	public override void invoke(params byte[] arguments) {
-		int playerId = arguments[0];
-		int xPos = BitConverter.ToInt16(new byte[] { arguments[1], arguments[2] }, 0);
-		int yPos = BitConverter.ToInt16(new byte[] { arguments[3], arguments[4] }, 0);
-		int xDir = arguments[5] - 128;
-		int chargeLevel = arguments[6];
-		ushort projNetId = BitConverter.ToUInt16(new byte[] { arguments[7], arguments[8] }, 0);
-		int weaponIndex = arguments[9];
-
-		var player = Global.level.getPlayerById(playerId);
-		/* (player?.character as MegamanX)?.shootRpc(
-			new Point(xPos, yPos), weaponIndex, xDir, chargeLevel, projNetId, false
-		); */
 	}
 }
 
@@ -480,6 +484,7 @@ public class BufferedDestroyActor {
 public class RPCDestroyActor : RPC {
 	public RPCDestroyActor() {
 		netDeliveryMethod = NetDeliveryMethod.ReliableUnordered;
+		isPreUpdate = true;
 	}
 
 	public override void invoke(params byte[] arguments) {
@@ -487,8 +492,8 @@ public class RPCDestroyActor : RPC {
 		int spriteIndex = BitConverter.ToUInt16(new byte[] { arguments[2], arguments[3] }, 0);
 		int soundIndex = BitConverter.ToUInt16(new byte[] { arguments[4], arguments[5] }, 0);
 
-		string destroySprite = null;
-		string destroySound = null;
+		string destroySprite = "";
+		string destroySound = "";
 		if (spriteIndex < Global.spriteCount) {
 			destroySprite = Global.spriteNameByIndex[spriteIndex];
 		}
@@ -516,10 +521,10 @@ public class RPCDestroyActor : RPC {
 
 			actor.changePos(destroyPos);
 			// Any actors with custom destroySelf methods that are invoked by RPC need to be specified here
-			if (actor is Character) {
-				(actor as Character).destroySelf(destroySprite, destroySound, disableRpc: true);
-			} else if (actor is RollingShieldProjCharged) {
-				(actor as RollingShieldProjCharged).destroySelf(destroySprite, destroySound, disableRpc: true);
+			if (actor is Character character) {
+				character.destroySelf(destroySprite, destroySound, disableRpc: true);
+			} else if (actor is RollingShieldProjCharged rshield) {
+				rshield.destroySelf(destroySprite, destroySound, disableRpc: true);
 			} else {
 				actor.destroySelf(destroySprite, destroySound, disableRpc: true);
 			}
@@ -543,16 +548,38 @@ public class RPCDestroyActor : RPC {
 	}
 }
 
-public class RPCDestroyPlayer : RPC {
-	public RPCDestroyPlayer() {
+public class RPCDestroyCharacter : RPC {
+	public RPCDestroyCharacter() {
 		netDeliveryMethod = NetDeliveryMethod.ReliableUnordered;
+		isPreUpdate = true;
 	}
 
 	public override void invoke(params byte[] arguments) {
 		int playerId = arguments[0];
+		ushort charNetId = BitConverter.ToUInt16(arguments.AsSpan()[1..3]);
+		Player? player = Global.level.getPlayerById(playerId);
+		// We start by trying to call the regular destroy.
+		bool destroyedChar = false;
+		if (player != null) {
+			destroyedChar = player.destroyCharacter(charNetId);
+		}
+		// If player was null attempt to destroy directly.
+		if (!destroyedChar) {
+			Actor? charObj = Global.level.getActorByNetId(charNetId);
+			charObj?.destroySelf();
+		}
+	}
 
-		var player = Global.level.getPlayerById(playerId);
-		player?.destroyCharacter();
+	public void sendRpc(Player player, Character? character) {
+		if (Global.serverClient == null || character?.netId == null) {
+			return;
+		}
+		byte[] args = [
+			(byte)player.id,
+			.. BitConverter.GetBytes(character.netId.Value)
+		];
+
+		Global.serverClient.rpc(RPC.destroyCharacter, args);
 	}
 }
 
@@ -565,8 +592,6 @@ public enum RPCToggleType {
 	StrikeChainChargedReversed,
 	StockCharge,
 	UnstockCharge,
-	StartRaySplasher,
-	StopRaySplasher,
 	StartBarrier,
 	StopBarrier,
 	StockSaber,
@@ -599,52 +624,38 @@ public class RPCPlayerToggle : RPC {
 			player.character?.crystalizeStart();
 		} else if (toggleId == RPCToggleType.StopCrystalize) {
 			player.character?.crystalizeEnd();
-		} else if (toggleId == RPCToggleType.StrikeChainReversed) {
-			(player?.character as MegamanX)?.strikeChainProj?.reverseDir();
+		} /* else if (toggleId == RPCToggleType.StrikeChainReversed) {
+			(player?.character as MegamanX)?.strikeChainProj?.reverse(null);
 		} else if (toggleId == RPCToggleType.StrikeChainChargedReversed) {
 			(player?.character as MegamanX)?.strikeChainChargedProj?.reverseDir();
-		} else if (toggleId == RPCToggleType.StockCharge) {
+		}  else if (toggleId == RPCToggleType.StockCharge) {
 			if (player?.character is MegamanX mmx) {
-				mmx.stockedCharge = true;
+				mmx.stockedBusterLv = true;
 			}
 		} else if (toggleId == RPCToggleType.UnstockCharge) {
 			if (player?.character is MegamanX mmx) {
-				mmx.stockedCharge = false;
+				mmx.stockedBusterLv = false;
 			}
-		} else if (toggleId == RPCToggleType.StartRaySplasher) {
+		} */ else if (toggleId == RPCToggleType.StartBarrier) {
 			if (player.character is MegamanX mmx) {
-				mmx.isShootingRaySplasher = true;
-			}
-		} else if (toggleId == RPCToggleType.StopRaySplasher) {
-			if (player.character is MegamanX mmx) {
-				mmx.isShootingRaySplasher = false;
-			}
-		} else if (toggleId == RPCToggleType.StartBarrier) {
-			if (player.character is MegamanX mmx) {
-				mmx.barrierTime = mmx.barrierDuration;
+				mmx.barrierActiveTime = 90;
 			}
 		} else if (toggleId == RPCToggleType.StopBarrier) {
 			if (player.character is MegamanX mmx) {
-				mmx.barrierTime = 0;
+				mmx.barrierActiveTime = 0;
 			}
 		} else if (toggleId == RPCToggleType.StockSaber) {
 			if (player.character is MegamanX mmx) {
-				mmx.stockedXSaber = true;
+				mmx.stockedSaber = true;
 			}
 		} else if (toggleId == RPCToggleType.UnstockSaber) {
 			if (player.character is MegamanX mmx) {
-				mmx.stockedXSaber = false;
-			} 
+				mmx.stockedSaber = false;
+			}
 		} else if (toggleId == RPCToggleType.SetWhiteAxl) {
 			if (player.character is Axl axl) {
 				axl.whiteAxlTime = axl.maxHyperAxlTime;
 			}
-		} else if (toggleId == RPCToggleType.ReviveVileTo2) {
-			player.reviveVileNonOwner(false);
-		} else if (toggleId == RPCToggleType.ReviveVileTo5) {
-			player.reviveVileNonOwner(true);
-		} else if (toggleId == RPCToggleType.ReviveX) {
-			player.reviveXNonOwner();
 		} else if (toggleId == RPCToggleType.StartRev) {
 			if (player.character is Axl axl) {
 				axl.isNonOwnerRev = true;
@@ -723,8 +734,7 @@ public class RPCActorToggle : RPC {
 			new Anim(actor.pos, "sonicslicer_sparks", actor.xDir, null, true);
 		} else if (toggleId == RPCActorToggleType.StartGravityWell && actor is GravityWellProjCharged gw) {
 			gw.started = true;
-		}
-		else if (toggleId == RPCActorToggleType.AddWolfSigmaMusicSource) {
+		} else if (toggleId == RPCActorToggleType.AddWolfSigmaMusicSource) {
 			actor.addMusicSource("wolfSigma", actor.pos.addxy(0, -75), false);
 		} else if (toggleId == RPCActorToggleType.AddWolfSigmaIntroMusicSource) {
 			actor.addMusicSource("wolfSigmaIntro", actor.pos.addxy(0, -75), false, loop: false);
@@ -742,8 +752,7 @@ public class RPCActorToggle : RPC {
 		} else if (toggleId == RPCActorToggleType.AddKaiserViralSigmaMusicSource) {
 			actor.destroyMusicSource();
 			actor.addMusicSource("demo_X3", actor.getCenterPos(), true);
-		}
-		else if (toggleId == RPCActorToggleType.StartMechSelfDestruct && actor is RideArmor ra) {
+		} else if (toggleId == RPCActorToggleType.StartMechSelfDestruct && actor is RideArmor ra) {
 			ra.selfDestructTime = Global.spf;
 		} else if (toggleId == RPCActorToggleType.ShakeCamera) {
 			actor.shakeCamera();
@@ -793,6 +802,7 @@ public class RPCActorToggle : RPC {
 public class RPCKillPlayer : RPC {
 	public RPCKillPlayer() {
 		netDeliveryMethod = NetDeliveryMethod.ReliableOrdered;
+		isPreUpdate = true;
 	}
 	public override void invoke(params byte[] arguments) {
 		int hasOwnerId = arguments[0];
@@ -822,6 +832,7 @@ public class RPCKillPlayer : RPC {
 public class RPCCreateAnim : RPC {
 	public RPCCreateAnim() {
 		netDeliveryMethod = NetDeliveryMethod.Unreliable;
+		isPreUpdate = true;
 	}
 
 	public override void invoke(params byte[] arguments) {
@@ -845,7 +856,7 @@ public class RPCCreateAnim : RPC {
 		}
 
 		// The rest of the bytes are for optional, expensive-to-sync data that should be used sparingly.
-		RPCAnimModel extendedAnimModel = null;
+		RPCAnimModel? extendedAnimModel = null;
 		Actor? zIndexRelActor = null;
 		if (arguments.Length > 13) {
 			var argumentsList = arguments.ToList();
@@ -912,6 +923,7 @@ public class RPCSwitchTeam : RPC {
 public class RPCReflectProj : RPC {
 	public RPCReflectProj() {
 		netDeliveryMethod = NetDeliveryMethod.ReliableOrdered;
+		isPreUpdate = true;
 	}
 
 	public override void invoke(params byte[] arguments) {
@@ -941,6 +953,7 @@ public class RPCReflectProj : RPC {
 public class RPCJoinLateRequest : RPC {
 	public RPCJoinLateRequest() {
 		netDeliveryMethod = NetDeliveryMethod.ReliableOrdered;
+		isPreUpdate = true;
 		toHostOnly = true;
 	}
 
@@ -949,16 +962,18 @@ public class RPCJoinLateRequest : RPC {
 
 		Global.level.addPlayer(serverPlayer, true);
 
+		/*
 		foreach (var player in Global.level.players) {
 			player.charNetId = null;
 			if (player.character != null) {
-				player.charNetId = player.character.netId;
+				//player.charNetId = player.character.netId;
 				player.charXPos = player.character.pos.x;
 				player.charYPos = player.character.pos.y;
 				player.charXDir = player.character.xDir;
-				player.charRollingShieldNetId = (player?.character as MegamanX)?.chargedRollingShieldProj?.netId;
+				//player.charRollingShieldNetId = player.character.chargedRollingShieldProj?.netId;
 			}
 		}
+		*/
 
 		var controlPoints = new List<ControlPointResponseModel>();
 		foreach (var cp in Global.level.controlPoints) {
@@ -1012,10 +1027,12 @@ public class RPCJoinLateRequest : RPC {
 public class RPCJoinLateResponse : RPC {
 	public RPCJoinLateResponse() {
 		netDeliveryMethod = NetDeliveryMethod.ReliableOrdered;
+		levelless = true;
+		allowBreakMtuLimit = true;
 	}
 
 	public override void invoke(params byte[] arguments) {
-		JoinLateResponseModel joinLateResponseModel = null;
+		JoinLateResponseModel? joinLateResponseModel = null;
 		try {
 			joinLateResponseModel = Helpers.deserialize<JoinLateResponseModel>(arguments);
 		} catch {
@@ -1047,12 +1064,14 @@ public class RPCUpdateStarted : RPC {
 	public RPCUpdateStarted() {
 		netDeliveryMethod = NetDeliveryMethod.ReliableOrdered;
 		isServerMessage = true;
+		levelless = true;
 	}
 }
 
 public class RPCHostPromotion : RPC {
 	public RPCHostPromotion() {
 		netDeliveryMethod = NetDeliveryMethod.ReliableOrdered;
+		levelless = true;
 	}
 
 	public override void invoke(params byte[] arguments) {
@@ -1072,6 +1091,7 @@ public class RPCMatchOver : RPC {
 	public RPCMatchOver() {
 		netDeliveryMethod = NetDeliveryMethod.ReliableOrdered;
 		isString = true;
+		levelless = true;
 	}
 
 	public override void invoke(string message) {
@@ -1095,6 +1115,7 @@ public class RPCSyncTeamScores : RPC {
 public class RPCSyncGameTime : RPC {
 	public RPCSyncGameTime() {
 		netDeliveryMethod = NetDeliveryMethod.ReliableOrdered;
+		isPreUpdate = true;
 	}
 
 	public override void invoke(params byte[] arguments) {
@@ -1148,7 +1169,10 @@ public class RPCSendKillFeedEntry : RPC {
 
 	public override void invoke(string message) {
 		var response = JsonConvert.DeserializeObject<RPCKillFeedEntryResponse>(message);
-		Player player = null;
+		if (response == null) {
+			return;
+		}
+		Player? player = null;
 		if (response.playerId != null) {
 			player = Global.level.getPlayerById(response.playerId.Value);
 		}
@@ -1209,156 +1233,6 @@ public class RPCSyncControlPoints : RPC {
 	}
 }
 
-public class RPCSetHyperAxlTime : RPC {
-	public RPCSetHyperAxlTime() {
-		netDeliveryMethod = NetDeliveryMethod.ReliableOrdered;
-	}
-
-	public override void invoke(params byte[] arguments) {
-		int playerId = arguments[0];
-		int time = arguments[1];
-		int type = arguments[2];
-		var player = Global.level.getPlayerById(playerId);
-		if (player?.character is Axl axl) {
-			if (type == 1) axl.whiteAxlTime = time;
-		}
-
-	}
-
-	public void sendRpc(int playerId, float time, int type) {
-		Global.serverClient?.rpc(this, (byte)playerId, (byte)(int)time, (byte)type);
-	}
-}
-
-public class RPCAxlShoot : RPC {
-	public RPCAxlShoot() {
-		netDeliveryMethod = NetDeliveryMethod.ReliableOrdered;
-	}
-
-	public override void invoke(params byte[] arguments) {
-		int playerId = arguments[0];
-		int projId = BitConverter.ToUInt16(new byte[] { arguments[1], arguments[2] }, 0);
-		ushort netId = BitConverter.ToUInt16(new byte[] { arguments[3], arguments[4] }, 0);
-		float x = BitConverter.ToSingle(new byte[] { arguments[5], arguments[6], arguments[7], arguments[8] }, 0);
-		float y = BitConverter.ToSingle(new byte[] { arguments[9], arguments[10], arguments[11], arguments[12] }, 0);
-		int xDir = Helpers.byteToDir(arguments[13]);
-		float angle = Helpers.byteToDegree(arguments[14]);
-		int axlBulletWeaponType = arguments.InRange(15) ? arguments[16] : 0;
-
-		var player = Global.level.getPlayerById(playerId);
-		if (player?.character == null) return;
-
-		if (projId == (int)ProjIds.AxlBullet || projId == (int)ProjIds.MetteurCrash || projId == (int)ProjIds.BeastKiller || projId == (int)ProjIds.MachineBullets || projId == (int)ProjIds.RevolverBarrel || projId == (int)ProjIds.AncientGun) {
-			var pos = new Point(x, y);
-			var flash = new Anim(pos, "axl_pistol_flash", 1, null, true);
-			flash.angle = angle;
-			flash.frameSpeed = 1;
-			if (projId == (int)ProjIds.AxlBullet) {
-				var bullet = new AxlBulletProj(new AxlBullet((AxlBulletWeaponType)axlBulletWeaponType), pos, player, Point.createFromAngle(angle), netId);
-				player.character.playSound("axlBullet");
-			} else if (projId == (int)ProjIds.MetteurCrash) {
-				//var bullet = new MettaurCrashProj(new AxlBullet((AxlBulletWeaponType)axlBulletWeaponType), pos, player, Point.createFromAngle(angle), netId);
-				player.character.playSound("mettaurCrash");
-			} else if (projId == (int)ProjIds.BeastKiller) {
-				//var bullet = new BeastKillerProj(new AxlBullet((AxlBulletWeaponType)axlBulletWeaponType), pos, player, Point.createFromAngle(angle), netId);
-				player.character.playSound("beastKiller");
-			} else if (projId == (int)ProjIds.MachineBullets) {
-				//var bullet = new MachineBulletProj(new AxlBullet((AxlBulletWeaponType)axlBulletWeaponType), pos, player, Point.createFromAngle(angle), netId);
-				player.character.playSound("machineBullets");
-			} else if (projId == (int)ProjIds.RevolverBarrel) {
-				//var bullet = new RevolverBarrelProj(new AxlBullet((AxlBulletWeaponType)axlBulletWeaponType), pos, player, Point.createFromAngle(angle), netId);
-				player.character.playSound("revolverBarrel");
-			} else if (projId == (int)ProjIds.AncientGun) {
-				//var bullet = new AncientGunProj(new AxlBullet((AxlBulletWeaponType)axlBulletWeaponType), pos, player, Point.createFromAngle(angle), netId);
-				player.character.playSound("ancientGun3");
-			}
-		} else if (projId == (int)ProjIds.CopyShot) {
-			var pos = new Point(x, y);
-			var bullet = new CopyShotProj(new AxlBullet(), pos, 0, player, Point.createFromAngle(angle), netId);
-			var flash = new Anim(pos, "axl_pistol_flash_charged", 1, null, true);
-			flash.angle = angle;
-			flash.frameSpeed = 3;
-			player.character.playSound("axlBulletCharged");
-		} else if (projId == (int)ProjIds.BlastLauncher) {
-			var pos = new Point(x, y);
-			var bullet = new GrenadeProj(
-				new BlastLauncher(0), pos, xDir, player, Point.createFromAngle(angle), null, new Point(), 0, netId
-			);
-			var flash = new Anim(pos, "axl_pistol_flash", 1, null, true);
-			flash.angle = angle;
-			flash.frameSpeed = 1;
-			player.character.playSound("grenadeShoot");
-		} else if (projId == (int)ProjIds.GreenSpinner) {
-			var pos = new Point(x, y);
-			var bullet = new GreenSpinnerProj(
-				new BlastLauncher(0), pos, xDir, player, Point.createFromAngle(angle), null, netId
-			);
-			var flash = new Anim(pos, "axl_pistol_flash_charged", 1, null, true);
-			flash.angle = angle;
-			flash.frameSpeed = 3;
-			player.character.playSound("rocketShoot");
-		} else if (projId == (int)ProjIds.RayGun || projId == (int)ProjIds.RayGun2) {
-			var pos = new Point(x, y);
-			Point velDir = Point.createFromAngle(angle);
-			if (projId == (int)ProjIds.RayGun) {
-				var bullet = new RayGunProj(new RayGun(0), pos, xDir, player, velDir, netId);
-				player.character.playSound("raygun");
-			} else if (projId == (int)ProjIds.RayGun2) {
-				var bullet = Global.level.getActorByNetId(netId) as RayGunAltProj;
-				if (bullet == null) {
-					new RayGunAltProj(new RayGun(0), pos, pos, xDir, player, netId);
-				}
-			}
-
-			string fs = "axl_raygun_flash";
-			if (Global.level.gameMode.isTeamMode && player.alliance == GameMode.redAlliance) fs = "axl_raygun_flash2";
-			var flash = new Anim(pos, fs, 1, null, true);
-			flash.setzIndex(player.character.zIndex - 100);
-			flash.angle = angle;
-			flash.frameSpeed = 1;
-		} else if (projId == (int)ProjIds.SpiralMagnum || projId == (int)ProjIds.SpiralMagnumScoped) {
-			var pos = new Point(x, y);
-			var bullet = new SpiralMagnumProj(
-				new SpiralMagnum(0), pos, 0, 0, player, Point.createFromAngle(angle), null, null, netId
-			);
-			if (projId == (int)ProjIds.SpiralMagnumScoped) {
-				AssassinBulletTrailAnim trail = new AssassinBulletTrailAnim(pos, bullet);
-			}
-			var flash = new Anim(pos, "axl_pistol_flash", 1, null, true);
-			flash.angle = angle;
-			flash.frameSpeed = 1;
-			player.character.playSound("spiralMagnum");
-		} else if (projId == (int)ProjIds.IceGattling || projId == (int)ProjIds.IceGattlingHyper) {
-			var pos = new Point(x, y);
-			var bullet = new IceGattlingProj(new IceGattling(0), pos, xDir, player, Point.createFromAngle(angle), netId);
-			var flash = new Anim(pos, "axl_pistol_flash", 1, null, true);
-			flash.angle = angle;
-			flash.frameSpeed = 1;
-			player.character.playSound("iceGattling");
-		} else if (projId == (int)ProjIds.AssassinBullet || projId == (int)ProjIds.AssassinBulletQuick) {
-			var pos = new Point(x, y);
-			var bullet = new AssassinBulletProj(new AssassinBullet(), pos, new Point(), xDir, player, null, null, netId);
-			AssassinBulletTrailAnim trail = new AssassinBulletTrailAnim(pos, bullet);
-			var flash = new Anim(pos, "axl_pistol_flash_charged", 1, null, true);
-			flash.angle = angle;
-			flash.frameSpeed = 3;
-			player.character.playSound("assassinate");
-		}
-	}
-
-	public void sendRpc(int playerId, int projId, ushort netId, Point pos, int xDir, float angle) {
-		var xBytes = BitConverter.GetBytes(pos.x);
-		var yBytes = BitConverter.GetBytes(pos.y);
-		var netIdBytes = BitConverter.GetBytes(netId);
-		var projIdBytes = BitConverter.GetBytes((ushort)projId);
-		Global.serverClient?.rpc(
-			this, (byte)playerId, projIdBytes[0], projIdBytes[1], netIdBytes[0], netIdBytes[1],
-			xBytes[0], xBytes[1], xBytes[2], xBytes[3],
-			yBytes[0], yBytes[1], yBytes[2], yBytes[3],
-			Helpers.dirToByte(xDir), Helpers.degreeToByte(angle)
-		);
-	}
-}
 
 public class RPCAxlDisguiseJson {
 	public int playerId;
@@ -1366,14 +1240,14 @@ public class RPCAxlDisguiseJson {
 	public string targetName;
 	public int charNum;
 	public byte[] extraData;
-	public LoadoutData? loadout;
+	public LoadoutData loadout;
 
 	public RPCAxlDisguiseJson() { }
 
 	public RPCAxlDisguiseJson(
 		int playerId, string targetName, int charNum,
-		LoadoutData? loadout = null,
-		ushort dnaNetId = 0, byte[]? extraData = null
+		LoadoutData loadout,
+		ushort dnaNetId, byte[]? extraData = null
 	) {
 		this.playerId = playerId;
 		this.targetName = targetName;
@@ -1395,15 +1269,20 @@ public class RPCAxlDisguise : RPC {
 			JsonConvert.DeserializeObject<RPCAxlDisguiseJson>(json) ?? throw new NullReferenceException()
 		);
 		var player = Global.level.getPlayerById(axlDisguiseData.playerId);
-		if (player == null) {
+		if (player.character == null) {
 			return;
 		}
 		if (axlDisguiseData.charNum == -1) {
-			player.revertToAxl();
-		} else if (axlDisguiseData.charNum  == -2) {
-			player.revertToAxlDeath();
+			if (player.character == null) {
+				player.atransLoadout = null;
+			} else {
+				player.revertAtransMain(axlDisguiseData.dnaNetId);
+			}
+		} else if (axlDisguiseData.charNum == -2) {
+			player.revertAtransDeath();
 		} else {
-			player.transformAxlNet(axlDisguiseData);
+			player.character = player.startAtransNet(player.character, axlDisguiseData);
+			player.atransLoadout = axlDisguiseData.loadout;
 		}
 	}
 }
@@ -1612,7 +1491,7 @@ public class RPCPeriodicHostSync : RPC {
 
 public class RPCUpdatePlayer : RPC {
 	public RPCUpdatePlayer() {
-		netDeliveryMethod = NetDeliveryMethod.ReliableOrdered;
+		netDeliveryMethod = NetDeliveryMethod.Unreliable;
 		isServerMessage = true;
 	}
 
@@ -1677,6 +1556,7 @@ public class RPCSyncValue : RPC {
 public class RPCHeal : RPC {
 	public RPCHeal() {
 		netDeliveryMethod = NetDeliveryMethod.ReliableOrdered;
+		isPreUpdate = true;
 	}
 
 	public override void invoke(params byte[] arguments) {
@@ -1698,7 +1578,7 @@ public class RPCHeal : RPC {
 		}
 	}
 
-	public void sendRpc(Player player, ushort healNetId, int healAmount) {
+	public void sendRpc(Player player, ushort healNetId, float healAmount) {
 		var healNetIdBytes = BitConverter.GetBytes(healNetId);
 		Global.serverClient?.rpc(this, (byte)player.id, healNetIdBytes[0], healNetIdBytes[1], (byte)healAmount);
 	}
@@ -2003,128 +1883,6 @@ public class RPCAddDamageText : RPC {
 	}
 }
 
-public class RPCSyncAxlBulletPos : RPC {
-	public RPCSyncAxlBulletPos() {
-		netDeliveryMethod = NetDeliveryMethod.Unreliable;
-	}
-
-	public override void invoke(params byte[] arguments) {
-		int playerId = arguments[0];
-
-		short xPos = BitConverter.ToInt16(new byte[] { arguments[1], arguments[2] }, 0);
-		short yPos = BitConverter.ToInt16(new byte[] { arguments[3], arguments[4] }, 0);
-
-		var player = Global.level.getPlayerById(playerId);
-		Axl? axl = player?.character as Axl;
-		if (axl == null) { return; }
-
-		axl.nonOwnerAxlBulletPos = new Point(xPos, yPos);
-	}
-
-	public void sendRpc(int playerId, Point bulletPos) {
-		byte[] xBytes = BitConverter.GetBytes((short)MathF.Round(bulletPos.x));
-		byte[] yBytes = BitConverter.GetBytes((short)MathF.Round(bulletPos.y));
-		Global.serverClient?.rpc(this, (byte)playerId, xBytes[0], xBytes[1], yBytes[0], yBytes[1]);
-	}
-}
-
-public class RPCSyncAxlScopePos : RPC {
-	public RPCSyncAxlScopePos() {
-		netDeliveryMethod = NetDeliveryMethod.Unreliable;
-	}
-
-	public override void invoke(params byte[] arguments) {
-		int playerId = arguments[0];
-
-		var player = Global.level.getPlayerById(playerId);
-		Axl? axl = player?.character as Axl;
-		if (axl == null) {
-			return;
-		}
-		bool isZooming = arguments[1] == 1 ? true : false;
-
-		axl.isNonOwnerZoom = isZooming;
-
-		short sxPos = BitConverter.ToInt16(new byte[] { arguments[2], arguments[3] }, 0);
-		short syPos = BitConverter.ToInt16(new byte[] { arguments[4], arguments[5] }, 0);
-
-		short exPos = BitConverter.ToInt16(new byte[] { arguments[6], arguments[7] }, 0);
-		short eyPos = BitConverter.ToInt16(new byte[] { arguments[8], arguments[9] }, 0);
-
-		axl.nonOwnerScopeStartPos = new Point(sxPos, syPos);
-		axl.netNonOwnerScopeEndPos = new Point(exPos, eyPos);
-	}
-
-	public void sendRpc(int playerId, bool isZooming, Point startScopePos, Point endScopePos) {
-		byte[] sxBytes = BitConverter.GetBytes((short)MathF.Round(startScopePos.x));
-		byte[] syBytes = BitConverter.GetBytes((short)MathF.Round(startScopePos.y));
-
-		byte[] exBytes = BitConverter.GetBytes((short)MathF.Round(endScopePos.x));
-		byte[] eyBytes = BitConverter.GetBytes((short)MathF.Round(endScopePos.y));
-
-		Global.serverClient?.rpc(this, (byte)playerId, isZooming ? (byte)1 : (byte)0, sxBytes[0], sxBytes[1], syBytes[0], syBytes[1], exBytes[0], exBytes[1], eyBytes[0], eyBytes[1]);
-	}
-}
-
-public class RPCBoundBlasterStick : RPC {
-	public RPCBoundBlasterStick() {
-		netDeliveryMethod = NetDeliveryMethod.ReliableOrdered;
-	}
-
-	public override void invoke(params byte[] arguments) {
-		ushort beaconNetId = BitConverter.ToUInt16(new byte[] { arguments[0], arguments[1] }, 0);
-		ushort stuckActorNetId = BitConverter.ToUInt16(new byte[] { arguments[2], arguments[3] }, 0);
-
-		short xPos = BitConverter.ToInt16(new byte[] { arguments[4], arguments[5] }, 0);
-		short yPos = BitConverter.ToInt16(new byte[] { arguments[6], arguments[7] }, 0);
-
-		BoundBlasterAltProj? beaconActor = Global.level.getActorByNetId(beaconNetId) as BoundBlasterAltProj;
-		Actor? stuckActor = Global.level.getActorByNetId(stuckActorNetId);
-
-		if (beaconActor == null || stuckActor == null) {
-			return;
-		}
-		beaconActor.isActorStuck = true;
-		beaconActor.stuckActor = stuckActor;
-		beaconActor.stopSyncingNetPos = true;
-		beaconActor.changePos(new Point(xPos, yPos));
-	}
-
-	public void sendRpc(ushort? beaconNetId, ushort? stuckActorNetId, Point hitPos) {
-		if (beaconNetId == null) return;
-		if (stuckActorNetId == null) return;
-
-		byte[] beaconNetIdBytes = BitConverter.GetBytes(beaconNetId.Value);
-		byte[] stuckActorNetIdBytes = BitConverter.GetBytes(stuckActorNetId.Value);
-
-		byte[] sxBytes = BitConverter.GetBytes((short)MathF.Round(hitPos.x));
-		byte[] syBytes = BitConverter.GetBytes((short)MathF.Round(hitPos.y));
-
-		Global.serverClient?.rpc(this, beaconNetIdBytes[0], beaconNetIdBytes[1], stuckActorNetIdBytes[0], stuckActorNetIdBytes[1],
-			sxBytes[0], sxBytes[1], syBytes[0], syBytes[1]);
-	}
-}
-
-public class RPCBroadcastLoadout : RPC {
-	public RPCBroadcastLoadout() {
-		netDeliveryMethod = NetDeliveryMethod.ReliableOrdered;
-	}
-
-	public override void invoke(params byte[] arguments) {
-		LoadoutData loadout = Helpers.deserialize<LoadoutData>(arguments);
-		var player = Global.level?.getPlayerById(loadout.playerId);
-		if (player == null) return;
-
-		player.loadout = loadout;
-		player.loadoutSet = true;
-	}
-
-	public void sendRpc(Player player) {
-		byte[] loadoutBytes = Helpers.serialize(player.loadout);
-		Global.serverClient?.rpc(this, loadoutBytes);
-	}
-}
-
 public class RPCCreditPlayerKillMaverick : RPC {
 	public RPCCreditPlayerKillMaverick() {
 		netDeliveryMethod = NetDeliveryMethod.ReliableOrdered;
@@ -2214,6 +1972,7 @@ public class RPCCreditPlayerKillVehicle : RPC {
 public class RPCChangeDamage : RPC {
 	public RPCChangeDamage() {
 		netDeliveryMethod = NetDeliveryMethod.ReliableOrdered;
+		isPreUpdate = true;
 	}
 
 	public override void invoke(params byte[] arguments) {
@@ -2237,17 +1996,6 @@ public class RPCChangeDamage : RPC {
 		Global.serverClient.rpc(RPC.changeDamage, netIdBytes[0], netIdBytes[1],
 			damageBytes[0], damageBytes[1], damageBytes[2], damageBytes[3],
 			(byte)flinch);
-	}
-}
-
-public class RPCLogWeaponKills : RPC {
-	public RPCLogWeaponKills() {
-		netDeliveryMethod = NetDeliveryMethod.ReliableOrdered;
-		isServerMessage = true;
-	}
-
-	public void sendRpc() {
-		Global.serverClient?.rpc(logWeaponKills);
 	}
 }
 
@@ -2438,7 +2186,7 @@ public class RPCPossess : RPC {
 
 public class RPCSyncPossessInput : RPC {
 	public RPCSyncPossessInput() {
-		netDeliveryMethod = NetDeliveryMethod.ReliableOrdered;
+		netDeliveryMethod = NetDeliveryMethod.Unreliable;
 	}
 
 	public override void invoke(params byte[] arguments) {
@@ -2473,60 +2221,6 @@ public class RPCSyncPossessInput : RPC {
 	}
 }
 
-public class RPCFeedWheelGator : RPC {
-	public RPCFeedWheelGator() {
-		netDeliveryMethod = NetDeliveryMethod.ReliableOrdered;
-	}
-
-	public override void invoke(params byte[] arguments) {
-		ushort netId = BitConverter.ToUInt16(new byte[] { arguments[0], arguments[1] }, 0);
-		float damage = BitConverter.ToSingle(new byte[] { arguments[2], arguments[3], arguments[4], arguments[5] }, 0);
-
-		var wheelGator = Global.level.getActorByNetId(netId) as WheelGator;
-		if (wheelGator != null) {
-			wheelGator.feedWheelGator(damage);
-		}
-	}
-
-	public void sendRpc(WheelGator wheelGator, float damage) {
-		if (wheelGator?.netId == null || Global.serverClient == null) return;
-
-		byte[] netIdBytes = BitConverter.GetBytes(wheelGator.netId.Value);
-		byte[] damageBytes = BitConverter.GetBytes(damage);
-
-		Global.serverClient.rpc(RPC.feedWheelGator, netIdBytes[0], netIdBytes[1],
-			damageBytes[0], damageBytes[1], damageBytes[2], damageBytes[3]);
-	}
-}
-
-public class RPCHealDoppler : RPC {
-	public RPCHealDoppler() {
-		netDeliveryMethod = NetDeliveryMethod.ReliableOrdered;
-	}
-
-	public override void invoke(params byte[] arguments) {
-		ushort netId = BitConverter.ToUInt16(new byte[] { arguments[0], arguments[1] }, 0);
-		float damage = BitConverter.ToSingle(new byte[] { arguments[2], arguments[3], arguments[4], arguments[5] }, 0);
-		int attackerPlayerId = arguments[6];
-
-		var player = Global.level.getPlayerById(attackerPlayerId);
-		var drDoppler = Global.level.getActorByNetId(netId) as DrDoppler;
-		if (drDoppler != null) {
-			drDoppler.healDrDoppler(player, damage);
-		}
-	}
-
-	public void sendRpc(DrDoppler drDoppler, float damage, Player attacker) {
-		if (drDoppler.netId == null || Global.serverClient == null) return;
-
-		byte[] netIdBytes = BitConverter.GetBytes(drDoppler.netId.Value);
-		byte[] damageBytes = BitConverter.GetBytes(damage);
-
-		Global.serverClient.rpc(RPC.healDoppler, netIdBytes[0], netIdBytes[1],
-			damageBytes[0], damageBytes[1], damageBytes[2], damageBytes[3], (byte)attacker.id);
-	}
-}
-
 public class RPCResetFlag : RPC {
 	public RPCResetFlag() {
 		netDeliveryMethod = NetDeliveryMethod.ReliableOrdered;
@@ -2551,3 +2245,30 @@ public class RPCResetFlag : RPC {
 		Global.serverClient?.rpc(RPC.resetFlags);
 	}
 }
+
+public class PendingRPC {
+	public RPC rpc;
+	public byte[] bytes = [];
+	public string stringData = "";
+	public bool isString;
+
+	public PendingRPC(RPC rpc, byte[] bytes) {
+		this.rpc = rpc;
+		this.bytes = bytes;
+	}
+
+	public PendingRPC(RPC rpc, string stringData) {
+		this.rpc = rpc;
+		this.stringData = stringData;
+		isString = true;
+	}
+
+	public void invoke() {
+		if (isString) {
+			rpc.invoke(stringData);
+			return;
+		}
+		rpc.invoke(bytes);
+	}
+}
+

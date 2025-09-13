@@ -23,7 +23,7 @@ public class HyouretsuzanWeapon : Weapon {
 		description = new string[] { "A dive attack that can freeze enemies." };
 		damage = "4";
 		hitcooldown = "0.5";
-		Flinch = "12";
+		flinch = "12";
 		effect = "Freeze Time: 2 seconds.";
 	}
 
@@ -50,7 +50,7 @@ public class RakukojinWeapon : Weapon {
 		description = new string[] { "Drop with a metal blade that deals high damage."};
 		damage = "3";
 		hitcooldown = "0.5";
-		Flinch = "12";
+		flinch = "12";
 		effect = "Bonus Damage via Fall Time.";
 	}
 }
@@ -69,15 +69,13 @@ public class DanchienWeapon : Weapon {
 		description = new string[] { "A dive attack that can burn enemies."};
 		damage = "2";
 		hitcooldown = "0.5";
-		Flinch = "0";
-		effect = "Burn DOT: 1 Second.Bounce on enemy by jumping.";
+		flinch = "0";
+		effect = "Burn DOT: 1 Second. Bounce on enemies by jumping.";
 	}
 }
 
-public class ZeroDownthrust : CharState {
+public class ZeroDownthrust : ZeroState {
 	public ZeroDownthrustType type;
-	public int quakeBlazerBounces;
-
 	public ZeroDownthrust(
 		ZeroDownthrustType type
 	) : base(
@@ -118,7 +116,7 @@ public class ZeroDownthrust : CharState {
 			int xDir = player.input.getXDir(player);
 			if (xDir != 0) {
 				character.xDir = xDir;
-				character.move(new Point(100 * xDir, 0));
+				character.moveXY(1.65f * xDir, 0);
 			}
 		}
 		if (character.grounded) {
@@ -139,16 +137,16 @@ public class ZeroDownthrust : CharState {
 
 		character.playSound("circleBlazeExplosion", sendRpc: true);
 		new DanchienExplosionProj(
-			character.pos.addxy(10 * character.xDir, -10),
-			character.xDir, player, player.getNextActorNetId(), sendRpc: true
+			character.pos.addxy(10 * character.xDir, -10), character.xDir,
+			zero, player, player.getNextActorNetId(), rpc: true
 		);
 
 		if (!hitGround) {
-			if (player.input.isHeld(Control.Jump, player) && quakeBlazerBounces < 1) {
-				character.vel.y = Physics.JumpSpeed;
-				quakeBlazerBounces++;
+			if (player.input.isHeld(Control.Jump, player) && zero.quakeBlazerBounces < 1) {
+				character.vel.y = -character.getJumpPower();
+				zero.quakeBlazerBounces++;
 			}
-			character.changeState(new Fall(), true);
+			character.changeState(character.getFallState(), true);
 		}
 	}
 
@@ -158,6 +156,9 @@ public class ZeroDownthrust : CharState {
 			character.vel.y = 0;
 		}
 	}
+	public override void onExit(CharState? newState) {
+		base.onExit(newState);
+	}
 }
 
 public class ZeroDownthrustLand : CharState {
@@ -166,6 +167,7 @@ public class ZeroDownthrustLand : CharState {
 	public ZeroDownthrustLand(ZeroDownthrustType type) : base(getSpriteName(type)) {
 		exitOnAirborne = true;
 		this.type = type;
+		enterSound = "land";
 	}
 
 	public static string getSpriteName(ZeroDownthrustType type) {
@@ -186,7 +188,6 @@ public class ZeroDownthrustLand : CharState {
 	public override void onEnter(CharState oldState) {
 		base.onEnter(oldState);
 		altCtrls[1] = true;
-		character.playSound("land", sendRpc: true);
 		switch (type) {
 			case ZeroDownthrustType.Hyouretsuzan:
 				character.breakFreeze(player, character.pos.addxy(character.xDir * 5, 0), sendRpc: true);
@@ -200,18 +201,24 @@ public class ZeroDownthrustLand : CharState {
 
 public class DanchienExplosionProj : Projectile {
 	public DanchienExplosionProj(
-		Point pos, int xDir,
-		Player player, ushort netProjId, bool sendRpc = false
+		Point pos, int xDir, Actor owner, Player player, ushort? netId, bool rpc = false
 	) : base(
-		DanchienWeapon.staticWeapon, pos, xDir, 0, 2, player, "quakeblazer_explosion",
-		0, 0.5f, netProjId, player.ownedByLocalPlayer
+		pos, xDir, owner, "quakeblazer_explosion", netId, player
 	) {
+		weapon = DanchienWeapon.staticWeapon;
+		damager.damage = 2;
+		damager.hitCooldown = 30;
 		destroyOnHit = false;
 		projId = (int)ProjIds.QuakeBlazer;
 		shouldShieldBlock = false;
-		if (sendRpc) {
-			rpcCreate(pos, owner, netProjId, xDir);
+		if (rpc) {
+			rpcCreate(pos, owner, ownerPlayer, netId, xDir);
 		}
+	}
+	public static Projectile rpcInvoke(ProjParameters args) {
+		return new DanchienExplosionProj(
+			args.pos, args.xDir, args.owner, args.player, args.netId
+		);
 	}
 
 	public override void onStart() {
@@ -219,24 +226,24 @@ public class DanchienExplosionProj : Projectile {
 		if (!ownedByLocalPlayer) return;
 
 		new QuakeBlazerFlamePart(
-			pos.addxy(0, -10).addRand(5, 5), xDir, -1,
+			pos.addxy(0, -10).addRand(5, 5), xDir, -1, this,
 			owner, owner.getNextActorNetId(), rpc: true
 		);
 		new QuakeBlazerFlamePart(
 			pos.addxy(0, -10).addRand(5, 5), xDir,
-			1, owner, owner.getNextActorNetId(), rpc: true
+			1, this,  owner, owner.getNextActorNetId(), rpc: true
 		);
 		new QuakeBlazerFlamePart(
 			pos.addxy(0, 0).addRand(5, 5), xDir,
-			0, owner, owner.getNextActorNetId(), rpc: true
+			0, this, owner, owner.getNextActorNetId(), rpc: true
 		);
 		new QuakeBlazerFlamePart(
 			pos.addxy(0, 10).addRand(5, 5), xDir,
-			-1, owner, owner.getNextActorNetId(), rpc: true
+			-1, this, owner, owner.getNextActorNetId(), rpc: true
 		);
 		new QuakeBlazerFlamePart(
 			pos.addxy(0, 10).addRand(5, 5), xDir,
-			1, owner, owner.getNextActorNetId(), rpc: true
+			1, this, owner, owner.getNextActorNetId(), rpc: true
 		);
 
 	}
@@ -251,21 +258,27 @@ public class DanchienExplosionProj : Projectile {
 
 public class QuakeBlazerFlamePart : Projectile {
 	public QuakeBlazerFlamePart(
-		Point pos, int xDir,
-		int speedDir, Player player, ushort netProjId, bool rpc = false
+		Point pos, int xDir, int speedDir,
+		Actor owner, Player player, ushort? netId, bool rpc = false
 	) : base(
-		DanchienWeapon.staticWeapon, pos, xDir, 0, 0, player, "quakeblazer_part",
-		0, 1f, netProjId, player.ownedByLocalPlayer
+		pos, xDir, owner, "quakeblazer_part", netId, player
 	) {
+		weapon = DanchienWeapon.staticWeapon;
+		damager.hitCooldown = 60;
 		projId = (int)ProjIds.QuakeBlazerFlame;
 		useGravity = true;
-		collider.wallOnly = true;
+		if (collider != null) { collider.wallOnly = true; }
 		destroyOnHit = false;
 		shouldShieldBlock = false;
 		vel.x = speedDir * 75;
 		if (rpc) {
-			rpcCreate(pos, player, netProjId, xDir, (byte)(speedDir + 1));
+			rpcCreate(pos, owner, ownerPlayer, netId, xDir, (byte)(speedDir + 1));
 		}
+	}
+	public static Projectile rpcInvoke(ProjParameters args) {
+		return new QuakeBlazerFlamePart(
+			args.pos, args.xDir, args.extraData[0] -1, args.owner, args.player, args.netId
+		);
 	}
 
 	public override void update() {

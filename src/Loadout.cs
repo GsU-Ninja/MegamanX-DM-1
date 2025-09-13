@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.Linq;
 using Newtonsoft.Json;
 using ProtoBuf;
@@ -48,7 +49,6 @@ public class XLoadout {
 		indices.Add((byte)weapon3);
 		if (player.hasArmArmor(3)) indices.Add((int)WeaponIds.HyperCharge);
 		if (player.hasBodyArmor(2)) indices.Add((int)WeaponIds.GigaCrush);
-		if (player.hasUltimateArmor()) indices.Add((int)WeaponIds.NovaStrike);
 
 		return indices.Select(index => {
 			return Weapon.getAllSwitchableWeapons(new AxlLoadout()).Find(w => w.index == index).clone();
@@ -56,12 +56,21 @@ public class XLoadout {
 	}
 
 	public static XLoadout createRandom() {
-		var randomXWeapons = Weapon.getRandomXWeapons();
+		List<int> randomXWeapons = Weapon.getRandomXWeapons();
 		return new XLoadout() {
 			weapon1 = randomXWeapons[0],
 			weapon2 = randomXWeapons[1],
 			weapon3 = randomXWeapons[2],
 			melee = Helpers.randomRange(0, 1),
+		};
+	}
+
+	internal XLoadout clone() {
+		return new XLoadout {
+			weapon1 = weapon1,
+			weapon2 = weapon2,
+			weapon3 = weapon3,
+			melee = melee
 		};
 	}
 }
@@ -112,6 +121,19 @@ public class ZeroLoadout {
 	private bool inRange(int weaponNum) {
 		return weaponNum >= 0 && weaponNum <= 2;
 	}
+
+	public ZeroLoadout clone() {
+		return new ZeroLoadout() {
+			uppercutS = uppercutS,
+			uppercutA = uppercutA,
+			downThrustS = downThrustS,
+			downThrustA = downThrustA,
+			gigaAttack = gigaAttack,
+			hyperMode = hyperMode,
+			groundSpecial = groundSpecial,
+			airSpecial = airSpecial,
+		};
+	}
 }
 
 [ProtoContract]
@@ -150,15 +172,15 @@ public class VileLoadout {
 	}
 
 	public void validate() {
-		if (!inRange(cannon, 0, 2)) { cannon = 0; }
-		if (!inRange(vulcan, 0, 2)) { vulcan = 0; }
-		if (!inRange(missile, 0, 2)) { missile = 0; }
-		if (!inRange(rocketPunch, 0, 2)) { rocketPunch = 0; }
-		if (!inRange(napalm, -1, 3)) { napalm = 0; }
-		if (!inRange(ball, -1, 3)) { ball = 0; }
-		if (!inRange(laser, 0, 2)) { laser = 0; }
+		if (!inRange(cannon, -1, 2)) { cannon = 0; }
+		if (!inRange(vulcan, -3, 2)) { vulcan = 0; }
+		if (!inRange(missile, -1, 2)) { missile = 0; }
+		if (!inRange(rocketPunch, -1, 2)) { rocketPunch = 0; }
+		if (!inRange(napalm, -3, 3)) { napalm = 0; }
+		if (!inRange(ball, -2, 3)) { ball = 0; }
+		if (!inRange(laser, -1, 2)) { laser = 0; }
 		if (!inRange(cutter, -1, 2)) { cutter = 0; }
-		if (!inRange(flamethrower, -1, 3)) { flamethrower = 0; }
+		if (!inRange(flamethrower, -1, 4)) { flamethrower = 0; }
 
 		if (getTotalWeight() > maxWeight) {
 			cannon = 0;
@@ -189,6 +211,20 @@ public class VileLoadout {
 
 	private bool inRange(int weaponNum, int min = -1, int max = 2) {
 		return weaponNum >= min && weaponNum <= max;
+	}
+
+	internal VileLoadout clone() {
+		return new VileLoadout() {
+			cannon = cannon,
+			vulcan = vulcan,
+			missile = missile,
+			rocketPunch = rocketPunch,
+			napalm = napalm,
+			ball = ball,
+			laser = laser,
+			cutter = cutter,
+			flamethrower = flamethrower
+		};
 	}
 }
 
@@ -289,6 +325,22 @@ public class AxlLoadout {
 			hyperMode = Helpers.randomRange(0, 1),
 		};
 	}
+
+	public AxlLoadout clone() {
+		return new AxlLoadout() {
+			weapon2 = weapon2,
+			weapon3 = weapon3,
+			hyperMode = hyperMode,
+			blastLauncherAlt = blastLauncherAlt,
+			rayGunAlt = rayGunAlt,
+			blackArrowAlt = blackArrowAlt,
+			spiralMagnumAlt = spiralMagnumAlt,
+			boundBlasterAlt = boundBlasterAlt,
+			plasmaGunAlt = plasmaGunAlt,
+			iceGattlingAlt = iceGattlingAlt,
+			flameBurnerAlt = flameBurnerAlt
+		};
+	}
 }
 
 [ProtoContract]
@@ -318,7 +370,7 @@ public class SigmaLoadout {
 		sigmaForm = Helpers.clamp(sigmaForm, 0, 2);
 	}
 
-	public List<Weapon> getWeaponsFromLoadout(Player player, int sigmaWeaponSlot) {
+	/*public List<Weapon> getWeaponsFromLoadout(Player player, int sigmaWeaponSlot) {
 		sigmaWeaponSlot = Helpers.clamp(sigmaWeaponSlot, 0, 2);
 		var indices = new List<byte>();
 		indices.Add((byte)(maverick1 + startMaverick));
@@ -328,22 +380,76 @@ public class SigmaLoadout {
 		return indices.Select(index => {
 			return Weapon.getAllSigmaWeapons(player).Find(w => w.index == index).clone();
 		}).ToList();
+	}*/
+
+
+	public static SigmaLoadout createDefault() {
+		return new SigmaLoadout() {
+			maverick1 = 8,
+			maverick2 = 17,
+			sigmaForm = 0,
+			commandMode = 0
+		};
 	}
 
 	public static SigmaLoadout createRandom() {
-		List<int> weaponPool = new List<int>();
-		for (int i = (int)WeaponIds.ChillPenguin; i <= (int)WeaponIds.DrDoppler; i++) {
+		List<int> weaponPool = [];
+		for (int i = 0; i <= 26; i++) {
 			weaponPool.Add(i);
 		}
-
-		var randPool = Helpers.getRandomSubarray(weaponPool, 2);
+		List<int> randPool = Helpers.getRandomSubarray(weaponPool, 2);
 		return new SigmaLoadout() {
-			maverick1 = randPool[0] - (int)WeaponIds.ChillPenguin,
-			maverick2 = randPool[1] - (int)WeaponIds.ChillPenguin,
+			maverick1 = randPool[0],
+			maverick2 = randPool[1],
 			sigmaForm = Helpers.randomRange(0, 2),
-			commandMode = 2,
+			commandMode = (int)MaverickModeId.Summoner,
 			// Gacel: So it was an option for third maverick before?
 			//maverick3 = randPool[2],
+		};
+	}
+
+	public static Weapon getWeaponById(Player player, int weaponId, int commandMode) {
+		return weaponId switch {
+			// X1 stuff.
+			0 => new LaunchOctopusWeapon(player, commandMode),
+			1 => new StingChameleonWeapon(player, commandMode),
+			2 => new ArmoredArmadilloWeapon(player, commandMode),
+			3 => new FlameMammothWeapon(player, commandMode),
+			4 => new StormEagleWeapon(player, commandMode),
+			5 => new SparkMandrillWeapon(player, commandMode),
+			6 => new BoomerangKuwangerWeapon(player, commandMode),
+			7 => new ChillPenguinWeapon(player, commandMode),
+			8 => new VelguarderWeapon(player, commandMode),
+			// X2 Stuff.
+			9 => new CrystalSnailWeapon(player, commandMode),
+			10 => new BubbleCrabWeapon(player, commandMode),
+			11 => new MorphMothWeapon(player, commandMode),
+			12 => new WheelGatorWeapon(player, commandMode),
+			13 => new OverdriveOstrichWeapon(player, commandMode),
+			14 => new WireSpongeWeapon(player, commandMode),
+			15 => new MagnaCentipedeWeapon(player, commandMode),
+			16 => new FlameStagWeapon(player, commandMode),
+			17 => new FakeZeroWeapon(player, commandMode),
+			// X3 Stuff.
+			18 => new ToxicSeahorseWeapon(player, commandMode),
+			19 => new BlastHornetWeapon(player, commandMode),
+			20 => new VoltCatfishWeapon(player, commandMode),
+			21 => new CrushCrawfishWeapon(player, commandMode),
+			22 => new NeonTigerWeapon(player, commandMode),
+			23 => new GravityBeetleWeapon(player, commandMode),
+			24 => new BlizzardBuffaloWeapon(player, commandMode),
+			25 => new TunnelRhinoWeapon(player, commandMode),
+			26 => new DrDopplerWeapon(player, commandMode),
+			_ =>  new SigmaMenuWeapon()
+		};
+	}
+
+	internal SigmaLoadout clone() {
+		return new SigmaLoadout() {
+			maverick1 = maverick1,
+			maverick2 = maverick2,
+			sigmaForm = sigmaForm,
+			commandMode = commandMode
 		};
 	}
 }
@@ -351,11 +457,11 @@ public class SigmaLoadout {
 [ProtoContract]
 public class LoadoutData {
 	[ProtoMember(1)] public int playerId;
-	[ProtoMember(2)] public XLoadout xLoadout = new XLoadout();
-	[ProtoMember(3)] public ZeroLoadout zeroLoadout = new ZeroLoadout();
-	[ProtoMember(4)] public VileLoadout vileLoadout = new VileLoadout();
-	[ProtoMember(5)] public AxlLoadout axlLoadout = new AxlLoadout();
-	[ProtoMember(6)] public SigmaLoadout sigmaLoadout = new SigmaLoadout();
+	[ProtoMember(2)] public XLoadout xLoadout = new();
+	[ProtoMember(3)] public ZeroLoadout zeroLoadout = new();
+	[ProtoMember(4)] public VileLoadout vileLoadout = new();
+	[ProtoMember(5)] public AxlLoadout axlLoadout = new();
+	[ProtoMember(6)] public SigmaLoadout sigmaLoadout = new();
 	[ProtoMember(7)] public PZeroLoadout pzeroLoadout = new();
 
 	public static LoadoutData createRandom(int playerId) {
@@ -366,6 +472,19 @@ public class LoadoutData {
 			vileLoadout = VileLoadout.createRandom(),
 			axlLoadout = AxlLoadout.createRandom(),
 			sigmaLoadout = SigmaLoadout.createRandom(),
+			pzeroLoadout = PZeroLoadout.createRandom(),
+		};
+	}
+
+	public LoadoutData clone(int playerId) {
+		return new LoadoutData() {
+			playerId = playerId,
+			xLoadout = xLoadout.clone(),
+			zeroLoadout = zeroLoadout.clone(),
+			vileLoadout = vileLoadout.clone(),
+			axlLoadout = axlLoadout.clone(),
+			sigmaLoadout = sigmaLoadout.clone(),
+			pzeroLoadout = pzeroLoadout.clone()
 		};
 	}
 

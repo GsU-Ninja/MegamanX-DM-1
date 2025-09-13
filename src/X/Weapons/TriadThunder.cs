@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 
 namespace MMXOnline;
 
@@ -6,8 +7,10 @@ public class TriadThunder : Weapon {
 	public static TriadThunder netWeapon = new TriadThunder();
 
 	public TriadThunder() : base() {
+		displayName = "Triad Thunder";
 		shootSounds = new string[] { "triadThunder", "triadThunder", "triadThunder", "" };
 		fireRate = 135;
+		switchCooldown = 60;
 		index = (int)WeaponIds.TriadThunder;
 		weaponBarBaseIndex = 19;
 		weaponBarIndex = weaponBarBaseIndex;
@@ -15,12 +18,13 @@ public class TriadThunder : Weapon {
 		killFeedIndex = 42;
 		weaknessIndex = (int)WeaponIds.TornadoFang;
 		damage = "2/4+3";
-		effect = "Charged: Grants Super Armor.";
-		hitcooldown = "0.5/0.5-1";
-		Flinch = "6/26";
-		FlinchCD = "2.25/0";
+		effect = "U:Projectile won't destroy on hit nor give assists.\nC:Grants Flinch Immunity.";
+		hitcooldown = "30";
+		flinch = "6/26";
+		flinchCD = "2.25/0";
 		maxAmmo = 10;
 		ammo = maxAmmo;
+		hasCustomChargeAnim = true;
 	}
 
 	public override float getAmmoUsage(int chargeLevel) {
@@ -33,6 +37,7 @@ public class TriadThunder : Weapon {
 		Point pos = character.getShootPos();
 		int xDir = character.getShootXDir();
 		Player player = character.player;
+		MegamanX mmx = character as MegamanX ?? throw new NullReferenceException();
 
 		if (!player.ownedByLocalPlayer) {
 			return;
@@ -41,7 +46,7 @@ public class TriadThunder : Weapon {
 			if (player.ownedByLocalPlayer) {
 				new TriadThunderProj(
 					pos, xDir, player.input.isHeld(Control.Down, player) ? -1 : 1,
-					player, player.getNextActorNetId(), true
+					mmx, player, player.getNextActorNetId(), true
 				);
 				player.setNextActorNetId((ushort)(player.getNextActorNetId() + 4));
 			}
@@ -56,43 +61,49 @@ public class TriadThunder : Weapon {
 public class TriadThunderProj : Projectile {
 	int state;
 	Character? character;
+	MegamanX mmx = null!;
 	public List<TriadThunderBall> balls;
 	public TriadThunderProj(
-		Point pos, int xDir, int yDir, Player player, ushort netProjId, bool rpc = false
+		Point pos, int xDir, int yDir, Actor owner, Player player, ushort netProjId, bool rpc = false
 	) : base(
-		TriadThunder.netWeapon, pos, xDir, 0, 1, player, "triadthunder_proj",
-		Global.miniFlinch, 0.5f, netProjId, player.ownedByLocalPlayer
+		pos, xDir, owner, "triadthunder_proj", netProjId, player	
 	) {
+		weapon = TriadThunder.netWeapon;
+		damager.damage = 1;
+		damager.hitCooldown = 30;
+		damager.flinch = Global.miniFlinch;
 		projId = (int)ProjIds.TriadThunder;
 		character = player.character;
+		mmx = player.character as MegamanX ?? throw new NullReferenceException();
 		destroyOnHit = false;
 		shouldShieldBlock = false;
 		shouldVortexSuck = false;
 		this.yDir = yDir;
 		maxTime = 1.5f;
+		mmx.linkedTriadThunder = this;
 
 		visible = false;
 
 		// Clockwise from top
 		balls = new List<TriadThunderBall>() {
-			new TriadThunderBall(weapon, pos, xDir, player, netId: (ushort)(netProjId + 1)),
-			new TriadThunderBall(weapon, pos, xDir, player, netId: (ushort)(netProjId + 2)),
-			new TriadThunderBall(weapon, pos, xDir, player, netId: (ushort)(netProjId + 3)),
+			new TriadThunderBall(pos, xDir, this, player, netProjId: (ushort)(netProjId + 1)),
+			new TriadThunderBall(pos, xDir, this, player, netProjId: (ushort)(netProjId + 2)),
+			new TriadThunderBall(pos, xDir, this, player, netProjId: (ushort)(netProjId + 3)),
 		};
 
 		if (rpc) {
-			rpcCreate(pos, player, netProjId, xDir, new byte[] { (byte)(yDir + 2) });
+			rpcCreate(pos, owner, ownerPlayer, netId, xDir, new byte[] { (byte)(yDir + 2) });
 		}
 
 		isMelee = true;
-		if (player.character != null) {
-			owningActor = player.character;
+		if (ownerPlayer?.character != null) {
+			owningActor = ownerPlayer.character;
 		}
 	}
 
 	public static Projectile rpcInvoke(ProjParameters arg) {
 		return new TriadThunderProj(
-			arg.pos, arg.xDir, arg.extraData[0] - 2, arg.player, arg.netId
+			arg.pos, arg.xDir, arg.extraData[0] - 2, arg.owner, arg.player, arg.netId
 		);
 	}
 
@@ -148,25 +159,41 @@ public class TriadThunderProj : Projectile {
 			}
 		}
 	}
+
+	public override void onDestroy() {
+		base.onDestroy();
+		mmx.linkedTriadThunder = null;
+	}
 }
 
 public class TriadThunderBall : Projectile {
 	public float startDropTime;
 	public TriadThunderBall(
-		Weapon weapon, Point pos, int xDir, Player player, ushort netId
+		Point pos, int xDir, Actor owner, Player player, ushort netProjId, bool rpc = false
 	) : base(
-		weapon, pos, xDir, 0, 2, player, "triadthunder_ball",
-		Global.miniFlinch, 0.5f, netId, player.ownedByLocalPlayer
+		pos, xDir, owner, "triadthunder_ball", netProjId, player	
 	) {
+		weapon = TriadThunder.netWeapon;
+		damager.damage = 2;
+		damager.hitCooldown = 30;
+		damager.flinch = Global.miniFlinch;
 		projId = (int)ProjIds.TriadThunder;
 		destroyOnHit = false;
 		shouldShieldBlock = false;
 		maxTime = 2.25f;
 
 		isMelee = true;
-		if (player.character != null) {
-			owningActor = player.character;
+		if (ownerPlayer.character != null) {
+			owningActor = ownerPlayer.character;
 		}
+		if (rpc) {
+			rpcCreate(pos, owner, ownerPlayer, netId, xDir);
+		}
+	}
+	public static Projectile rpcInvoke(ProjParameters args) {
+		return new TriadThunderBall(
+			args.pos, args.xDir, args.owner, args.player, args.netId
+		);
 	}
 
 	public override void update() {
@@ -187,7 +214,11 @@ public class TriadThunderBeam : Actor {
 	float time = 1;
 	Player player;
 	public List<TriadThunderBeamPiece> pieces = new List<TriadThunderBeamPiece>();
-	public TriadThunderBeam(Point pos, int type, int xDir, int yDir, Player player, bool ownedByLocalPlayer) : base("empty", pos, null, ownedByLocalPlayer, false) {
+	public TriadThunderBeam(
+		Point pos, int type, int xDir, int yDir, Player player, bool ownedByLocalPlayer
+	) : base(
+		"empty", pos, null, ownedByLocalPlayer, false
+	) {
 		this.xDir = xDir;
 		this.yDir = yDir;
 		this.type = type;
@@ -211,7 +242,7 @@ public class TriadThunderBeam : Actor {
 			time = 0;
 			count++;
 			Point lastPos = pieces.Count > 0 ? pieces[pieces.Count - 1].pos : pos;
-			pieces.Add(new TriadThunderBeamPiece(new TriadThunder(), lastPos.addxy(xInc, yInc), xDir, yDir, player, type, player.getNextActorNetId(), rpc: true));
+			pieces.Add(new TriadThunderBeamPiece(lastPos.addxy(xInc, yInc), xDir, yDir, this, player, type, player.getNextActorNetId(), rpc: true));
 		}
 		if (count >= 5) {
 			destroySelf();
@@ -220,13 +251,17 @@ public class TriadThunderBeam : Actor {
 }
 
 public class TriadThunderBeamPiece : Projectile {
-	int type;
+	public int type = 0;
 	public TriadThunderBeamPiece(
-		Weapon weapon, Point pos, int xDir, int yDir, Player player, int type, ushort netProjId, bool rpc = false
+
+		Point pos, int xDir, int yDir, Actor owner, Player player, int type, ushort? netProjId, bool rpc = false
 	) : base(
-		weapon, pos, xDir, 0, 2, player, type == 0 ? "triadthunder_beam_up" : "triadthunder_beam_diag",
-		Global.miniFlinch, 0.5f, netProjId, player.ownedByLocalPlayer
+		pos, xDir, owner,  type == 0 ? "triadthunder_beam_up" : "triadthunder_beam_diag", netProjId, player	
 	) {
+		weapon = TriadThunder.netWeapon;
+		damager.damage = 2;
+		damager.hitCooldown = 30;
+		damager.flinch = Global.miniFlinch;
 		this.type = type;
 		this.yDir = yDir;
 		maxTime = 0.125f;
@@ -239,8 +274,14 @@ public class TriadThunderBeamPiece : Projectile {
 			vel = new Point(212 * xDir, 212 * yDir);
 		}
 		if (rpc) {
-			rpcCreate(pos, player, netProjId, xDir);
+			rpcCreate(pos, owner, ownerPlayer, netId, xDir, new byte[] { (byte)(yDir + 2), (byte)type });
 		}
+	}
+	public static Projectile rpcInvoke(ProjParameters args) {
+		return new TriadThunderBeamPiece(
+			args.pos, args.xDir, args.extraData[0] - 2, args.owner,
+			args.player, args.extraData[1], args.netId
+		);
 	}
 
 	public override void update() {
@@ -249,19 +290,27 @@ public class TriadThunderBeamPiece : Projectile {
 }
 
 public class TriadThunderProjCharged : Projectile {
-	public TriadThunderProjCharged(Weapon weapon, Point pos, int xDir, int type, Player player, ushort netProjId, bool rpc = false) :
-		base(weapon, pos, xDir, 0, 4, player, "triadthunder_charged", Global.defFlinch, 0.5f, netProjId, player.ownedByLocalPlayer) {
+	public int type = 0;
+	public TriadThunderProjCharged(
+		Point pos, int xDir, int type, Actor owner, Player player, ushort? netProjId, bool rpc = false
+	) : base(
+		pos, xDir, owner, "triadthunder_charged", netProjId, player
+	) {	
+		weapon = type == 1 ? SparkMandrill.netWeapon : type == 2 ? VoltCatfish.netWeapon : TriadThunder.netWeapon;
+		damager.damage = 4;
+		damager.hitCooldown = 30;
+		damager.flinch = Global.defFlinch;
 		projId = (int)ProjIds.TriadThunderCharged;
+		this.type = type;
 		if (type == 1) {
 			maxTime = 1f;
 			projId = (int)ProjIds.SparkMSpark;
-			// netcodeOverride = NetcodeModel.FavorDefender;
 			changeSprite("sparkm_proj_spark", true);
 		} else if (type == 2) {
 			projId = (int)ProjIds.VoltCBall;
 			changeSprite("voltc_proj_ground_thunder", true);
-			maxTime = 0.75f;
-			wallCrawlSpeed = 150;
+			maxTime = 0.9f;
+			wallCrawlSpeed = 185;
 		} else {
 			maxTime = 1f;
 		}
@@ -272,7 +321,7 @@ public class TriadThunderProjCharged : Projectile {
 		setupWallCrawl(new Point(xDir, 0));
 
 		if (rpc) {
-			rpcCreate(pos, player, netProjId, xDir, new byte[] { (byte)type });
+			rpcCreate(pos, owner, ownerPlayer, netId, xDir, new byte[] { (byte)type });
 		}
 	}
 
@@ -283,14 +332,21 @@ public class TriadThunderProjCharged : Projectile {
 
 	public static Projectile rpcInvoke(ProjParameters arg) {
 		return new TriadThunderProjCharged(
-			TriadThunder.netWeapon, arg.pos, arg.xDir, arg.extraData[0], arg.player, arg.netId
+			arg.pos, arg.xDir, arg.extraData[0], arg.owner, arg.player, arg.netId
 		);
 	}
 }
 
 public class TriadThunderQuake : Projectile {
-	public TriadThunderQuake(Weapon weapon, Point pos, int xDir, Player player, ushort netProjId, bool rpc = false) :
-		base(weapon, pos, xDir, 0, 3, player, "triadthunder_charged_quake", Global.defFlinch, 1f, netProjId, player.ownedByLocalPlayer) {
+	public TriadThunderQuake(
+		Point pos, int xDir, Actor owner, Player player, ushort? netId, bool rpc = false
+	) : base(
+		pos, xDir, owner, "triadthunder_charged_quake", netId, player
+	) {
+		weapon = TriadThunder.netWeapon;
+		damager.damage = 3;
+		damager.hitCooldown = 30;
+		damager.flinch = Global.defFlinch;
 		useGravity = false;
 		projId = (int)ProjIds.TriadThunderQuake;
 		maxTime = 0.25f;
@@ -299,18 +355,18 @@ public class TriadThunderQuake : Projectile {
 		shouldVortexSuck = false;
 
 		if (rpc) {
-			rpcCreate(pos, player, netProjId, xDir);
+			rpcCreate(pos, owner, ownerPlayer, netId, xDir);
 		}
 
 		isMelee = true;
-		if (player.character != null) {
-			owningActor = player.character;
+		if (ownerPlayer?.character != null) {
+			owningActor = ownerPlayer.character;
 		}
 	}
 
-	public static Projectile rpcInvoke(ProjParameters arg) {
+	public static Projectile rpcInvoke(ProjParameters args) {
 		return new TriadThunderQuake(
-			TriadThunder.netWeapon, arg.pos, arg.xDir, arg.player, arg.netId
+			args.pos, args.xDir, args.owner, args.player, args.netId
 		);
 	}
 }
@@ -318,14 +374,14 @@ public class TriadThunderQuake : Projectile {
 public class TriadThunderChargedState : CharState {
 	bool fired = false;
 	bool groundedOnce;
-	public TriadThunderChargedState(bool grounded) : base(!grounded ? "fall" : "punch_ground", "", "", "") {
+	public MegamanX mmx = null!;
+	public TriadThunderChargedState(bool grounded) : base(!grounded ? "fall" : "punch_ground") {
 		superArmor = true;
 	}
 
 	public override void update() {
 		base.update();
 		if (!character.ownedByLocalPlayer) return;
-
 		if (!groundedOnce) {
 			if (!character.grounded) {
 				stateTime = 0;
@@ -336,30 +392,27 @@ public class TriadThunderChargedState : CharState {
 				character.changeSprite("mmx_punch_ground", true);
 			}
 		}
-
 		if (character.frameIndex >= 6 && !fired) {
 			fired = true;
-
 			float x = character.pos.x;
 			float y = character.pos.y;
-
 			character.shakeCamera(sendRpc: true);
-
-			var weapon = new TriadThunder();
-			new TriadThunderProjCharged(weapon, new Point(x, y), -1, 0, player, player.getNextActorNetId(), rpc: true);
-			new TriadThunderProjCharged(weapon, new Point(x, y), 1, 0, player, player.getNextActorNetId(), rpc: true);
-			new TriadThunderQuake(weapon, new Point(x, y), 1, player, player.getNextActorNetId(), rpc: true);
-
+			new TriadThunderProjCharged(new Point(x, y), -1, 0, mmx, player, player.getNextActorNetId(), rpc: true);
+			new TriadThunderProjCharged(new Point(x, y), 1, 0, mmx, player, player.getNextActorNetId(), rpc: true);
+			new TriadThunderQuake(new Point(x, y), 1, mmx, player, player.getNextActorNetId(), rpc: true);
 			character.playSound("crashX3", forcePlay: false, sendRpc: true);
 		}
-
-		if (stateTime > 0.75f) {
+		if (character.isAnimOver()) {
+			character.changeToIdleOrFall();
+		}
+		else if (stateTime > 120f/120f) {
 			character.changeToIdleOrFall();
 		}
 	}
 
 	public override void onEnter(CharState oldState) {
 		base.onEnter(oldState);
+		mmx = character as MegamanX ?? throw new NullReferenceException();
 		if (character.vel.y < 0) character.vel.y = 0;
 	}
 }

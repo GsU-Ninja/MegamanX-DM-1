@@ -1,20 +1,27 @@
 ﻿using System;
+using System.Collections.Generic;
 
 namespace MMXOnline;
 
 public class StormEagle : Maverick {
+	public static Weapon netWeapon = new Weapon(WeaponIds.StormEGeneric, 99);
 	public StormEDiveWeapon diveWeapon;
 
-	public StormEagle(Player player, Point pos, Point destPos, int xDir, ushort? netId, bool ownedByLocalPlayer, bool sendRpc = false) :
-		base(player, pos, destPos, xDir, netId, ownedByLocalPlayer) {
-		diveWeapon = new StormEDiveWeapon(player);
+	public StormEagle(
+		Player player, Point pos, Point destPos, int xDir,
+		ushort? netId, bool ownedByLocalPlayer, bool sendRpc = false
+	) : base(
+		player, pos, destPos, xDir, netId, ownedByLocalPlayer
+	) {
+		stateCooldowns = new() {
+			{ typeof(StormEAirShootState), new(120, true, true) },
+			{ typeof(MShoot), new(120, false, false) },
+			{ typeof(StormEEggState), new(90, true) },
+			{ typeof(StormEGustState), new(45, true) },
+			{ typeof(StormEDiveState), new(60) }
+		};
 
-		stateCooldowns.Add(typeof(StormEAirShootState), new MaverickStateCooldown(true, true, 2f));
-		stateCooldowns.Add(typeof(MShoot), new MaverickStateCooldown(true, true, 2f));
-		stateCooldowns.Add(typeof(StormEEggState), new MaverickStateCooldown(false, true, 1.5f));
-		stateCooldowns.Add(typeof(StormEGustState), new MaverickStateCooldown(false, true, 0.75f));
-		stateCooldowns.Add(typeof(StormEDiveState), new MaverickStateCooldown(false, false, 1f));
-
+		diveWeapon = new StormEDiveWeapon();
 		weapon = new Weapon(WeaponIds.StormEGeneric, 99);
 
 		awardWeaponId = WeaponIds.StormTornado;
@@ -31,6 +38,7 @@ public class StormEagle : Maverick {
 		flyBarIndexes = (44, 38);
 		maxFlyBar = 960;
 		flyBar = 960;
+		height = 44;
 	}
 
 	public override void update() {
@@ -76,48 +84,73 @@ public class StormEagle : Maverick {
 
 	public MaverickState getShootState() {
 		return new MShoot((Point pos, int xDir) => {
-			playSound("tornado", sendRpc: true);
-			new TornadoProj(new StormETornadoWeapon(), pos, xDir, true, player, player.getNextActorNetId(), sendRpc: true);
-		}, null);
+			new TornadoProj(pos, xDir, true, this, player, player.getNextActorNetId(), rpc: true);
+		}, "tornado");
+
+	}
+
+	public override MaverickState[] strikerStates() {
+		return [
+			getShootState(),
+			new StormEEggState(true),
+			new StormEGustState(isStriker: true),
+			new StormEJumpAI(false),
+			//new StormEJumpAI(true)
+		];
 	}
 
 	public override MaverickState[] aiAttackStates() {
-		return new MaverickState[]
-		{
-				getShootState(),
-				new StormEEggState(true),
-				new StormEGustState(),
+		float enemyDist = 300;
+		if (target != null) {
+			enemyDist = target.pos.distanceTo(pos);
+		}
+		List<MaverickState> aiStates = [
+			new StormEEggState(grounded)
+		];
+		if (enemyDist > 50) {
+			aiStates.Add(getShootState());
+		}
+		if (grounded && enemyDist <= 80) {
+			aiStates.Add(new StormEGustState());
+		}
+		if (grounded && enemyDist <= 100) {
+			aiStates.Add(new StormEJumpAI(false));
+		}
+		if (!grounded && enemyDist <= 100) {
+			aiStates.Add(new StormEDiveState());
+		}
+		return aiStates.ToArray();
+	}
+
+	// Melee IDs for attacks.
+	public enum MeleeIds {
+		None = -1,
+		Dive,
+	}
+
+	// This can run on both owners and non-owners. So data used must be in sync.
+	public override int getHitboxMeleeId(Collider hitbox) {
+		return (int)(sprite.name switch {
+			"storme_dive" or "storme_dive2" => MeleeIds.Dive,
+			_ => MeleeIds.None
+		});
+	}
+
+	// This can be called from a RPC, so make sure there is no character conditionals here.
+	public override Projectile? getMeleeProjById(int id, Point pos, bool addToLevel = true) {
+		return (MeleeIds)id switch {
+			MeleeIds.Dive => new GenericMeleeProj(
+				diveWeapon, pos, ProjIds.StormEDive, player,
+				4, Global.defFlinch, addToLevel: addToLevel
+			),
+			_ => null
 		};
-	}
-
-	public override MaverickState getRandomAttackState() {
-		if (grounded) {
-			var attacks = new MaverickState[]
-			{
-					getShootState(),
-					new StormEEggState(true),
-					new StormEGustState(),
-			};
-			return attacks.GetRandomItem();
-		} else {
-			var attacks = new MaverickState[]
-			{
-					new StormEEggState(false),
-			};
-			return attacks.GetRandomItem();
-		}
-	}
-
-	public override Projectile? getProjFromHitbox(Collider hitbox, Point centerPoint) {
-		if (sprite.name.Contains("dive")) {
-			return new GenericMeleeProj(diveWeapon, centerPoint, ProjIds.StormEDive, player);
-		}
-		return null;
 	}
 }
 
 #region weapons
 public class StormETornadoWeapon : Weapon {
+	public static StormETornadoWeapon netWeapon = new();
 	public StormETornadoWeapon() {
 		index = (int)WeaponIds.StormETornado;
 		killFeedIndex = 99;
@@ -125,14 +158,15 @@ public class StormETornadoWeapon : Weapon {
 }
 
 public class StormEDiveWeapon : Weapon {
-	public StormEDiveWeapon(Player player) {
-		damager = new Damager(player, 4, Global.defFlinch, 0.5f);
+	public static StormEDiveWeapon netWeapon = new();
+	public StormEDiveWeapon() {
 		index = (int)WeaponIds.StormEDive;
 		killFeedIndex = 99;
 	}
 }
 
 public class StormEEggWeapon : Weapon {
+	public static StormEEggWeapon netWeapon = new();
 	public StormEEggWeapon() {
 		index = (int)WeaponIds.StormEEgg;
 		killFeedIndex = 99;
@@ -140,6 +174,7 @@ public class StormEEggWeapon : Weapon {
 }
 
 public class StormEBirdWeapon : Weapon {
+	public static StormEBirdWeapon netWeapon = new();
 	public StormEBirdWeapon() {
 		index = (int)WeaponIds.StormEBird;
 		killFeedIndex = 99;
@@ -147,6 +182,7 @@ public class StormEBirdWeapon : Weapon {
 }
 
 public class StormEGustWeapon : Weapon {
+	public static StormEGustWeapon netWeapon = new();
 	public StormEGustWeapon() {
 		index = (int)WeaponIds.StormEGust;
 		killFeedIndex = 99;
@@ -156,8 +192,15 @@ public class StormEGustWeapon : Weapon {
 
 #region projectiles
 public class StormEEggProj : Projectile {
-	public StormEEggProj(Weapon weapon, Point pos, int xDir, Player player, ushort netProjId, bool rpc = false) :
-		base(weapon, pos, xDir, 100, 2, player, "storme_proj_egg", 0, 0.5f, netProjId, player.ownedByLocalPlayer) {
+	public StormEEggProj(
+		Point pos, int xDir, Actor owner, Player player, ushort? netId, bool rpc = false
+	) : base(
+		pos, xDir, owner, "storme_proj_egg", netId, player	
+	) {
+		weapon = StormEEggWeapon.netWeapon;
+		damager.damage = 2;
+		damager.hitCooldown = 30;
+		vel = new Point(100 * xDir, 0);
 		projId = (int)ProjIds.StormEEgg;
 		maxTime = 0.675f;
 		useGravity = true;
@@ -167,8 +210,13 @@ public class StormEEggProj : Projectile {
 		fadeSprite = "explosion";
 
 		if (rpc) {
-			rpcCreate(pos, player, netProjId, xDir);
+			rpcCreate(pos, owner, ownerPlayer, netId, xDir);
 		}
+	}
+	public static Projectile rpcInvoke(ProjParameters args) {
+		return new StormEEggProj(
+			args.pos, args.xDir, args.owner, args.player, args.netId
+		);
 	}
 
 	public override void update() {
@@ -184,32 +232,56 @@ public class StormEEggProj : Projectile {
 		base.onDestroy();
 		if (!ownedByLocalPlayer) return;
 		if (time > maxTime) return;
-		Weapon w = new StormEBirdWeapon();
-		new StormEBirdProj(w, pos, xDir, new Point(-1.25f * xDir, -1), new Point(xDir, 0.1f), owner, owner.getNextActorNetId(), rpc: true);
-		new StormEBirdProj(w, pos, xDir, new Point(-1.25f * xDir, 1), new Point(xDir * 0.85f, -0.05f), owner, owner.getNextActorNetId(), rpc: true);
-		new StormEBirdProj(w, pos, xDir, new Point(1.25f * xDir, -1), new Point(xDir * 0.85f, 0.05f), owner, owner.getNextActorNetId(), rpc: true);
-		new StormEBirdProj(w, pos, xDir, new Point(1.25f * xDir, 1), new Point(xDir, -0.125f), owner, owner.getNextActorNetId(), rpc: true);
+		new StormEBirdProj(pos, xDir, 1,
+		this, owner, owner.getNextActorNetId(), rpc: true);
+		new StormEBirdProj(pos, xDir, 2,
+		this, owner, owner.getNextActorNetId(), rpc: true);
+		new StormEBirdProj(pos, xDir, 3,
+		this, owner, owner.getNextActorNetId(), rpc: true);
+		new StormEBirdProj(pos, xDir, 4,
+		this, owner, owner.getNextActorNetId(), rpc: true);
 	}
 }
 
 public class StormEBirdProj : Projectile, IDamagable {
 	public int health = 1;
-	Point afterUnitVel;
-	public StormEBirdProj(Weapon weapon, Point pos, int xDir, Point startUnitVel, Point afterUnitVel, Player player, ushort netProjId, bool rpc = false) :
-		base(weapon, pos, xDir, 0, 3, player, "storme_proj_baby", 0, 0.5f, netProjId, player.ownedByLocalPlayer) {
+	public int type = 1;
+	public StormEBirdProj(
+		Point pos, int xDir, int type, Actor owner, Player player, ushort? netId, bool rpc = false
+	) : base(
+		pos, xDir, owner, "storme_proj_baby", netId, player	
+	) {
+		weapon = StormEBirdWeapon.netWeapon;
+		damager.damage = 3;
+		damager.hitCooldown = 30;
 		projId = (int)ProjIds.StormEBird;
 		maxTime = 1.5f;
 		fadeSound = "explosion";
 		fadeSprite = "explosion";
-		vel = startUnitVel.times(50);
-		xDir = MathF.Sign(vel.x);
-		this.afterUnitVel = afterUnitVel;
-
+		this.type = type;
+		
 		if (rpc) {
-			rpcCreate(pos, player, netProjId, xDir);
+			rpcCreate(pos, owner, ownerPlayer, netId, xDir, (byte)type);
 		}
-		// ToDo: Make local.
-		canBeLocal = false;
+	}
+	public static Projectile rpcInvoke(ProjParameters args) {
+		return new StormEBirdProj(
+			args.pos, args.xDir, args.extraData[0], args.owner, args.player, args.netId
+		);
+	}
+	public override void update() {
+		base.update();
+		if (time < 20f/60f) {
+			if (type == 3) vel = new Point(-100 * xDir, -32);		
+			if (type == 4) vel = new Point(10 * xDir, -32);
+			if (type == 1) vel = new Point(10 * xDir, 32);
+			if (type == 2) vel = new Point(-100 * xDir, 32);
+			
+		} else if (type == 4) vel = new Point(150 * xDir, 10);
+		  else if (type == 1) vel = new Point(170 * xDir, -17);
+		  else if (type == 2) vel = new Point(150 * xDir, -5);
+		  else if (type == 3) vel = new Point(165 * xDir, 10);
+		
 	}
 
 	public void applyDamage(float damage, Player? owner, Actor? actor, int? weaponIndex, int? projId) {
@@ -231,25 +303,33 @@ public class StormEBirdProj : Projectile, IDamagable {
 		return false;
 	}
 
-	public override void update() {
-		base.update();
-		if (time > 0.25f) {
-			vel = afterUnitVel.times(150);
-			xDir = MathF.Sign(vel.x);
-		}
+	public bool isPlayableDamagable() {
+		return false;
 	}
+
 }
 
 public class StormEGustProj : Projectile {
 	float maxSpeed = 250;
-	public StormEGustProj(Weapon weapon, Point pos, int xDir, Player player, ushort netProjId, bool rpc = false) :
-		base(weapon, pos, xDir, 250, 0, player, "storme_proj_gust", 0, 0.5f, netProjId, player.ownedByLocalPlayer) {
+	public StormEGustProj(
+		Point pos, int xDir, Actor owner, Player player, ushort? netId, bool rpc = false
+	) : base(
+		pos, xDir, owner, "storme_proj_gust", netId, player	
+	) {
+		weapon = StormEGustWeapon.netWeapon;
+		damager.hitCooldown = 30;
+		vel = new Point(250 * xDir, 0);
 		projId = (int)ProjIds.StormEGust;
 		maxTime = 0.75f;
 
 		if (rpc) {
-			rpcCreate(pos, player, netProjId, xDir);
+			rpcCreate(pos, owner, ownerPlayer, netId, xDir);
 		}
+	}
+	public static Projectile rpcInvoke(ProjParameters args) {
+		return new StormEGustProj(
+			args.pos, args.xDir, args.owner, args.player, args.netId
+		);
 	}
 
 	public override void update() {
@@ -259,32 +339,44 @@ public class StormEGustProj : Projectile {
 
 
 	public override void onHitDamagable(IDamagable damagable) {
-		var character = damagable as Character;
-		if (character == null) return;
-		if (character.charState.invincible) return;
-		if (character.isImmuneToKnockback()) return;
-
-		//character.damageHistory.Add(new DamageEvent(damager.owner, weapon.killFeedIndex, true, Global.frameCount));
-		if (character.isClimbingLadder()) {
-			character.setFall();
-		} else if (!character.pushedByTornadoInFrame) {
-			float modifier = 1;
-			if (character.grounded) modifier = 0.5f;
-			if (character.charState is Crouch) modifier = 0.25f;
-			character.move(new Point(maxSpeed * 0.9f * xDir * modifier, 0));
+		if (!damagable.isPlayableDamagable()) { return; }
+		if (damagable is not Actor actor || !actor.ownedByLocalPlayer) {
+			return;
+		}
+		float modifier = 1;
+		if (actor.grounded) { modifier = 0.5f; };
+		if (damagable is Character character) {
+			if (character.isPushImmune()) { return; }
+			if (character.charState is Crouch) { modifier = 0.25f; }
 			character.pushedByTornadoInFrame = true;
 		}
+		//character.damageHistory.Add(new DamageEvent(damager.owner, weapon.killFeedIndex, true, Global.frameCount));
+		actor.move(new Point(maxSpeed * 0.9f * xDir * modifier, 0));
 	}
 }
 #endregion
 
 #region states
-public class StormEDiveState : MaverickState {
+public class SEagleMState : MaverickState {
+	public StormEagle StormEagleed = null!;
+	public SEagleMState(
+		string sprite, string transitionSprite = ""
+	) : base(
+		sprite, transitionSprite
+	) {
+	}
+
+	public override void onEnter(MaverickState oldState) {
+		base.onEnter(oldState);
+		StormEagleed = maverick as StormEagle ?? throw new NullReferenceException();
+	}
+}
+public class StormEDiveState : SEagleMState {
 	Point diveVel;
 	bool reverse;
 	float incAmount;
 	bool wasPrevStateFly;
-	public StormEDiveState() : base("dive", "") {
+	public StormEDiveState() : base("dive") {
 	}
 
 	public override void update() {
@@ -353,24 +445,19 @@ public class StormEDiveState : MaverickState {
 	}
 }
 
-public class StormEGustState : MaverickState {
+public class StormEGustState : SEagleMState {
 	float soundTime = 0.5f;
 	float gustTime;
-	public StormEGustState() : base("flap", "") {
-	}
-
-	public override bool canEnter(Maverick maverick) {
-		return base.canEnter(maverick);
-	}
-
-	public override void onEnter(MaverickState oldState) {
-		base.onEnter(oldState);
-		maverick.stopMoving();
+	public bool isStriker;
+	public StormEGustState(bool isStriker = false) : base("flap")
+	{
+		this.isStriker = isStriker;
+		aiAttackCtrl = true;
 	}
 
 	public override void update() {
 		base.update();
-		if (player == null) return;
+		if (StormEagleed == null) return;
 
 		soundTime += Global.spf;
 		if (soundTime > 0.4f) {
@@ -383,31 +470,26 @@ public class StormEGustState : MaverickState {
 			gustTime = 0;
 			float randX = maverick.pos.x + maverick.xDir * Helpers.randomRange(0, 65);
 			Point pos = new Point(randX, maverick.pos.y);
-			new StormEGustProj(new StormEGustWeapon(), pos, maverick.xDir, player, player.getNextActorNetId(), rpc: true);
+			new StormEGustProj(
+				pos, maverick.xDir, StormEagleed, player,
+				player.getNextActorNetId(), rpc: true
+			);
 		}
-
-		if (isAI) {
-			if (stateTime > 4) {
-				maverick.changeState(new MIdle());
-			}
-		} else {
+		if (isStriker) {
+			maverick.maxStrikerTime = 180;
+		} else  {
 			if (!input.isHeld(Control.Dash, player)) {
-				maverick.changeState(new MIdle());
+				maverick.changeToIdleFallOrFly();
 			}
 		}
 	}
 }
 
-public class StormEEggState : MaverickState {
+public class StormEEggState : SEagleMState {
 	bool isGrounded;
-	public StormEEggState(bool isGrounded) : base(isGrounded ? "air_eggshoot" : "air_eggshoot", "") {
+	public StormEEggState(bool isGrounded) : base(isGrounded ? "air_eggshoot" : "air_eggshoot") {
 		this.isGrounded = isGrounded;
 	}
-
-	public override bool canEnter(Maverick maverick) {
-		return base.canEnter(maverick);
-	}
-
 	public override void onEnter(MaverickState oldState) {
 		base.onEnter(oldState);
 		if (!isGrounded) {
@@ -418,12 +500,14 @@ public class StormEEggState : MaverickState {
 
 	public override void update() {
 		base.update();
-		if (player == null) return;
+		if (StormEagleed == null) return;
 
 		if (maverick.frameIndex == 3 && !once) {
 			once = true;
-			var poi = maverick.getFirstPOI().Value;
-			new StormEEggProj(new StormEEggWeapon(), poi, maverick.xDir, player, player.getNextActorNetId(), rpc: true);
+			new StormEEggProj(
+				StormEagleed.getFirstPOI() ?? StormEagleed.getCenterPos(), maverick.xDir,
+				StormEagleed, player, player.getNextActorNetId(), rpc: true
+			);
 		}
 
 		if (maverick.isAnimOver()) {
@@ -432,22 +516,28 @@ public class StormEEggState : MaverickState {
 	}
 }
 
-public class StormEAirShootState : MaverickState {
+public class StormEAirShootState : SEagleMState {
 	bool shotOnce;
-	public StormEAirShootState() : base("air_shoot", "") {
+
+	public StormEAirShootState() : base("air_shoot") {
 	}
 
 	public override void update() {
 		base.update();
-		if (player == null) return;
+		if (StormEagleed == null) return;
 
 		Point? shootPos = maverick.getFirstPOI();
 		if (!shotOnce && shootPos != null) {
 			shotOnce = true;
 			maverick.playSound("tornado", sendRpc: true);
-			new TornadoProj(new StormETornadoWeapon(), shootPos.Value, maverick.xDir, true, player, player.getNextActorNetId(), sendRpc: true);
+			new TornadoProj(
+				shootPos.Value, maverick.xDir, true, StormEagleed,
+				player, player.getNextActorNetId(), rpc: true
+			);
 		}
-
+		if (maverick.isAI && maverick.controlMode == MaverickModeId.Striker) {
+			maverick.changeToIdleOrFall();
+		}
 		if (maverick.isAnimOver()) {
 			maverick.changeState(new MFly());
 		}
@@ -457,9 +547,31 @@ public class StormEAirShootState : MaverickState {
 		base.onEnter(oldState);
 		maverick.useGravity = false;
 	}
+}
 
-	public override void onExit(MaverickState newState) {
-		base.onExit(newState);
+public class StormEJumpAI : SEagleMState {
+	public bool isTornado;
+	public StormEJumpAI(bool isTornado) : base("jump", "jump_start") {
+		this.isTornado = isTornado;
+	}
+
+	public override void update() {
+		base.update();
+		if (stateTime > 24 / 60f && !isTornado) {
+			maverick.changeState(new StormEDiveState());
+		}
+		if (isTornado && stateTime > 18 / 60f) {
+			maverick.changeState(new StormEAirShootState());
+		}
+	}
+
+	public override void onEnter(MaverickState oldState) {
+		base.onEnter(oldState);
+		if (isTornado) {
+			maverick.vel.y = -maverick.getJumpPower() * 0.75f;
+		} else 
+		maverick.vel.y = -maverick.getJumpPower() * 1.25f;
 	}
 }
+
 #endregion

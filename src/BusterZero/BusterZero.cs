@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.InteropServices;
 
 namespace MMXOnline;
 
@@ -14,6 +15,7 @@ public class BusterZero : Character {
 	public bool isBlackZero;
 	public int stockedBusterLv;
 	public bool stockedSaber;
+	public float stockedTime;
 	public List<DZBusterProj> zeroLemonsOnField = new();
 	public YammarkOption? YammarkOptionOnField;
 	public ZBusterSaber meleeWeapon = new();
@@ -44,30 +46,61 @@ public class BusterZero : Character {
 	public BZBeeCursorAnim? parasiteBombAnim;
 	public float YammarkShotCooldown;
 	public float shootCooldown;
+	public int lastShootPressed;
+	public float aiAttackCooldown;
+	public float jumpTimeAI;
 
 	public BusterZero(
 		Player player, float x, float y, int xDir,
-		bool isVisible, ushort? netId, bool ownedByLocalPlayer, bool isWarpIn = true
+		bool isVisible, ushort? netId, bool ownedByLocalPlayer,
+		bool isWarpIn = true, int? heartTanks = null, bool isATrans = false
 	) : base(
-		player, x, y, xDir, isVisible, netId, ownedByLocalPlayer, isWarpIn
+		player, x, y, xDir, isVisible,
+		netId, ownedByLocalPlayer,
+		isWarpIn, heartTanks, isATrans
 	) {
 		charId = CharIds.BusterZero;
+		altSoundId = AltSoundIds.X3;
 		altCtrlsLength = 1;
 		if (!player.weapons.Any(w => w is ZeroBuster)) {
 			player.weapons.Add(new ZeroBuster());
 		}
 	}
-
-	public override void update() {
-		if (stockedBusterLv > 0 || stockedSaber) {
-			var renderGfx = stockedBusterLv switch {
-				_ when stockedSaber || stockedBusterLv == 2 => RenderEffectType.ChargeGreen,
-				1 => RenderEffectType.ChargePink,
-				2 => RenderEffectType.ChargeOrange,
-				_ => RenderEffectType.ChargeBlue
-			};
-			addRenderEffect(renderGfx, 0.033333f, 0.1f);
+	public override CharState getTauntState() {
+		return new BZeroTaunt();
+	}
+	public override void preUpdate() {
+		base.preUpdate();
+		if (!ownedByLocalPlayer) {
+			return;
 		}
+		// Cooldowns.
+		Helpers.decrementFrames(ref zSaberCooldown);
+		Helpers.decrementFrames(ref lemonCooldown);
+		Helpers.decrementFrames(ref aiAttackCooldown);
+		// For the shooting animation.
+		if (shootAnimTime > 0) {
+			shootAnimTime -= speedMul;
+			if (shootAnimTime <= 0) {
+				shootAnimTime = 0;
+				if (sprite.name == getSprite(charState.shootSpriteEx)) {
+					changeSpriteFromName(charState.defaultSprite, false);
+					if (charState is WallSlide) {
+						frameIndex = sprite.totalFrameNum - 1;
+					}
+				}
+			}
+		}
+		if (stockedSaber || stockedBusterLv > 0) {
+			stockedTime += Global.spf;
+			if (stockedTime >= 61f / 60f) {
+				stockedTime = 0;
+				playSound("stockedSaber");
+			}
+		}
+	}
+	public override void update() {
+		base.update();
 		if (!ownedByLocalPlayer) {
 			return;
 		}
@@ -126,22 +159,14 @@ public class BusterZero : Character {
 		TriThunderVoid();
 		LightingVoid();
 	}
+
 	public override void chargeGfx() {
 		if (ownedByLocalPlayer) {
 			chargeEffect.stop();
 		}
 		if (isCharging()) {
 			chargeSound.play();
-			int chargeType = 1;
-			int level = getChargeLevel();
-			var renderGfx = RenderEffectType.ChargeBlue;
-			renderGfx = level switch {
-				1 => RenderEffectType.ChargeBlue,
-				2 => RenderEffectType.ChargeYellow,
-				3 => RenderEffectType.ChargePink,
-				_ => RenderEffectType.ChargeGreen,
-			};
-			addRenderEffect(renderGfx, 0.033333f, 0.1f);
+			int chargeType = 0;
 			chargeEffect.update(getChargeLevel(), chargeType);
 		}
 	}
@@ -252,29 +277,25 @@ public class BusterZero : Character {
 		}
 		if (!isCharging()) {
 			if (shootPressed) {
-				lastShootPressed = Global.frameCount;
+				lastShootPressed = Global.floorFrameCount;
 			}
-			int framesSinceLastShootPressed = Global.frameCount - lastShootPressed;
+			int framesSinceLastShootPressed = Global.floorFrameCount - lastShootPressed;
 			if (shootPressed || framesSinceLastShootPressed < 6) {
-				if (stockedBusterLv == 1) {
+				if (stockedBusterLv >= 1) {
 					if (charState is WallSlide) {
-						Buster2Proj(this);
-						shootCooldown = 22;
-						stockedBusterLv = 0;
-						return true;
-					}
-					changeState(new BusterZeroDoubleBuster(true, true), true);
-					return true;
-				}
-				if (stockedBusterLv == 2) {
-					if (charState is WallSlide) {
-						Buster3Proj(0, 3, this);
-						shootCooldown = 22;
-						stockedBusterLv = 0;
+						int chargeLevel = stockedBusterLv;
+						if (stockedBusterLv >= 3) {
+							stockedBusterLv -= 2;
+							chargeLevel = stockedBusterLv;
+						} else {
+							stockedBusterLv = 0;
+						}
+						shoot(chargeLevel);
+						lemonCooldown = 22;
 						lastShootPressed = 0;
 						return true;
 					}
-					changeState(new BusterZeroDoubleBuster(true, false), true);
+					changeState(new BusterZeroDoubleBuster(true, stockedBusterLv), true);
 					return true;
 				}
 				if (stockedSaber) {
@@ -309,7 +330,7 @@ public class BusterZero : Character {
 		int xDir = getShootXDir();
 		if (chargeLevel == 0) {
 			for (int i = zeroLemonsOnField.Count - 1; i >= 0; i--) {
-				if (zeroLemonsOnField[i].destroyed) {
+				if (zeroLemonsOnField[i].destroyed || zeroLemonsOnField[i].reflectCount > 0) {
 					zeroLemonsOnField.RemoveAt(i);
 				}
 			}
@@ -482,6 +503,9 @@ public class BusterZero : Character {
 		BusterZeroRSlash
 	}
 	public override string getSprite(string spriteName) {
+		if (Global.sprites.ContainsKey("bzero_" + spriteName)) {
+			return "bzero_" + spriteName;
+		}
 		return "zero_" + spriteName;
 	}
 	public override bool chargeButtonHeld() {
@@ -496,7 +520,7 @@ public class BusterZero : Character {
 		chargeTime += Global.speedMul * factor;
 	}
 	public override float getRunSpeed() {
-		float runSpeed = 90;
+		float runSpeed = Physics.WalkSpeed;
 		if (isBlackZero) {
 			runSpeed *= 1.15f;
 		}
@@ -506,10 +530,7 @@ public class BusterZero : Character {
 		return runSpeed * getRunDebuffs();
 	}
 	public override float getDashSpeed() {
-		if (flag != null || !isDashing) {
-			return getRunSpeed();
-		}
-		float dashSpeed = 210;
+		float dashSpeed = 3.45f;
 		if (isBlackZero) {
 			dashSpeed *= 1.15f;
 		}
@@ -692,6 +713,28 @@ public class BusterZero : Character {
 			palette?.SetUniform("palette", 1);
 			palette?.SetUniform("paletteTexture", Global.textures["hyperBusterZeroPalette"]);
 		}
+		if (Global.isOnFrameCycle(4)) {
+			switch (getChargeLevel()) {
+				case 1:
+					palette = Player.ZeroBlueC;
+					break;
+				case 2:
+					palette = Player.ZeroBlueC;
+					break;
+				case 3:
+					palette = Player.ZeroPinkC;
+					break;
+				case 4:
+					palette = Player.ZeroGreenC;
+					break;
+			}
+			if (stockedSaber || stockedBusterLv == 2) {
+				palette = Player.ZeroGreenC;
+			}
+			if (stockedBusterLv == 1) {
+				palette = Player.ZeroPinkC;
+			}
+		}
 		if (palette != null) {
 			shaders.Add(palette);
 		}
@@ -701,19 +744,107 @@ public class BusterZero : Character {
 		shaders.AddRange(baseShaders);
 		return shaders;
 	}
+
 	public override List<byte> getCustomActorNetData() {
 		List<byte> customData = base.getCustomActorNetData();
 		customData.Add((byte)MathF.Floor(TriThunderWeapon.ammo));
 		customData.Add(Helpers.boolArrayToByte([
 			isBlackZero,
+			stockedSaber
 		]));
+		customData.Add((byte)stockedBusterLv);
 		return customData;
 	}
+
 	public override void updateCustomActorNetData(byte[] data) {
 		// Update base arguments.
 		base.updateCustomActorNetData(data);
 		data = data[data[0]..];
 		bool[] flags = Helpers.byteToBoolArray(data[0]);
 		isBlackZero = flags[0];
+		stockedSaber = flags[1];
+		stockedBusterLv = data[1];
+	}
+
+	public override void aiAttack(Actor? target) {
+		Helpers.decrementTime(ref jumpTimeAI);
+		if (charState.normalCtrl) {
+			player.press(Control.Shoot);
+		}
+		// Go hypermode 
+		if (player.currency >= 10 && !isBlackZero && !isInvulnerable()
+			&& charState is not HyperBusterZeroStart and not WarpIn) {
+			changeState(new HyperBusterZeroStart(), true);
+		}
+		float enemyDist = 300;
+		float enemyDistY = 30;
+		if (target != null) {
+			enemyDist = MathF.Abs(target.pos.x - pos.x);
+			enemyDistY = MathF.Abs(target.pos.y - pos.y);
+		}
+		bool isTargetClose = enemyDist <= 40;
+		bool isTargetInAir = enemyDistY >= 20;
+		bool canHitMaxCharge = (!isTargetInAir && getChargeLevel() >= 4);
+		bool isFacingTarget = (pos.x < target?.pos.x && xDir == 1) || (pos.x >= target?.pos.x && xDir == -1);
+		int ZBattack = Helpers.randomRange(0, 2);
+		if (isTargetInAir) {
+			doJumpAI();
+		}
+		if (!isInvulnerable() && charState is not LadderClimb && aiAttackCooldown <= 0 && target != null) {
+			switch (ZBattack) {
+				// Release full charge if we have it.
+				case >= 0 when canHitMaxCharge && isFacingTarget:
+					turnToPos(target.getCenterPos());
+					player.release(Control.Shoot);
+					break;
+				// Saber swing when target is close.
+				case 0 when isTargetClose:
+					turnToPos(target.getCenterPos());
+					player.press(Control.Special1);
+					break;
+				// Another action if the enemy is on Do Jump and do SaberSwing.
+				case 1 when isTargetClose:
+					turnToPos(target.getCenterPos());
+					if (isTargetInAir) doJumpAI();	
+					player.press(Control.Special1);
+					break;
+				// Press Shoot to lemon.
+				default:
+					player.press(Control.Shoot);
+					break;
+			}
+			aiAttackCooldown = 10;
+		}
+		base.aiAttack(target);
+	}
+
+	public override void aiDodge(Actor? target) {
+		base.aiDodge(target);
+		if (!charState.attackCtrl) {
+			return;
+		}
+		foreach (GameObject gameObject in getCloseActors(64, true, false, false)) {
+			if (gameObject is Projectile proj &&
+				proj.damager.owner.alliance != player.alliance && charState.attackCtrl
+			) {
+				if (proj.projId != (int)ProjIds.RollingShield &&
+					proj.projId != (int)ProjIds.FrostShield &&
+					proj.projId != (int)ProjIds.SwordBlock &&
+					proj.projId != (int)ProjIds.FrostShieldAir &&
+					proj.projId != (int)ProjIds.FrostShieldChargedPlatform &&
+					proj.projId != (int)ProjIds.FrostShieldPlatform &&
+					zSaberCooldown <= 0
+				) {
+					if (target != null)
+					turnToPos(target.getCenterPos());
+					changeState(new BusterZeroMelee(), true);
+				}
+			}
+		}
+	}
+	public void doJumpAI(float jumpTimeAI = 0.75f) {
+		if (jumpTimeAI > 0) {
+			player.press(Control.Jump);
+		}
 	}
 }

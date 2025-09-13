@@ -20,6 +20,8 @@ using static SFML.Window.Keyboard;
 namespace MMXOnline;
 
 class Program {
+	public static string exceptionExtraData = "";
+
 	#if WINDOWS
 	[STAThread]
 	#endif
@@ -153,21 +155,18 @@ class Program {
 		Fonts.loadFontSizes();
 		Fonts.loadFontSprites();
 
-		List<string> loadText = new();
-		loadText.Add("NOM BIOS v" + Global.version + ", An Energy Sunstar Ally");
-		loadText.Add("Copyright ©2114, NOM Corporation");
-		loadText.Add("");
-		loadText.Add("MMXOD " + Global.shortForkName + " " + Global.versionName + " " + Global.subVersionName);
-		loadText.Add("");
-		if (String.IsNullOrEmpty(Options.main.playerName)) {
-			loadText.Add("User: Dr. Cain");
-		} else {
-			loadText.Add("User: " + Options.main.playerName);
-		}
-		// Get CPU name here.
-		loadText.Add("CPU: " + getCpuName());
-		loadText.Add("Memory: " + (GC.GetGCMemoryInfo().TotalAvailableMemoryBytes / 1024) + "kb");
-		loadText.Add("");
+		List<string> loadText = [
+			"NOM BIOS v" + Global.version + ", An Energy Sunstar Ally",
+			"Copyright ©2114, NOM Corporation",
+			"",
+			"MMXOD " + Global.shortForkName + " " + Global.versionName + " " + Global.subVersionName,
+			"",
+			string.IsNullOrEmpty(Options.main.playerName) ? "User: Dr. Cain" : "User: " + Options.main.playerName,
+			// Get CPU name here.
+			"CPU : " + getCpuName(),
+			"Memory: " + (GC.GetGCMemoryInfo().TotalAvailableMemoryBytes / 1024) + "kb",
+			"",
+		];
 
 		// Input
 		Global.input = new Input(false);
@@ -190,45 +189,52 @@ class Program {
 			urlText = "All IPs OK.";
 			hasServerOnlineUrl = true;
 		}
-		loadText[loadText.Count - 1] = "Getting local IPs...";
+		loadText[^1] = "Getting local IPs...";
 		loadMultiThread(loadText, window, getRadminIP);
 		if (Global.radminIP != "" && hasServerOnlineUrl) {
 			urlText += " Radmin detected.";
 		}
-		loadText[loadText.Count - 1] = urlText;
+		loadText[^1] = urlText;
 
 		loadText.Add("Loading Sprites...");
 		loadMultiThread(loadText, window, loadImages);
-		loadText[loadText.Count - 1] = $"Loaded {Global.textures.Count} Sprites.";
+		loadText[^1] = $"Loaded {Global.textures.Count} Sprites.";
 
 		loadText.Add("Loading Sprite JSONS...");
 		loadMultiThread(loadText, window, loadSprites);
-		loadText[loadText.Count - 1] = $"Loaded {Global.realSpriteCount} Sprite JSONs.";
+		loadText[^1] = $"Loaded {Global.realSpriteCount} Sprite JSONs.";
 
 		loadText.Add("Loading Maps...");
 		loadMultiThread(loadText, window, loadLevels);
-		loadText[loadText.Count - 1] = $"Loaded {Global.levelDatas.Count} Maps.";
+		loadText[^1] = $"Loaded {Global.levelDatas.Count} Maps.";
 
 		loadText.Add("Loading SFX...");
 		loadMultiThread(loadText, window, loadSounds);
-		loadText[loadText.Count - 1] = $"Loaded {Global.soundCount} SFX files.";
+		loadText[^1] = $"Loaded {Global.soundCount} SFX files.";
 
 		loadText.Add("Loading Music...");
 		loadMultiThread(loadText, window, loadMusics);
-		loadText[loadText.Count - 1] = $"Loaded {Global.musics.Count} Songs.";
+		loadText[^1] = $"Loaded {Global.musics.Count} Songs.";
 
-		if (Global.renderTextureQueue.Count > 0) {
-			loadText.Add("Creating render textures...");
+		// Create render texture only if precise shaders are used.
+		if (Global.renderTextureQueue.Count > 0 && !Options.main.fastShaders && !Options.main.disableShaders) {
 			int textureCount = Global.renderTextureQueue.Count;
+			loadText.Add($"Creating render textures, 0 of {textureCount}...");
 			loadLoopRTexture(loadText, window, Global.renderTextureQueue.ToArray());
 			Global.renderTextureQueue.Clear();
 			Global.renderTextureQueueKeys.Clear();
-			loadText[loadText.Count - 1] = $"Created {textureCount} render textures.";
+			loadText[^1] = $"Created {textureCount} render textures.";
+		}
+		// Ohterwise we skip this process
+		else {
+			loadText.Add("Render textures disabled, skipping creation.");
+			Global.renderTextureQueue.Clear();
+			Global.renderTextureQueueKeys.Clear();
 		}
 
 		loadText.Add("Calculating checksum...");
 		loadMultiThread(loadText, window, Global.computeChecksum);
-		loadText[loadText.Count - 1] = "Checksum OK.";
+		loadText[^1] = "Checksum OK.";
 
 		/*if (!Helpers.FileExists("region.json")) {
 			Helpers.WriteToFile("region.json", regionJson);
@@ -245,13 +251,17 @@ class Program {
 
 		drawLoadST(loadText, window);
 
-		GC.Collect();
+		// Force to clean all memory.
+		// Also compacts all objects too.
+		// As it as manual call this freeze the program and takes a while.
+		// PS: Do not execute this in other parts of code besides loading screens endings as is not fast.
+		GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, true, true);
 		GC.WaitForPendingFinalizers();
 
 		// Force startup config to be fetched
 		Menu.change(new MainMenu());
 		//Global.changeMusic(Global.level.levelData.getTitleTheme());
-		switch(Helpers.randomRange(1, 15)) {
+		switch (Helpers.randomRange(1, 20)) {
 			// Stage Selects
 			case 1:
 				Global.changeMusic("stageSelect_X1");
@@ -298,13 +308,28 @@ class Program {
 				Global.changeMusic("demo_X3");
 				break;
 			case 15:
-				Global.changeMusic("laboratory_X2");
+				Global.changeMusic("laboratory_X3");
+				break;
+			case 16:
+				Global.changeMusic("sigmaFortress4");
+				break;
+			case 17:
+				Global.changeMusic("variableX");
+				break;
+			case 18:
+				Global.changeMusic("credits_X2");
+				break;
+			case 19:
+				Global.changeMusic("drLight_X1");
+				break;
+			case 20:
+				Global.changeMusic("drLight_X2");
 				break;
 			default:
 				Global.changeMusic("stageSelect_X1");
 				break;
 		}
-		
+
 		if (mode == 1) {
 			HostMenu menu = new HostMenu(new MainMenu(), null, false, false, true);
 			Menu.change(menu);
@@ -319,9 +344,9 @@ class Program {
 			);
 			Global.serverClient = ServerClient.CreateDirect(
 				args[0], int.Parse(args[1]), me,
-				out JoinServerResponse joinServerResponse, out string error
+				out JoinServerResponse? joinServerResponse, out string error
 			);
-			if (joinServerResponse != null && error == null) {
+			if (joinServerResponse != null && error == "") {
 				Menu.change(new WaitMenu(new MainMenu(), joinServerResponse.server, false));
 			} else {
 				Menu.change(new ErrorMenu(error, new MainMenu()));
@@ -431,6 +456,7 @@ class Program {
 		bool isPaused = false; //(Global.menu != null || Global.dialogBox != null);
 		if (!isPaused) {
 			Global.frameCount++;
+			Global.flFrameCount += Global.gameSpeed;
 			Global.time += Global.spf;
 			Global.calledPerFrame = 0;
 
@@ -482,7 +508,7 @@ class Program {
 	/// <summary>
 	/// Function called when the window is closed
 	/// </summary>
-	private static void onClosed(object sender, EventArgs e) {
+	private static void onClosed(object? sender, EventArgs e) {
 		var openClients = new List<NetClient>();
 		if (Global.serverClient?.client != null) {
 			openClients.Add(Global.serverClient.client);
@@ -513,7 +539,7 @@ class Program {
 		window.Close();
 	}
 
-	private static void onWindowResized(object sender, SizeEventArgs e) {
+	private static void onWindowResized(object? sender, SizeEventArgs e) {
 		// Compares the aspect ratio of the window to the aspect ratio of the view,
 		// and sets the view's viewport accordingly in order to archieve a letterbox effect.
 		float windowRatio = Global.window.Size.X / (float)Global.window.Size.Y;
@@ -543,7 +569,7 @@ class Program {
 	/// <summary>
 	/// Function called when a key is pressed
 	/// </summary>
-	private static void onKeyPressed(object sender, KeyEventArgs e) {
+	private static void onKeyPressed(object? sender, KeyEventArgs e) {
 		RenderWindow window = (RenderWindow)sender;
 		//if (e.Code == Keyboard.Key.Escape)
 		//    window.Close();
@@ -557,68 +583,52 @@ class Program {
 
 		// Check for AI takeover
 		if (e.Code == Key.F12 && Global.level?.mainPlayer != null) {
-			if (Global.level.isTraining() && Global.serverClient == null) {
-				if (AI.trainingBehavior == AITrainingBehavior.Default) AI.trainingBehavior = AITrainingBehavior.Idle;
-				else if (AI.trainingBehavior == AITrainingBehavior.Idle) AI.trainingBehavior = AITrainingBehavior.Attack;
-				else if (AI.trainingBehavior == AITrainingBehavior.Attack) AI.trainingBehavior = AITrainingBehavior.Jump;
-				else if (AI.trainingBehavior == AITrainingBehavior.Jump) AI.trainingBehavior = AITrainingBehavior.Default;
+			if (!Global.level.mainPlayer.isAI) {
+				Global.level.mainPlayer.aiTakeover = true;
+				Global.level.mainPlayer.isAI = true;
+				Global.level.mainPlayer.character?.addAI();
 			} else {
-				if (Global.level.isTraining()) {
-					if (!Global.level.mainPlayer.isAI) {
-						AI.trainingBehavior = AITrainingBehavior.Attack;
-						Global.level.mainPlayer.aiTakeover = true;
-						Global.level.mainPlayer.isAI = true;
-						Global.level.mainPlayer.character?.addAI();
-					} else {
-						if (AI.trainingBehavior == AITrainingBehavior.Attack) {
-							AI.trainingBehavior = AITrainingBehavior.Jump;
-						} else if (AI.trainingBehavior == AITrainingBehavior.Jump) {
-							AI.trainingBehavior = AITrainingBehavior.Default;
-						} else if (AI.trainingBehavior == AITrainingBehavior.Default) {
-							AI.trainingBehavior = AITrainingBehavior.Idle;
-							Global.level.mainPlayer.aiTakeover = false;
-							Global.level.mainPlayer.isAI = false;
-							if (Global.level.mainPlayer.character != null) Global.level.mainPlayer.character.ai = null;
-						}
-					}
-				} else {
-					if (!Global.level.mainPlayer.isAI) {
-						Global.level.mainPlayer.aiTakeover = true;
-						Global.level.mainPlayer.isAI = true;
-						Global.level.mainPlayer.character?.addAI();
-					} else {
-						if (Global.level.isTraining()) {
-							AI.trainingBehavior = AITrainingBehavior.Idle;
-						}
-						Global.level.mainPlayer.aiTakeover = false;
-						Global.level.mainPlayer.isAI = false;
-						if (Global.level.mainPlayer.character != null) Global.level.mainPlayer.character.ai = null;
-					}
+				Global.level.mainPlayer.aiTakeover = false;
+				Global.level.mainPlayer.isAI = false;
+				if (Global.level.mainPlayer.character != null) {
+					Global.level.mainPlayer.character.ai = null;
 				}
 			}
 		}
-		if (e.Code == Key.F12) {
+		if (e.Code == Key.F11 && Global.level?.isTraining() == true) {
+			if (AI.trainingBehavior == AITrainingBehavior.Default) {
+			AI.trainingBehavior = AITrainingBehavior.Idle;
+			} else if (AI.trainingBehavior == AITrainingBehavior.Idle) {
+				AI.trainingBehavior = AITrainingBehavior.Attack;
+			} else if (AI.trainingBehavior == AITrainingBehavior.Attack) {
+				AI.trainingBehavior = AITrainingBehavior.Jump;
+			} else if (AI.trainingBehavior == AITrainingBehavior.Jump) {
+				AI.trainingBehavior = AITrainingBehavior.Default;
+			}
+		}
+		if (e.Code == Key.F12 || e.Code == Key.F11) {
 			return;
 		}
-
-		ControlMenu controlMenu = Menu.mainMenu as ControlMenu;
-		if (controlMenu != null && controlMenu.listenForKey && controlMenu.bindFrames == 0) {
+		if (Menu.mainMenu is ControlMenu controlMenu &&
+			controlMenu.listenForKey &&
+			controlMenu.bindFrames == 0
+		) {
 			controlMenu.bind((int)e.Code);
 		}
 	}
 
-	private static void onKeyReleased(object sender, KeyEventArgs e) {
+	private static void onKeyReleased(object? sender, KeyEventArgs e) {
 		Global.input.keyHeld[e.Code] = false;
 		Global.input.keyPressed[e.Code] = false;
 	}
 
-	static void onMouseMove(object sender, MouseMoveEventArgs e) {
+	static void onMouseMove(object? sender, MouseMoveEventArgs e) {
 		Input.mouseDeltaX = e.X - Global.halfScreenW;
 		Input.mouseDeltaY = e.Y - Global.halfScreenH;
 		Global.input.setLastUpdateTime();
 	}
 
-	static void onMousePressed(object sender, MouseButtonEventArgs e) {
+	static void onMousePressed(object? sender, MouseButtonEventArgs e) {
 		if (Global.debug && Global.level == null) {
 			if (e.Button == Mouse.Button.Middle) {
 				Global.debugString1 = (e.X / Options.main.windowScale) + "," + (e.Y / Options.main.windowScale);
@@ -632,13 +642,13 @@ class Program {
 		Global.input.mashCount++;
 	}
 
-	static void onMouseReleased(object sender, MouseButtonEventArgs e) {
+	static void onMouseReleased(object? sender, MouseButtonEventArgs e) {
 		int button = (int)e.Button;
 		Input.mousePressed[e.Button] = false;
 		Input.mouseHeld[e.Button] = false;
 	}
 
-	static void onMouseScrolled(object sender, MouseWheelScrollEventArgs e) {
+	static void onMouseScrolled(object? sender, MouseWheelScrollEventArgs e) {
 		if (e.Delta > 0) Input.mouseScrollUp = true;
 		else if (e.Delta < 0) Input.mouseScrollDown = true;
 		Global.input.setLastUpdateTime();
@@ -738,7 +748,7 @@ class Program {
 	static void loadImages() {
 		string spritesheetPath = "assets/spritesheets";
 		if (Options.main.shouldUseOptimizedAssets()) spritesheetPath += "_optimized";
-		var spritesheets = Helpers.getFiles(Global.assetPath + spritesheetPath, false, "png", "psd");
+		var spritesheets = Helpers.getFiles(Global.assetPath + spritesheetPath, true, "png", "psd");
 
 		var menuImages = Helpers.getFiles(Global.assetPath + "assets/menu", true, "png", "psd");
 		var fontSprites = Helpers.getFiles(Global.assetPath + "assets/fonts", true, "png", "psd");
@@ -921,7 +931,7 @@ class Program {
 			if (!string.IsNullOrEmpty(alias)) {
 				var pieces = alias.Split(',');
 				foreach (var piece in pieces) {
-					Global.sprites[piece] = Global.sprites[spriteName].clone();
+					Global.sprites[piece] = Global.sprites[spriteName].cloneAnimSlow();
 					Global.sprites[piece].name = piece;
 				}
 			}
@@ -959,6 +969,14 @@ class Program {
 		Sprite.xArmorBodyBitmap[2] = Global.textures["XBody3"];
 		Sprite.xArmorHelmetBitmap[2] = Global.textures["XHelmet3"];
 		Sprite.xArmorArmBitmap[2] = Global.textures["XArm3"];
+
+		Sprite.xArmorBootsBitmap[3] = Global.textures["UAXBoots"];
+		Sprite.xArmorBodyBitmap[3] = Global.textures["UAXChest"];
+		Sprite.xArmorHelmetBitmap[3] = Global.textures["UAXHelmet"];
+		Sprite.xArmorArmBitmap[3] = Global.textures["UAXPlasma"];
+
+		Sprite.xSaberBitmap[0] = Global.textures["MaxSaber"];
+		Sprite.xSaberBitmap[1] = Global.textures["MaxSaberFront"];
 
 		Sprite.axlArmBitmap = Global.textures["axlArm"];
 	}
@@ -1242,8 +1260,14 @@ class Program {
 		decimal deltaTime = 0;
 		decimal deltaTimeAlt = 0;
 		decimal lastAltUpdateTime = 0;
-		decimal fpsLimit = (TimeSpan.TicksPerSecond / 60m);
-		decimal fpsLimitAlt = (TimeSpan.TicksPerSecond / 240m);
+		// Set FPS cap.
+		Options.main.updateFpsMode();
+		Global.speedMul = Global.gameSpeed;
+		float lastGameSpeed = Global.gameSpeed;
+		decimal targetFps = 60m / (decimal)Global.gameSpeed;
+		decimal fpsLimit = TimeSpan.TicksPerSecond / targetFps;
+		decimal fpsLimitAlt = TimeSpan.TicksPerSecond / 240m;
+		// Other frame data.
 		long lastSecondFPS = 0;
 		int videoUpdatesThisSecond = 0;
 		int framesUpdatesThisSecond = 0;
@@ -1253,6 +1277,7 @@ class Program {
 		bool continueNextFrameStep = false;
 		bool f5Released = true;
 		bool f6Released = true;
+		bool f7Released = true;
 		// WARNING DISABLE THIS FOR NON-DEBUG BUILDS
 		bool frameStepEnabled = true;
 		var clearColor = Color.Black;
@@ -1289,11 +1314,41 @@ class Program {
 					} else {
 						f6Released = true;
 					}
+					// Framerate shenanigans.
+					if (Keyboard.IsKeyPressed(Key.F7)) {
+						if (f7Released) {
+							Options.main.fpsMode = Options.main.fpsMode switch {
+								0 => 1,
+								1 => 2,
+								_ => 0
+							};
+							Options.main.updateFpsMode();
+							f7Released = false;
+						}
+					} else {
+						f7Released = true;
+					}
 				}
 			}
 			if (!(deltaTime >= 1)) {
 				continue;
 			}
+			// In case we chage the target framerate.
+			// We should disable this on release builds... maybe.
+			if (lastGameSpeed != Global.gameSpeed) {
+				targetFps = 60m / (decimal)Global.gameSpeed;
+				fpsLimit = TimeSpan.TicksPerSecond / targetFps;
+				Global.speedMul = Global.gameSpeed;
+				if (Global.gameSpeed == 1) {
+					Global.flFrameCount = MathF.Ceiling(Global.flFrameCount);
+				} else {
+					Global.flFrameCount = (
+						MathF.Ceiling(Global.flFrameCount / Global.gameSpeed) * Global.gameSpeed					
+					);
+				}
+				lastGameSpeed = Global.gameSpeed;
+			}
+
 			long timeSecondsNow = (long)Math.Floor(timeSpam.TotalSeconds);
 			if (timeSecondsNow > lastSecondFPS) {
 				Global.currentFPS = videoUpdatesThisSecond;
@@ -1404,7 +1459,7 @@ class Program {
 		// Fix simbols.
 		cpuName = cpuName.Replace("(R)", "®");
 		cpuName = cpuName.Replace("(C)", "©");
-		cpuName = cpuName.Replace("(TM)", "®"); //Todo, implement proper trademark simbol.
+		cpuName = cpuName.Replace("(TM)", "©"); //Todo, implement proper trademark simbol.
 		return cpuName;
 	}
 
@@ -1473,6 +1528,7 @@ class Program {
 		Color clearColor = Color.Black;
 		Stopwatch watch = new Stopwatch();
 		int pos = textures.Length - 1;
+		int count = 0;
 
 		// Main loop itself.
 		while (window.IsOpen && pos > 0) {
@@ -1503,18 +1559,23 @@ class Program {
 			window.Display();
 			watch.Restart();
 
+			if (Options.main.fastShaders || Options.main.disableShaders) {
+				return;
+			}
 			for (; pos >= 0; pos--) {
 				int encodeKey = ((int)textures[pos].width * 397) ^ (int)textures[pos].height;
 				if (!Global.renderTextures.ContainsKey(encodeKey)) {
 					Global.renderTextures[encodeKey] = (
-						new RenderTexture((uint)textures[pos].width, (uint)textures[pos].height),
-						new RenderTexture((uint)textures[pos].width, (uint)textures[pos].height)
+						new RenderTexture(textures[pos].width, textures[pos].height),
+						new RenderTexture(textures[pos].width, textures[pos].height)
 					);
 				}
+				count++;
 				if (watch.ElapsedTicks >= fpsLimit) {
 					break;
 				}
 			}
+			loadText[^1] = $"Creating render textures, {count} of {textures.Length}...";
 		}
 	}
 

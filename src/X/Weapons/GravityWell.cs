@@ -1,11 +1,12 @@
 ﻿using System.Collections.Generic;
-
+using System;
 namespace MMXOnline;
 
 public class GravityWell : Weapon {
 	public static GravityWell netWeapon = new();
 
 	public GravityWell() : base() {
+		displayName = "Gravity Well";
 		shootSounds = new string[] { "busterX3", "busterX3", "busterX3", "warpIn" };
 		fireRate = 30;
 		index = (int)WeaponIds.GravityWell;
@@ -15,11 +16,12 @@ public class GravityWell : Weapon {
 		killFeedIndex = 45;
 		weaknessIndex = (int)WeaponIds.RaySplasher;
 		damage = "2/4";
-		effect = "Disables Gravity to the enemy. C: Super Armor.";
-		hitcooldown = "0.5";
-		Flinch = "0/26";
+		effect = "U:Disables Gravity to the enemy.\nProjectile won't give assists.\nC:Grants Flinch Immunity.";
+		hitcooldown = "30";
+		flinch = "0/26";
 		maxAmmo = 16;
 		ammo = maxAmmo;
+		hasCustomChargeAnim = true;
 	}
 
 	public override float getAmmoUsage(int chargeLevel) {
@@ -32,11 +34,12 @@ public class GravityWell : Weapon {
 		Point pos = character.getShootPos();
 		int xDir = character.getShootXDir();
 		Player player = character.player;
+		MegamanX mmx = character as MegamanX ?? throw new NullReferenceException();
 
 		if (chargeLevel < 3) {
-			var proj = new GravityWellProj(this, pos, xDir, player, player.getNextActorNetId(), true);
-			if (character.ownedByLocalPlayer && character is MegamanX mmx) {
-				mmx.gravityWell = proj;
+			var proj = new GravityWellProj(pos, xDir, mmx, player, player.getNextActorNetId(), true);
+			if (character.ownedByLocalPlayer) {
+				mmx.linkedGravityWell = proj;
 			}
 		} else {
 			if (!character.ownedByLocalPlayer) return;
@@ -48,12 +51,10 @@ public class GravityWell : Weapon {
 		if (player.character is not MegamanX mmx) {
 			return false;
 		}
-		if (chargeLevel >= 3 || mmx.stockedCharge == true) {
-			return base.canShoot(chargeLevel, player) && (
-				mmx.chargedGravityWell == null || mmx.chargedGravityWell.destroyed
-			);
+		if (mmx.stockedBusterLv >= 1) {
+			return base.canShoot(chargeLevel, player);
 		}
-		return base.canShoot(chargeLevel, player) && (mmx.gravityWell == null || mmx.gravityWell.destroyed);
+		return base.canShoot(chargeLevel, player) && (mmx.linkedGravityWell == null || mmx.linkedGravityWell.destroyed);
 	}
 }
 
@@ -68,12 +69,13 @@ public class GravityWellProj : Projectile, IDamagable {
 	float velX;
 
 	public GravityWellProj(
-		Weapon weapon, Point pos, int xDir, 
-		Player player, ushort netProjId, bool rpc = false
+		Point pos, int xDir, Actor owner, Player player, ushort? netId, bool rpc = false
 	) : base(
-		weapon, pos, xDir, 0, 2, player, "gravitywell_start", 
-		0, 0.5f, netProjId, player.ownedByLocalPlayer
+		pos, xDir, owner, "gravitywell_start", netId, player
 	) {
+		weapon = GravityWell.netWeapon;
+		damager.damage = 2;
+		damager.hitCooldown = 30;
 		maxActiveTime = 2;
 		maxTime = maxActiveTime + 5;
 		projId = (int)ProjIds.GravityWell;
@@ -83,7 +85,7 @@ public class GravityWellProj : Projectile, IDamagable {
 		setzIndex(zIndex + 100);
 		Global.level.unchargedGravityWells.Add(this);
 		if (rpc) {
-			rpcCreate(pos, player, netProjId, xDir);
+			rpcCreate(pos, owner, ownerPlayer, netId, xDir);
 		}
 
 		//if (player.isMainPlayer) {
@@ -100,7 +102,7 @@ public class GravityWellProj : Projectile, IDamagable {
 	
 	public static Projectile rpcInvoke(ProjParameters arg) {
 		return new GravityWellProj(
-			GravityWell.netWeapon, arg.pos, arg.xDir, arg.player, arg.netId
+			arg.pos, arg.xDir, arg.owner, arg.player, arg.netId
 		);
 	}
 
@@ -125,9 +127,13 @@ public class GravityWellProj : Projectile, IDamagable {
 		return owner.input.isPressed(Control.Shoot, owner) && owner.weapon is GravityWell;
 	}
 
+	public override void preUpdate() {
+		base.preUpdate();
+		updateProjectileCooldown();
+	}
+
 	public override void update() {
 		base.update();
-		updateProjectileCooldown();
 		if (!ownedByLocalPlayer) return;
 		if (destroyed) return;
 		if (state == 0) {
@@ -231,7 +237,7 @@ public class GravityWellProj : Projectile, IDamagable {
 		if (projId == (int)ProjIds.RaySplasher || projId == (int)ProjIds.RaySplasherTurret) damage *= 2;
 		health -= damage;
 		if (health <= 0) {
-			fadeSound = "explosion";
+			fadeSound = "explosionX3";
 			fadeSprite = "explosion";
 			destroySelf();
 		}
@@ -239,9 +245,9 @@ public class GravityWellProj : Projectile, IDamagable {
 
 	public override void onHitDamagable(IDamagable damagable) {
 		base.onHitDamagable(damagable);
+		if (!damagable.isPlayableDamagable()) { return; }
 		var actor = damagable.actor();
-		if (actor is Character chr && chr.isCCImmune()) return;
-		if (actor is not Character && actor is not RideArmor && actor is not Maverick) return;
+		if (actor is Character chr && (chr.isPushImmune() || chr.isSlowImmune() || chr.isFlinchImmune())) return;
 
 		float mag = 100;
 		if (!actor.grounded) actor.vel.y = 0;
@@ -254,6 +260,8 @@ public class GravityWellProj : Projectile, IDamagable {
 	public void heal(float healAmount, bool allowStacking = true) { }
 	public bool isInvincible(Player attacker, int? projId) { return false; }
 	public void heal(Player healer, float healAmount, bool allowStacking = true, bool drawHealText = false) { }
+
+	public bool isPlayableDamagable() { return false; }
 }
 
 public class GravityWellProjCharged : Projectile, IDamagable {
@@ -261,12 +269,11 @@ public class GravityWellProjCharged : Projectile, IDamagable {
 	public bool started;
 	float velY = -300;
 	public GravityWellProjCharged(
-		Weapon weapon, Point pos, int xDir, int yDir, 
-		Player player, ushort netProjId, bool rpc = false
+		Point pos, int xDir, int yDir, Actor owner, Player player, ushort? netId, bool rpc = false
 	) : base(
-		weapon, pos, xDir, 0, 0, player, "gravitywell_charged", 
-		0, 0, netProjId, player.ownedByLocalPlayer
+		pos, xDir, owner, "gravitywell_charged", netId, player
 	) {
+		weapon = GravityWell.netWeapon;
 		maxTime = 4;
 		projId = (int)ProjIds.GravityWellCharged;
 		shouldShieldBlock = false;
@@ -274,21 +281,24 @@ public class GravityWellProjCharged : Projectile, IDamagable {
 		shouldVortexSuck = false;
 		this.yDir = yDir;
 		if (rpc) {
-			rpcCreate(pos, player, netProjId, xDir, (byte)yDir);
+			rpcCreate(pos, owner, ownerPlayer, netId, xDir, (byte)yDir);
 		}
 		canBeLocal = false;
 	}
 
 	public static Projectile rpcInvoke(ProjParameters arg) {
 		return new GravityWellProjCharged(
-			GravityWell.netWeapon, arg.pos, arg.xDir, 
-			arg.extraData[0], arg.player, arg.netId
+			arg.pos, arg.xDir, arg.extraData[0], arg.owner, arg.player, arg.netId
 		);
+	}
+
+	public override void preUpdate() {
+		base.preUpdate();
+		updateProjectileCooldown();
 	}
 
 	public override void update() {
 		base.update();
-		updateProjectileCooldown();
 
 		var ceilHits = Global.level.getTriggerList(this, 0, velY * Global.spf, null, typeof(Wall));
 		if (ceilHits.Count == 0) {
@@ -328,7 +338,7 @@ public class GravityWellProjCharged : Projectile, IDamagable {
 
 			if (actor != null && actor.ownedByLocalPlayer) {
 				if (chr != null && chr.player.alliance == damager.owner.alliance) continue;
-				if (chr != null && chr.isCCImmune()) continue;
+				if (chr != null && chr.isPushImmune()) continue;
 				if (ra != null && ra.character == null) continue;
 				if (ra != null && ra.player != null && ra.player.alliance == damager.owner.alliance) continue;
 				if (rc != null && rc.character == null) continue;
@@ -373,7 +383,7 @@ public class GravityWellProjCharged : Projectile, IDamagable {
 		if (projId == (int)ProjIds.RaySplasher || projId == (int)ProjIds.RaySplasherTurret) damage *= 2;
 		health -= damage;
 		if (health <= 0) {
-			fadeSound = "explosion";
+			fadeSound = "explosionX3";
 			fadeSprite = "explosion";
 			destroySelf();
 		}
@@ -383,47 +393,51 @@ public class GravityWellProjCharged : Projectile, IDamagable {
 	public bool isInvincible(Player attacker, int? projId) { return false; }
 	public bool canBeHealed(int healerAlliance) { return false; }
 	public void heal(Player healer, float healAmount, bool allowStacking = true, bool drawHealText = false) { }
+	public bool isPlayableDamagable() { return false; }
 }
 
 public class GravityWellChargedState : CharState {
 	bool fired = false;
-	MegamanX? mmx;
+	MegamanX mmx = null!;
 
-	public GravityWellChargedState() : base("point_up", "", "", "") {
+	public GravityWellChargedState() : base("point_up") {
 		superArmor = true;
+		landSprite = "point_up";
+		airSprite = "point_up_air";
+		useDashJumpSpeed = true;
 	}
 
 	public override void update() {
 		base.update();
-
-		if (character.frameIndex >= 3 && !fired) {
+		if (character.frameIndex >= 5 && !fired) {
 			fired = true;
 			stateTime = 0;
 			if (mmx != null) {
 				mmx.chargedGravityWell = new GravityWellProjCharged(
-					player.weapon, character.getShootPos(), 1,
+					character.getShootPos(), 1,
 					player.input.isHeld(Control.Down, player) ? -1 : 1,
-					player, player.getNextActorNetId(), rpc: true
+					mmx, player, player.getNextActorNetId(), rpc: true
 				);
 			}	
 		}
-
-		if (stateTime > 0.65f) {
+		if (character.isAnimOver()) {
 			character.changeToIdleOrFall();
 		}
 	}
 
 	public override void onEnter(CharState oldState) {
 		base.onEnter(oldState);
-		mmx = character as MegamanX;
+		mmx = character as MegamanX ?? throw new NullReferenceException();
 		character.useGravity = false;
 		character.vel = new Point();
+		if (!character.grounded) {
+			sprite = airSprite;
+			character.changeSpriteFromName(sprite, true);
+		}
 	}
 
-	public override void onExit(CharState newState) {
+	public override void onExit(CharState? newState) {
 		base.onExit(newState);
 		character.useGravity = true;
-		//character.chargedGravityWell?.destroySelf();
-		//character.chargedGravityWell = null;
 	}
 }

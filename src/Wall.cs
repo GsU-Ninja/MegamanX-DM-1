@@ -252,6 +252,7 @@ public class CrackedWall : Actor, IDamagable {
 		Global.level.crackedWallAutoIncId++;
 
 		useGravity = false;
+		useActorGrid = true;
 
 		collider.flag = (int)HitboxFlag.Hurtbox;
 		var rect = collider.shape.getRect().getPoints();
@@ -269,9 +270,13 @@ public class CrackedWall : Actor, IDamagable {
 		this.destroyInstanceName = destroyInstanceName;
 	}
 
+	public override void preUpdate() {
+		base.preUpdate();
+		updateProjectileCooldown();
+	}
+
 	public override void update() {
 		base.update();
-		updateProjectileCooldown();
 	}
 
 	public void move(Point deltaPos) {
@@ -294,7 +299,7 @@ public class CrackedWall : Actor, IDamagable {
 	}
 
 	// Only if 0 is returned, it can't damage it. Even if null, it still can
-	public static float? canDamageCrackedWall(int projId, CrackedWall cw) {
+	public static float? canDamageCrackedWall(int projId, CrackedWall? cw) {
 		if (cw?.flag == 3) return null;
 
 		if (projId == (int)ProjIds.GigaCrush) return 12;
@@ -310,8 +315,8 @@ public class CrackedWall : Actor, IDamagable {
 		if (projId == (int)ProjIds.MagnetMine) return null;
 		if (projId == (int)ProjIds.GreenSpinnerSplash) return null;
 		if (projId == (int)ProjIds.GreenSpinner) return null;
-		if (projId == (int)ProjIds.BlastLauncher) return null;
-		if (projId == (int)ProjIds.BlastLauncherSplash) return null;
+		if (projId == (int)ProjIds.BlastLauncherGrenadeProj) return null;
+		if (projId == (int)ProjIds.BlastLauncherGrenadeSplash) return null;
 		if (projId == (int)ProjIds.SpinWheel) return 1;
 		if (projId == (int)ProjIds.TornadoFang) return null;
 		if (projId == (int)ProjIds.TornadoFang2) return null;
@@ -351,6 +356,10 @@ public class CrackedWall : Actor, IDamagable {
 			destroySelf();
 			RPC.actorToggle.sendRpcDestroyCw(id);
 		}
+	}
+
+	public bool isPlayableDamagable() {
+		return false;
 	}
 
 	public override void onDestroy() {
@@ -422,13 +431,13 @@ public class KillZone : Geometry {
 			damagable.applyDamage(damage, null, null, null, null);
 			if (damagable is Character chr) {
 				chr.playSound(flinch ? "hurt" : "hit", sendRpc: true);
-				chr.addRenderEffect(RenderEffectType.Hit, 0.05f, 0.1f);
+				chr.addRenderEffect(RenderEffectType.Hit, 3, 6);
 				if (flinch && chr.ownedByLocalPlayer) {
 					chr.changeState(new Hurt(-chr.xDir, flinch ? Global.defFlinch : 0));
 				}
 			} else {
 				damagable.actor().playSound("hit", sendRpc: true);
-				damagable.actor().addRenderEffect(RenderEffectType.Hit, 0.05f, 0.1f);
+				damagable.actor().addRenderEffect(RenderEffectType.Hit, 3, 6);
 			}
 		}
 	}

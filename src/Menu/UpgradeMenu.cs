@@ -37,18 +37,24 @@ public class UpgradeMenu : IMainMenu {
 		return Math.Clamp(2 + mainPlayer.subtanks.Count, 1, getMaxSubTanks() + 1);
 	}
 
-	public int getHeartTankCost() {
+	public static int getHeartTankCost() {
 		if (Global.level.server?.customMatchSettings != null) {
 			return Global.level.server.customMatchSettings.heartTankCost;
 		}
 		return 2;
 	}
+	public static int getSubTankCost() {
+		if (Global.level.server?.customMatchSettings != null) {
+			return Global.level.server.customMatchSettings.subTankCost;
+		}
+		return 4;
+	}
 
-	public int getMaxHeartTanks() {
+	public static int getMaxHeartTanks() {
 		return Global.level.server?.customMatchSettings?.maxHeartTanks ?? 8;
 	}
 
-	public int getMaxSubTanks() {
+	public static int getMaxSubTanks() {
 		return Global.level.server?.customMatchSettings?.maxSubTanks ?? 2;
 	}
 
@@ -65,17 +71,17 @@ public class UpgradeMenu : IMainMenu {
 		//if (UpgradeArmorMenu.updateHyperArmorUpgrades(mainPlayer)) return;
 
 		subtankTargets.Clear();
-		if (mainPlayer.isSigma) {
-			if (mainPlayer.isTagTeam()) {
-				if (mainPlayer.currentMaverick != null) {
-					var currentMaverickWeapon = mainPlayer.weapons.FirstOrDefault(
-						w => w is MaverickWeapon mw && mw.maverick == mainPlayer.currentMaverick
-					);
-					if (currentMaverickWeapon != null) {
-						subtankTargets.Add(currentMaverickWeapon);
-					}
+		if (mainPlayer.isSigma && mainPlayer.character is BaseSigma sigma) {
+			if (mainPlayer.currentMaverick != null &&
+				mainPlayer.currentMaverick.controlMode == MaverickModeId.TagTeam
+			) {
+				var currentMaverickWeapon = mainPlayer.weapons.FirstOrDefault(
+					w => w is MaverickWeapon mw && mw.maverick == mainPlayer.currentMaverick
+				);
+				if (currentMaverickWeapon != null) {
+					subtankTargets.Add(currentMaverickWeapon);
 				}
-			} else if (!mainPlayer.isStriker()) {
+			} else if (sigma.loadout.commandMode != (int)MaverickModeId.Striker) {
 				subtankTargets = mainPlayer.weapons.FindAll(
 					w => (w is MaverickWeapon mw && mw.maverick != null) || w is SigmaMenuWeapon
 				).ToList();
@@ -88,22 +94,22 @@ public class UpgradeMenu : IMainMenu {
 
 		if (!subtankTargets.InRange(subtankTargetIndex)) subtankTargetIndex = 0;
 
-		if (Global.input.isPressedMenu(Control.MenuLeft)) {
+		if (Global.input.isPressedMenu(Control.MenuLeft) || Global.input.isPressedMenu(Control.WeaponLeft)) {
 			if (mainPlayer.realCharNum == 0) {
-				if (mainPlayer.canUpgradeXArmor()) {
-					UpgradeArmorMenu.xGame = 3;
-					Menu.change(new UpgradeArmorMenu(prevMenu));
+				if (mainPlayer.canUpgradeXArmor()) {		
+					UpgradeArmorMenuEX.xGame = 1;
+					Menu.change(new UpgradeArmorMenuEX(this));
 					onUpgradeMenu = false;
 					return;
 				}
 			}
 		}
 
-		if (Global.input.isPressedMenu(Control.MenuRight)) {
+		if (Global.input.isPressedMenu(Control.MenuRight) || Global.input.isPressedMenu(Control.WeaponRight)) {
 			if (mainPlayer.realCharNum == 0) {
 				if (mainPlayer.canUpgradeXArmor()) {
-					UpgradeArmorMenu.xGame = 1;
-					Menu.change(new UpgradeArmorMenu(prevMenu));
+					UpgradeArmorMenuEX.xGame = 1;
+					Menu.change(new UpgradeArmorMenuEX(this));
 					onUpgradeMenu = false;
 					return;
 				}
@@ -141,24 +147,28 @@ public class UpgradeMenu : IMainMenu {
 					mainPlayer.currency -= getHeartTankCost();
 					mainPlayer.heartTanks++;
 					Global.playSound("hearthX1");
-					float currentMaxHp = mainPlayer.maxHealth;
-					mainPlayer.maxHealth = mainPlayer.getMaxHealth();
-					mainPlayer.character?.addHealth(mainPlayer.maxHealth - currentMaxHp);
+					if (mainPlayer.character != null) {
+						Character chara = mainPlayer.character;
+						chara.heartTanks++;
+						decimal currentMaxHp = chara.maxHealth;
+						chara.maxHealth = chara.getMaxHealth();
+						chara.addHealth(MathInt.Ceiling(chara.maxHealth - currentMaxHp));
+					} else {
+						mainPlayer.maxHealth = mainPlayer.getMaxHealth();
+					}
 					/*
-					if (mainPlayer.isVile && mainPlayer.character?.vileStartRideArmor != null)
-					{
+					if (mainPlayer.character?.vileStartRideArmor != null) {
 						mainPlayer.character.vileStartRideArmor.addHealth(mainPlayer.getHeartTankModifier());
 					}
-					else if (mainPlayer.isSigma && mainPlayer.currentMaverick != null)
-					{
+					else if (mainPlayer?.currentMaverick != null) {
 						mainPlayer.currentMaverick.addHealth(mainPlayer.getHeartTankModifier(), false);
 						mainPlayer.currentMaverick.maxHealth += mainPlayer.getHeartTankModifier();
 					}
 					*/
 				}
 			} else if (selectArrowPosY >= 1) {
-				if (mainPlayer.subtanks.Count < selectArrowPosY && mainPlayer.currency >= subtankCost) {
-					mainPlayer.currency -= subtankCost;
+				if (mainPlayer.subtanks.Count < selectArrowPosY && mainPlayer.currency >= getSubTankCost()) {
+					mainPlayer.currency -= getSubTankCost();
 					mainPlayer.subtanks.Add(new SubTank());
 					Global.playSound("upgrade");
 				} else if (mainPlayer.subtanks.InRange(selectArrowPosY - 1)) {
@@ -166,6 +176,7 @@ public class UpgradeMenu : IMainMenu {
 					if (subtankTargets.Count > 0) {
 						var currentTarget = subtankTargets[subtankTargetIndex];
 						if (currentTarget is MaverickWeapon mw &&
+							mw.maverick != null &&
 							canUseSubtankInMenu(mw.canUseSubtank(mainPlayer.subtanks[selectArrowPosY - 1]))
 						) {
 							mainPlayer.subtanks[selectArrowPosY - 1].use(mw.maverick);
@@ -215,10 +226,10 @@ public class UpgradeMenu : IMainMenu {
 			);
 		}
 
-		if (Global.frameCount % 60 < 30 && mainPlayer.realCharNum == 2) {
+		if (Global.flFrameCount % 60 < 30 && mainPlayer.realCharNum == 2) {
 			Fonts.drawText(FontType.DarkPurple, ">", Global.screenW - 14, Global.halfScreenH, Alignment.Center);
 			//Fonts.drawText(FontType.DarkPurple, "Armor", Global.screenW - 25, Global.halfScreenH + 15, Alignment.Center);
-		} else if (Global.frameCount % 60 < 30 && mainPlayer.canUpgradeXArmor()) {
+		} else if (Global.flFrameCount % 60 < 30 && mainPlayer.canUpgradeXArmor()) {
 			Fonts.drawText(FontType.DarkPurple, "<", 14, Global.halfScreenH, Alignment.Center);
 			//Fonts.drawText(FontType.DarkPurple, "X3", 12, Global.halfScreenH + 15, Alignment.Center);
 
@@ -264,7 +275,9 @@ public class UpgradeMenu : IMainMenu {
 			if (!buyOrUse) {
 				var subtank = mainPlayer.subtanks[i];
 				canUseSubtank = mainPlayer.canUseSubtank(subtank);
-				if (mainPlayer.currentMaverick != null && mainPlayer.isTagTeam()) {
+				if (mainPlayer.currentMaverick != null &&
+					mainPlayer.currentMaverick.controlMode == MaverickModeId.TagTeam
+				) {
 					canUseSubtank = mainPlayer.currentMaverickWeapon.canUseSubtank(subtank);
 				}
 
@@ -299,7 +312,7 @@ public class UpgradeMenu : IMainMenu {
 					float targetXPos = 113;
 					if (subtankTargets.Count > 1) {
 						Global.sprites["hud_weapon_icon"].drawToHUD(currentTarget.weaponSlotIndex, optionPos.x + targetXPos, optionPos.y + 4);
-						if (Global.frameCount % 60 < 30) {
+						if (Global.flFrameCount % 60 < 30) {
 							Fonts.drawText(FontType.DarkPurple, "<", optionPos.x + targetXPos - 12, optionPos.y - 2, Alignment.Center);
 							Fonts.drawText(FontType.DarkPurple, ">", optionPos.x + targetXPos + 12, optionPos.y - 2, Alignment.Center);
 						}
@@ -321,7 +334,7 @@ public class UpgradeMenu : IMainMenu {
 				);
 			}
 			if (buyOrUse) {
-				string costStr = $" ({subtankCost} {Global.nameCoins})";
+				string costStr = $" ({getSubTankCost()} {Global.nameCoins})";
 				int posOffset = Fonts.measureText(FontType.Blue, buyOrUseStr);
 				Fonts.drawText(FontType.Green, costStr, textX + posOffset, optionPos.y);
 			}
@@ -336,6 +349,10 @@ public class UpgradeMenu : IMainMenu {
 
 		//UpgradeArmorMenu.drawHyperArmorUpgrades(mainPlayer, 20);
 
+		Fonts.drawTextEX(
+			FontType.Grey, "[WeaponL]/[WeaponR]: Change Menu",
+			Global.halfScreenW, Global.screenH - 38, Alignment.Center
+		);
 		Fonts.drawTextEX(
 			FontType.Grey, "[MUP]/[MDOWN]: Select Item",
 			Global.halfScreenW, Global.screenH - 28, Alignment.Center

@@ -44,13 +44,14 @@ public partial class Level {
 	public List<DelayedAction> delayedActions = new List<DelayedAction>();
 	public Dictionary<ushort, float> recentlyDestroyedNetActors = new Dictionary<ushort, float>();
 	public List<BufferedDestroyActor> bufferedDestroyActors = new List<BufferedDestroyActor>();
-	public Dictionary<int, FailedSpawn> failedSpawns = new Dictionary<int, FailedSpawn>();
+	//public Dictionary<int, FailedSpawn> failedSpawns = new Dictionary<int, FailedSpawn>();
 
 	public string getListCounts() {
-		return
-		effects.Count + "," + recentClipCount.Keys.Count + "," + loopingSounds.Count + "," + musicSources.Count + "," + boundBlasterAltProjs.Count + "," +
-		chargedCrystalHunters.Count + "," + chargedCrystalHuntersS.Count + "," + SakuyaTimeStop.Count + "," + BZTimeStopper.Count + "," +
-		unchargedGravityWells.Count + "," + backloggedSpawns.Count + "," + delayedActions.Count + "," + recentlyDestroyedNetActors.Keys.Count + "," + bufferedDestroyActors.Count + "," + failedSpawns.Keys.Count;
+		return effects.Count + "," + recentClipCount.Keys.Count + "," +
+		loopingSounds.Count + "," + musicSources.Count + "," + boundBlasterAltProjs.Count + "," +
+		SakuyaTimeStop.Count + "," + BZTimeStopper.Count + "," +
+		chargedCrystalHunters.Count + "," + unchargedGravityWells.Count + "," + backloggedSpawns.Count + "," +
+		delayedActions.Count + "," + recentlyDestroyedNetActors.Keys.Count + "," + bufferedDestroyActors.Count;
 	}
 	#endregion
 
@@ -76,6 +77,8 @@ public partial class Level {
 	public bool camSetFirstTime;
 	public float camX;
 	public float camY;
+	float lastCameraXDelta;
+	float lastCameraXDeltaTimer;
 	public float zoomScale;
 	public long frameCount;
 	public int nonSkippedframeCount;
@@ -134,6 +137,10 @@ public partial class Level {
 	public Texture backgroundShaderImage;
 	public ShaderWrapper parallaxShader;
 	public Texture parallaxShaderImage;
+	public ShaderWrapper backwallShader;
+	public Texture backwallShaderImage;
+	public ShaderWrapper foregroundShader;
+	public Texture foregroundShaderImage;
 
 	public List<Player> players = new List<Player>();
 	public Player mainPlayer;
@@ -211,6 +218,7 @@ public partial class Level {
 
 	public PlayerCharData playerData;
 	public List<PlayerCharData> cpuDatas;
+	public List<BackloggedDamage> backloggedDamages = new();
 
 	// Radar dimensions
 	public float scaleW;
@@ -218,6 +226,35 @@ public partial class Level {
 	public float scaledW;
 	public float scaledH;
 	public int teamNum;
+
+	// Random stage stuff.
+	float powerplant2DarkTime = -1;
+	int powerplant2State = 0;   //0 = light, 1 = fade to black, 2 = black, 3 = fade to light
+	public float blackJoinTime;
+	public int camNotSetFrames;	int virusColorState = 0;
+	float virusColorTime;
+	Color virusColor1 = new Color(99, 20, 99, 128);
+	Color virusColor2 = new Color(66, 20, 99, 128);
+
+	// Camera.
+	public float camCenterX { get { return camX + Global.halfScreenW * Global.viewSize; } }
+	public float camCenterY { get { return camY + Global.halfScreenH * Global.viewSize; } }
+	public float shakeX;
+	public float shakeY;
+
+	// Netcode.
+	public List<PendingRPC> pendingPreUpdateRpcs = new();
+	public List<PendingRPC> pendingUpdateRpcs = new();
+	public List<PendingRPC> pendingCollisionRpcs = new();
+
+	public float killY {
+		get {
+			if (levelData.killY != null) {
+				return (float)levelData.killY;
+			}
+			return height + 60;
+		}
+	}
 
 	public Level(LevelData levelData, PlayerCharData playerData, ExtraCpuCharData extraCpuCharData, bool joinedLate) {
 		this.levelData = levelData;
@@ -234,6 +271,18 @@ public partial class Level {
 		}
 		if (!string.IsNullOrEmpty(levelData.backgroundShaderImage)) {
 			backgroundShaderImage = Global.textures.GetValueOrDefault(levelData.backgroundShaderImage);
+		}
+		if (!string.IsNullOrEmpty(levelData.backwallShader)) {
+			backwallShader = Helpers.cloneShaderSafe(levelData.backwallShader);
+		}
+		if (!string.IsNullOrEmpty(levelData.backwallShaderImage)) {
+			backwallShaderImage = Global.textures.GetValueOrDefault(levelData.backwallShaderImage);
+		}
+		if (!string.IsNullOrEmpty(levelData.foregroundShader)) {
+			foregroundShader = Helpers.cloneShaderSafe(levelData.foregroundShader);
+		}
+		if (!string.IsNullOrEmpty(levelData.foregroundShaderImage)) {
+			foregroundShaderImage = Global.textures.GetValueOrDefault(levelData.foregroundShaderImage);
 		}
 		if (!string.IsNullOrEmpty(levelData.parallaxShader)) {
 			parallaxShader = Helpers.cloneShaderSafe(levelData.parallaxShader);
@@ -266,6 +315,7 @@ public partial class Level {
 		InGameMainMenu.selectY = 0;
 		UpgradeMenu.onUpgradeMenu = true;
 		UpgradeArmorMenu.xGame = 1;
+		UpgradeArmorMenuEX.xGame = 1;
 
 		Menu.exit();
 		this.server = server;
@@ -307,7 +357,12 @@ public partial class Level {
 		scaledW = levelData.width * scaleW;
 		scaledH = levelData.height * scaleH;
 
-		Global.radarRenderTexture = new RenderTexture((uint)(scaledW * 4), (uint)(scaledH * 4));
+		Global.radarRenderTexture = new RenderTexture(
+			(uint)Math.Ceiling(scaledW), (uint)Math.Ceiling(scaledH)
+		);
+		Global.radarRenderTextureB = new RenderTexture(
+			(uint)Math.Ceiling(scaledW), (uint)Math.Ceiling(scaledH)
+		);
 		Global.input.lastUpdateTime = 0;
 
 		foreach (var serverPlayer in server.players) {
@@ -338,6 +393,8 @@ public partial class Level {
 			Global.srtBuffer1 = Global.srtBuffer1L;
 			Global.srtBuffer2 = Global.srtBuffer2L;
 		} else {
+			Global.viewSize = 1;
+			Global.view.Size = new Vector2f(Global.viewScreenW, Global.viewScreenH);
 			Global.screenRenderTexture = Global.screenRenderTextureS;
 			Global.srtBuffer1 = Global.srtBuffer1S;
 			Global.srtBuffer2 = Global.srtBuffer2S;
@@ -385,7 +442,7 @@ public partial class Level {
 				Wall wall = new Wall(instanceName, points);
 
 				float moveX = instance?.properties?.moveX ?? 0;
-				wall.moveX = moveX;
+				wall.moveX = moveX / 60f;
 
 				if (instance?.properties?.slippery != null && instance.properties.slippery == true) {
 					wall.slippery = true;
@@ -474,7 +531,7 @@ public partial class Level {
 				if (levelData.name != "giantdam" || enableGiantDamPropellers()) {
 					var moveZone = new MoveZone(
 						instanceName, points,
-						(float)instance.properties.moveX, (float)instance.properties.moveY
+						(float)instance.properties.moveX / 60f, (float)instance.properties.moveY / 60f
 					);
 					addGameObject(moveZone);
 				}
@@ -625,7 +682,7 @@ public partial class Level {
 				var spriteHeight = Global.sprites[spriteName].frames[0].rect.h();
 
 				if (!enabledInLargeCam && server.fixedCamera) {
-					// Do not add the map sprite
+				// Do not add the map sprite
 				} else if (rawParallaxIndex != null) {
 					if (Options.main.enableMapSprites) {
 						int parallaxIndex = rawParallaxIndex.Value - 1;
@@ -862,6 +919,14 @@ public partial class Level {
 		//new Mechaniloid(new Point(128, 128), p, 1, new MechaniloidWeapon(p, MechaniloidType.Hopper), MechaniloidType.Hopper, p.getNextActorNetId(), true);
 	}
 
+	public void changeCameraScale(float scale) {
+		if (server.fixedCamera) {
+			scale *= 2;
+		}
+		Global.viewSize = scale;
+		Global.view.Size = new Vector2f(Global.viewScreenW, Global.viewScreenH);
+	}
+
 	private long getZIndexFromProperty(dynamic property, long defaultZIndex) {
 		string zIndexString = property;
 		long zIndex;
@@ -901,13 +966,13 @@ public partial class Level {
 		return levelData.name == "giantdam" && !levelData.isMirrored && gameMode is CTF;
 	}
 
-	public void addFailedSpawn(int playerId, Point point, int xDir, ushort netId) {
+	/*public void addFailedSpawn(int playerId, Point point, int xDir, ushort netId) {
 		if (!failedSpawns.ContainsKey(playerId)) {
 			failedSpawns[playerId] = new FailedSpawn(point, xDir, netId);
 		} else {
 			failedSpawns[playerId].time += Global.spf;
 		}
-	}
+	}*/
 
 	public bool pickupRestricted(dynamic instance) {
 		if (isNon1v1Elimination()) return true;
@@ -928,6 +993,7 @@ public partial class Level {
 			if (hostPlayer.serverPlayer.id == mainPlayer.id) continue;
 			var player = players.Find(p => p.id == hostPlayer.serverPlayer.id);
 			if (player == null) continue;
+			if (player.ownedByLocalPlayer) continue;
 
 			player.alliance = hostPlayer.serverPlayer.alliance;
 			player.newAlliance = hostPlayer.newAlliance;
@@ -942,20 +1008,31 @@ public partial class Level {
 			player.armorFlag = hostPlayer.armorFlag;
 			player.loadout = hostPlayer.loadoutData;
 			player.disguise = hostPlayer.disguise;
+			player.atransLoadout = hostPlayer.atransLoadout;
 
-			if (hostPlayer.charNetId != null && hostPlayer.charNetId != 0 && player.character == null) {
+			if (hostPlayer.currentCharNum != null && hostPlayer.charNetId != null &&
+				hostPlayer.charNetId != 0 && player.character == null
+			) {
+				int targetCharNum = hostPlayer.currentCharNum.Value;
+				LoadoutData currentLoadout = player.loadout;
+				if (player.atransLoadout != null) {
+					currentLoadout = player.atransLoadout;
+				}
 				player.spawnCharAtPoint(
-					player.newCharNum, player.getCharSpawnData(player.newCharNum),
+					targetCharNum, player.getCharSpawnData(targetCharNum, false, currentLoadout),
 					new Point(hostPlayer.charXPos, hostPlayer.charYPos),
 					hostPlayer.charXDir, (ushort)hostPlayer.charNetId, false
 				);
-				player.changeWeaponFromWi(hostPlayer.weaponIndex);
-				if (hostPlayer.charRollingShieldNetId != null) {
-					new RollingShieldProjCharged(
-						player.weapon, player.character.pos,
-						player.character.xDir, player, hostPlayer.charRollingShieldNetId.Value
+				if (hostPlayer.charRollingShieldNetId != null && player.character is MegamanX mmx) {
+					mmx.chargedRollingShieldProj = new RollingShieldProjCharged(
+						player.character.pos,
+						player.character.xDir,
+						player.character, player,
+						hostPlayer.charRollingShieldNetId.Value
 					);
 				}
+			} else {
+				player.atransLoadout = null;
 			}
 		}
 	}
@@ -979,7 +1056,7 @@ public partial class Level {
 		foreach (var magnetMine in magnetMines) {
 			var player = getPlayerById(magnetMine.playerId);
 			if (player == null) continue;
-			new MagnetMineProj(new MagnetMine(), new Point(magnetMine.x, magnetMine.y), 1, player, magnetMine.netId);
+			new MagnetMineProj(new Point(magnetMine.x, magnetMine.y), 1, player.character, player, magnetMine.netId);
 		}
 	}
 
@@ -1023,11 +1100,18 @@ public partial class Level {
 		return dump;
 	}
 
-	public Player getPlayerById(int id) {
+	public Player? getPlayerById(int? id) {
 		return players.Find(p => p.id == id);
 	}
 
-	public Player getPlayerByName(string name) {
+	public Player getPlayerByIdSafe(int? id) {
+		if (id == null) {
+			return Player.stagePlayer;
+		}
+		return players.Find(p => p.id == id) ?? Player.errorPlayer;
+	}
+
+	public Player? getPlayerByName(string name) {
 		return players.Find(p => p.name == name);
 	}
 
@@ -1155,6 +1239,22 @@ public partial class Level {
 				backgroundShader.SetUniform("imageH", (int)backgroundShaderImage.Size.Y);
 			}
 		}
+		if (backwallShader != null) {
+			backwallShader.SetUniform("t", time);
+			if (backwallShaderImage != null) {
+				backwallShader.SetUniform("image", backwallShaderImage);
+				backwallShader.SetUniform("imageW", (int)backwallShaderImage.Size.X);
+				backwallShader.SetUniform("imageH", (int)backwallShaderImage.Size.Y);
+			}
+		}
+		if (foregroundShader != null) {
+			foregroundShader.SetUniform("t", time);
+			if (foregroundShaderImage != null) {
+				foregroundShader.SetUniform("image", foregroundShaderImage);
+				foregroundShader.SetUniform("imageW", (int)foregroundShaderImage.Size.X);
+				foregroundShader.SetUniform("imageH", (int)foregroundShaderImage.Size.Y);
+			}
+		}
 		if (parallaxShader != null) {
 			parallaxShader.SetUniform("t", time);
 			if (parallaxShaderImage != null) {
@@ -1200,12 +1300,12 @@ public partial class Level {
 		}
 
 		if (enableGiantDamPropellers()) {
-			if (Global.frameCount % 30 == 0) new Anim(new Point(1728, 576 + 20), "bubbles", 1, null, false) { vel = new Point(-100, 0), ttl = 4 };
-			else if (Global.frameCount % 20 == 0) new Anim(new Point(1728, 600 + 20), "bubbles", 1, null, false) { vel = new Point(-100, 0), ttl = 4 };
-			else if (Global.frameCount % 40 == 0) new Anim(new Point(1728, 625 + 20), "bubbles", 1, null, false) { vel = new Point(-100, 0), ttl = 4 };
-			else if (Global.frameCount % 30 == 15) new Anim(new Point(1728, 650 + 10), "bubbles", 1, null, false) { vel = new Point(-100, 0), ttl = 4 };
-			else if (Global.frameCount % 20 == 10) new Anim(new Point(1728, 675 + 10), "bubbles", 1, null, false) { vel = new Point(-100, 0), ttl = 4 };
-			else if (Global.frameCount % 40 == 20) new Anim(new Point(1728, 690 + 10), "bubbles", 1, null, false) { vel = new Point(-100, 0), ttl = 4 };
+			if (Global.flFrameCount % 30 == 0) new Anim(new Point(1728, 576 + 20), "bubbles", 1, null, false) { vel = new Point(-100, 0), ttl = 4 };
+			else if (Global.flFrameCount % 20 == 0) new Anim(new Point(1728, 600 + 20), "bubbles", 1, null, false) { vel = new Point(-100, 0), ttl = 4 };
+			else if (Global.flFrameCount % 40 == 0) new Anim(new Point(1728, 625 + 20), "bubbles", 1, null, false) { vel = new Point(-100, 0), ttl = 4 };
+			else if (Global.flFrameCount % 30 == 15) new Anim(new Point(1728, 650 + 10), "bubbles", 1, null, false) { vel = new Point(-100, 0), ttl = 4 };
+			else if (Global.flFrameCount % 20 == 10) new Anim(new Point(1728, 675 + 10), "bubbles", 1, null, false) { vel = new Point(-100, 0), ttl = 4 };
+			else if (Global.flFrameCount % 40 == 20) new Anim(new Point(1728, 690 + 10), "bubbles", 1, null, false) { vel = new Point(-100, 0), ttl = 4 };
 		}
 
 		foreach (string key in recentClipCount.Keys.ToList()) {
@@ -1226,6 +1326,9 @@ public partial class Level {
 				delayedActions.RemoveAt(i);
 			}
 		}
+		
+		// Call net update before the frame starts.
+		netUpdate();
 
 		float playerX = 0;
 		float playerY = 0;
@@ -1240,14 +1343,21 @@ public partial class Level {
 			if (go.iDestroyed) {
 				continue;
 			}
-			if (isTimeSlowed(go, out float slowAmount)) {
-				Global.speedMul = slowAmount;
-				go.localSpeedMul = slowAmount;
+			if (!isTimeSlowed(go, out float slowAmount)) {
+				slowAmount = 1;
 			}
+			Global.speedMul = slowAmount * Global.gameSpeed;
+			go.speedMul = slowAmount * Global.gameSpeed;
 			go.preUpdate();
 			go.statePreUpdate();
-			Global.speedMul = 1;
+			Global.speedMul = Global.gameSpeed;
 		}
+
+		// Preupdate RPCs.
+		foreach (PendingRPC pendingRpc in pendingPreUpdateRpcs) {
+			pendingRpc.invoke();
+		}
+		pendingPreUpdateRpcs.Clear();
 
 		foreach (Actor ms in mapSprites) {
 			ms.sprite?.update();
@@ -1257,10 +1367,11 @@ public partial class Level {
 			if (go.iDestroyed) {
 				continue;
 			}
-			if (isTimeSlowed(go, out float slowAmount)) {
-				Global.speedMul = slowAmount;
-				go.localSpeedMul = slowAmount;
+			if (!isTimeSlowed(go, out float slowAmount)) {
+				slowAmount = 1;
 			}
+			Global.speedMul = slowAmount * Global.gameSpeed;
+			go.speedMul = slowAmount * Global.gameSpeed;
 			go.update();
 			go.stateUpdate();
 			if (isNon1v1Elimination() &&
@@ -1282,22 +1393,56 @@ public partial class Level {
 						}
 						if (damagable.projectileCooldown["sigmavirus"] == 0) {
 							actor.playSound("hit");
-							actor.addRenderEffect(RenderEffectType.Hit, 0.05f, 0.1f);
+							actor.addRenderEffect(RenderEffectType.Hit, 3, 6);
 							damagable.applyDamage(2, null, null, null, null);
-							damagable.projectileCooldown["sigmavirus"] = 1;
+							damagable.projectileCooldown["sigmavirus"] = 60;
 						}
 					}
 				}
 			}
-			Global.speedMul = 1;
+			Global.speedMul = Global.gameSpeed;
 		}
+
+		// Normal update RPCs.
+		foreach (PendingRPC pendingRpc in pendingUpdateRpcs) {
+			pendingRpc.invoke();
+		}
+		pendingUpdateRpcs.Clear();
 
 		// Collision shenanigans.
 		collidedGObjs.Clear();
-		(int x, int y)[] arrayGrid = populatedGrids.ToArray();
+		(int x, int y)[] arrayGrid = populatedGrids.Order().ToArray();
 		foreach ((int x, int y)gridData in arrayGrid) {
 			// Initalize data.
 			List<GameObject> currentGrid = new(grid[gridData.x, gridData.y]);
+			// Give piority to some objects.
+			currentGrid = currentGrid.OrderBy(gameObj => {
+				// Terrain at very last.
+				// This is used for optimization reasons.
+				if (gameObj is Geometry or CrackedWall) {
+					return 5;
+				}
+				// Other non-actor stuff.
+				if (gameObj is not Actor actor) {
+					return 4;
+				}
+				// High piorty stuff, like shields.
+				if (actor.highPiority) {
+					return 0;
+				}
+				// Low piority stuff.
+				// Like Kaiser body.
+				if (actor.lowPiority) {
+					return 2;
+				}
+				// Random non-actor stuff.
+				if (actor is IDamagable) {
+					return 3;
+				}
+				// Default.
+				return 1;
+			}).ToList();
+			// Get the terrain.
 			List<GameObject>? currentTerrainGrid = null;
 			if (terrainGrid[gridData.x, gridData.y].Count >= 1) {
 				currentTerrainGrid = new List<GameObject>(terrainGrid[gridData.x, gridData.y]);
@@ -1305,8 +1450,9 @@ public partial class Level {
 			// Iterate trough populated grids.
 			for (int i = 0; i < currentGrid.Count; i++) {
 				// Skip terrain.
+				// As terrain is last this just skips terrain coliding with eachother.
 				if (currentGrid[i] is Geometry or CrackedWall) {
-					continue;
+					break;
 				}
 				// Skip destroyed stuff.
 				if (currentGrid[i].iDestroyed) {
@@ -1316,10 +1462,6 @@ public partial class Level {
 					// Exit if we get destroyed.
 					if (currentGrid[i].iDestroyed) {
 						break;
-					}
-					// Skip terrain coliding with eachother.
-					if (currentGrid[j] is Geometry or CrackedWall) {
-						continue;
 					}
 					// Get order independent hash.
 					int hash = currentGrid[i].GetHashCode() ^ currentGrid[j].GetHashCode();
@@ -1341,20 +1483,20 @@ public partial class Level {
 						currentGrid[i], currentGrid[j]
 					);
 					if (iDatas.Count > 0) {
-						Global.speedMul = currentGrid[i].localSpeedMul;
+						Global.speedMul = currentGrid[i].speedMul * Global.gameSpeed;
 						iDatas = organizeTriggers(iDatas);
 						foreach (CollideData collideDataI in iDatas) {
 							currentGrid[i].registerCollision(collideDataI);
 						}
-						Global.speedMul = 1;
+						Global.speedMul = Global.gameSpeed;
 					}
 					if (jDatas.Count > 0) {
-						Global.speedMul = currentGrid[j].localSpeedMul;
+						Global.speedMul = currentGrid[j].speedMul * Global.gameSpeed;
 						jDatas = organizeTriggers(jDatas);
 						foreach (CollideData collideDataJ in jDatas) {
 							currentGrid[j].registerCollision(collideDataJ);
 						}
-						Global.speedMul = 1;
+						Global.speedMul = Global.gameSpeed;
 					}
 				}
 				// Continue if we get destroyed.
@@ -1382,44 +1524,92 @@ public partial class Level {
 						actor, geometry
 					);
 					if (iData != null) {
-						Global.speedMul = currentGrid[i].localSpeedMul;
+						Global.speedMul = currentGrid[i].speedMul * Global.gameSpeed;
 						currentGrid[i].registerCollision(iData);
-						Global.speedMul = 1;
+						Global.speedMul = Global.gameSpeed;
 					}
 					if (jData != null) {
-						Global.speedMul = wallObj.localSpeedMul;
+						Global.speedMul = wallObj.speedMul;
 						wallObj.registerCollision(jData);
-						Global.speedMul = 1;
+						Global.speedMul = Global.gameSpeed;
 					}
 				}
 			}
-			Global.speedMul = 1;
+			Global.speedMul = Global.gameSpeed;
+		}
+
+		// Collision RPCs.
+		foreach (PendingRPC pendingRpc in pendingCollisionRpcs) {
+			pendingRpc.invoke();
+		}
+		pendingCollisionRpcs.Clear();
+
+		for (int i = backloggedDamages.Count - 1; i >= 0; i--) {
+			BackloggedDamage bd = backloggedDamages[i];
+			// Do not run on frame 0.
+			if (bd.time <= 0) {
+				bd.time++;
+				continue;
+			}
+			// Search for actor;
+			Actor? damagerActor =  Global.level.getActorByNetId(bd.actorId, true);
+			// Run if we find an actor.
+			// Or Run anyway if more than 1s.
+			if (damagerActor != null || bd.time > 60) {
+				bd.damageAction(damagerActor, bd.meleeId);
+				backloggedDamages.RemoveAt(i);
+			}
+			bd.time++;
 		}
 
 		foreach (GameObject go in gos) {
 			if (go.iDestroyed) {
 				continue;
 			}
-			if (isTimeSlowed(go, out float slowAmount)) {
-				Global.speedMul = slowAmount;
-				go.localSpeedMul = slowAmount;
+			if (!isTimeSlowed(go, out float slowAmount)) {
+				slowAmount = 1;
 			}
+			Global.speedMul = slowAmount * Global.gameSpeed;
+			go.speedMul = slowAmount * Global.gameSpeed;
 			go.postUpdate();
 			go.statePostUpdate();
-			Global.speedMul = 1;
+			Global.speedMul = Global.gameSpeed;
+			go.speedMul = Global.gameSpeed;
 			go.netUpdate();
+			go.speedMul = slowAmount * Global.gameSpeed;
 		}
 
 		if (camPlayer.character != null) {
 			if (!camPlayer.character.stopCamUpdate) {
 				Point camPos = camPlayer.character.getCamCenterPos();
 				Actor? followActor = camPlayer.character?.getFollowActor();
-				Point expectedCamPos = computeCamPos(camPos, new Point(playerX, playerY));
 
-				float moveDeltaX = camX - MathF.Round(playerX);
-				float moveDeltaY = camY - MathF.Round(playerY);
+				float extraPos = 0; //MathF.Floor(MathF.Abs(followActor.moveDelta.x));
+				if (extraPos >= 4) {
+					extraPos = extraPos * 16 * MathF.Sign(followActor.moveDelta.x);
+					if (lastCameraXDelta == 0 ||
+						extraPos > 0 && extraPos * 100 > lastCameraXDelta ||
+						extraPos < 0 && extraPos * 100 < lastCameraXDelta
+					) {
+						float speed = 100;
+						if (MathF.Sign(lastCameraXDelta) != MathF.Sign(extraPos)) {
+							speed = 600;
+						}
+						lastCameraXDelta = Helpers.moveTo(lastCameraXDelta, extraPos * 100, speed, true);
+					}
+					lastCameraXDeltaTimer = 30;
+				} else {
+					if (lastCameraXDeltaTimer <= 0) {
+						lastCameraXDelta = Helpers.moveTo(lastCameraXDelta, 0, 350, true);
+						extraPos = 0;
+					} else {
+						lastCameraXDeltaTimer--;
+					}
+				}
+				extraPos = MathF.Round(lastCameraXDelta / 100f);
 
-				float fullDeltaX = MathF.Round(expectedCamPos.x) - camX;
+				Point expectedCamPos = computeCamPos(camPos, new Point(playerX + extraPos, playerY));
+				float fullDeltaX = MathF.Round(expectedCamPos.x + extraPos) - camX;
 				float fullDeltaY = MathF.Round(expectedCamPos.y) - camY;
 
 				if (followActor != null && followActor.grounded == false) {
@@ -1428,7 +1618,6 @@ public partial class Level {
 							(not WallKick and not WallSlide and not LadderClimb) or InRideChaser
 					) {
 						if (!unlockfollow) {
-							moveDeltaY = 0;
 							fullDeltaY = 0;
 						}
 					} else {
@@ -1444,16 +1633,20 @@ public partial class Level {
 				if (camPlayer.character?.charState is not InRideChaser &&
 					(camPlayer.character as Axl)?.isZooming() != true
 				) {
-					int camSpeed = 4;
-					if (MathF.Abs(deltaX) > camSpeed) {
-						deltaX = camSpeed * MathF.Sign(fullDeltaX);
+					int camSpeedX = 4;
+					int camSpeedY = 4;
+					float diference;
+					if (MathF.Abs(deltaX) > camSpeedX) {
+						diference = MathF.Floor(MathF.Abs((camSpeedX - MathF.Abs(deltaX)) / 24f));
+						deltaX = (camSpeedX + diference) * MathF.Sign(fullDeltaX);
 					}
-					if (MathF.Abs(deltaY) > camSpeed) {
-						deltaY = camSpeed * MathF.Sign(fullDeltaY);
+					if (MathF.Abs(deltaY) > camSpeedY) {
+						diference = MathF.Floor(MathF.Abs((camSpeedY - MathF.Abs(deltaY)) / 24f));
+						deltaY = (camSpeedY + diference) * MathF.Sign(fullDeltaY);
 					}
 				}
 
-				updateCamPos(deltaX, deltaY);
+				updateCamPos(deltaX, deltaY, playerX + extraPos, playerY);
 			} else {
 				shakeX = 0;
 				shakeY = 0;
@@ -1462,8 +1655,8 @@ public partial class Level {
 			if (camPlayer.character is Axl axl && axl.isZooming()) {
 				Player p = camPlayer.character.player;
 
-				p.axlScopeCursorWorldPos.x = Helpers.clamp(p.axlScopeCursorWorldPos.x, camCenterX - Global.halfViewScreenW, camCenterX + Global.halfViewScreenW);
-				p.axlScopeCursorWorldPos.y = Helpers.clamp(p.axlScopeCursorWorldPos.y, camCenterY - Global.halfViewScreenH, camCenterY + Global.halfViewScreenH);
+				axl.axlScopeCursorWorldPos.x = Helpers.clamp(axl.axlScopeCursorWorldPos.x, camCenterX - Global.halfViewScreenW, camCenterX + Global.halfViewScreenW);
+				axl.axlScopeCursorWorldPos.y = Helpers.clamp(axl.axlScopeCursorWorldPos.y, camCenterY - Global.halfViewScreenH, camCenterY + Global.halfViewScreenH);
 			}
 		} else {
 			shakeX = 0;
@@ -1504,98 +1697,110 @@ public partial class Level {
 		if (twoFrameCycle > 2) { twoFrameCycle = -2; }
 
 		gameMode.update();
+		//this.getTotalCountInGrid();
+		updateMusicSources();
 
+		// Send RPCs.
 		if (Global.serverClient != null) {
-			if (isSendMessageFrame()) {
-				Global.serverClient.flush();
-			}
+			Global.serverClient.flush();
+		}
+	}
 
-			Global.serverClient.getMessages(out var messages, true);
+	public void netUpdate() {
+		if (Global.serverClient == null) {
+			return;
+		}
+		if (isSendMessageFrame()) {
+			Global.serverClient.flush();
+		}
+		Global.serverClient.getMessages(out var messages, true);
 
-			foreach (var message in messages) {
-				if (message.StartsWith("hostdisconnect:")) {
-					string reason = message.Split(':')[1];
-					if (reason == "RecreateMS" &&
-						Global.serverClient.serverId != null
-					) {
-						server.uniqueID = Global.serverClient.serverId.Value;
-						Global.leaveMatchSignal = new LeaveMatchSignal(
-							LeaveMatchScenario.RejoinMS, server, null, true
-						);
-					} else if (reason == "Recreate") {
-						Global.leaveMatchSignal = new LeaveMatchSignal(
-							LeaveMatchScenario.Rejoin, server, null
-						);
-					} else {
-						Global.leaveMatchSignal = new LeaveMatchSignal(
-							LeaveMatchScenario.ServerShutdown, null, null
-						);
+		foreach (var message in messages) {
+			if (message.StartsWith("hostdisconnect:")) {
+				string reason = message.Split(':')[1];
+				if (reason == "RecreateMS" &&
+					Global.serverClient.serverId != null
+				) {
+					server.uniqueID = Global.serverClient.serverId.Value;
+					Global.leaveMatchSignal = new LeaveMatchSignal(
+						LeaveMatchScenario.RejoinMS, server, "", true
+					);
+				} else if (reason == "Recreate") {
+					Global.leaveMatchSignal = new LeaveMatchSignal(
+						LeaveMatchScenario.Rejoin, server
+					);
+				} else {
+					Global.leaveMatchSignal = new LeaveMatchSignal(
+						LeaveMatchScenario.ServerShutdown, null
+					);
+				}
+			} else if (message.StartsWith("clientdisconnect:")) {
+				var playerLeft = JsonConvert.DeserializeObject<ServerPlayer>(
+					message.RemovePrefix("clientdisconnect:")
+				);
+				if (playerLeft != null) {
+					var player = Global.level.getPlayerById(playerLeft.id);
+					if (player != null) {
+						removePlayer(player);
 					}
-				} else if (message.StartsWith("clientdisconnect:")) {
-					var playerLeft = JsonConvert.DeserializeObject<ServerPlayer>(message.RemovePrefix("clientdisconnect:"));
-					if (playerLeft != null) {
-						var player = Global.level.getPlayerById(playerLeft.id);
-						if (player != null) {
-							removePlayer(player);
-						}
-					}
-				}
-			}
-
-			for (int i = bufferedDestroyActors.Count - 1; i >= 0; i--) {
-				var bufferedDestroyedActor = bufferedDestroyActors[i];
-				bufferedDestroyedActor.time += Global.spf;
-				var actor = getActorByNetId(bufferedDestroyedActor.netId);
-				if (actor != null) {
-					actor.destroySelf(bufferedDestroyedActor.destroySprite, bufferedDestroyedActor.destroySound, disableRpc: true);
-					bufferedDestroyActors.RemoveAt(i);
-				} else if (bufferedDestroyedActor.time > 5) {
-					bufferedDestroyActors.RemoveAt(i);
-				}
-			}
-
-			for (int i = backloggedSpawns.Count - 1; i >= 0; i--) {
-				backloggedSpawns[i].time += Global.spf;
-				if (backloggedSpawns[i].time >= 5 || backloggedSpawns[i].trySpawnPlayer()) {
-					backloggedSpawns.RemoveAt(i);
-				}
-			}
-
-			var keysToRemove = new List<int>();
-			foreach (var kvp in failedSpawns) {
-				var player = getPlayerById(kvp.Key);
-				if (player == null || player.character != null) {
-					keysToRemove.Add(kvp.Key);
-				} else if (kvp.Value.time >= 4f) {
-					keysToRemove.Add(kvp.Key);
-					if (player.character == null && player.loadoutSet) {
-						player?.spawnCharAtPoint(
-							player.newCharNum, player.getCharSpawnData(player.newCharNum),
-							kvp.Value.spawnPos, kvp.Value.xDir, kvp.Value.netId, false
-						);
-					}
-				}
-			}
-			foreach (var key in keysToRemove) {
-				failedSpawns.Remove(key);
-			}
-
-			foreach (var key in recentlyDestroyedNetActors.Keys.ToList()) {
-				recentlyDestroyedNetActors[key] += Global.spf;
-				if (recentlyDestroyedNetActors[key] > 5) {
-					recentlyDestroyedNetActors.Remove(key);
 				}
 			}
 		}
 
-		//this.getTotalCountInGrid();
-		updateMusicSources();
+		for (int i = bufferedDestroyActors.Count - 1; i >= 0; i--) {
+			var bufferedDestroyedActor = bufferedDestroyActors[i];
+			bufferedDestroyedActor.time += Global.spf;
+			var actor = getActorByNetId(bufferedDestroyedActor.netId);
+			if (actor != null) {
+				actor.destroySelf(
+					bufferedDestroyedActor.destroySprite,
+					bufferedDestroyedActor.destroySound, disableRpc: true
+				);
+				bufferedDestroyActors.RemoveAt(i);
+			} else if (bufferedDestroyedActor.time > 5) {
+				bufferedDestroyActors.RemoveAt(i);
+			}
+		}
+
+		for (int i = backloggedSpawns.Count - 1; i >= 0; i--) {
+			backloggedSpawns[i].time += Global.spf;
+			if (backloggedSpawns[i].time >= 5 || backloggedSpawns[i].trySpawnPlayer()) {
+				backloggedSpawns.RemoveAt(i);
+			}
+		}
+
+		var keysToRemove = new List<int>();
+		/*foreach (var kvp in failedSpawns) {
+			var player = getPlayerById(kvp.Key);
+			if (player == null || player.character != null) {
+				keysToRemove.Add(kvp.Key);
+			} else if (kvp.Value.time >= 4f) {
+				keysToRemove.Add(kvp.Key);
+				if (player.character == null && player.loadoutSet) {
+					player?.spawnCharAtPoint(
+						player.newCharNum, player.getCharSpawnData(player.newCharNum),
+						kvp.Value.spawnPos, kvp.Value.xDir, kvp.Value.netId, false
+					);
+				}
+			}
+		}
+		foreach (var key in keysToRemove) {
+			failedSpawns.Remove(key);
+		}*/
+
+		foreach (var key in recentlyDestroyedNetActors.Keys.ToList()) {
+			recentlyDestroyedNetActors[key] += Global.spf;
+			if (recentlyDestroyedNetActors[key] > 5) {
+				recentlyDestroyedNetActors.Remove(key);
+			}
+		}
 	}
 
 	private void updateMusicSources() {
 		Point listenerPos = new Point(camCenterX, camCenterY);
-		if ((is1v1() || isTraining()) && mainPlayer.character != null) listenerPos = mainPlayer.character.getCenterPos();
-
+		if ((is1v1() || isTraining()) && mainPlayer.character != null) {
+			listenerPos = mainPlayer.character.getCenterPos();
+		}
 		bool found = false;
 		float foundVolume = 0;
 		for (int i = musicSources.Count - 1; i >= 0; i--) {
@@ -1625,39 +1830,38 @@ public partial class Level {
 		var actor = go as Actor;
 		if (actor == null) return false;
 
-		if (actor.timeStopTime > 10) {
+		if (actor.timeStopTime > 15) {
 			slowAmount = 0.125f;
 			return true;
 		}
 
 		bool isSlown = false;
 
-		if (actor is Character chr2) {
-			if (chr2.infectedTime > 0) {
-				slowAmount = 1 - (0.25f * (chr2.infectedTime / 8));
-				isSlown = true;
-			}
-		}
-
-		if (actor is Projectile || actor is Character || actor is Anim || actor is RideArmor || actor is OverdriveOstrich) {
+		if (actor is Projectile || actor is Character || actor is Anim || actor is RideArmor || actor is Maverick) {
 			foreach (var cch in chargedCrystalHunters) {
 				var chr = go as Character;
 				if (chr != null && chr.player.alliance == cch.owner.alliance) continue;
-				if (chr != null && chr.isCCImmune()) continue;
+				if (chr != null && chr.isTimeImmune()) continue;
 
 				var proj = go as Projectile;
-				if (proj != null && proj.damager.owner.alliance == cch.owner.alliance) continue;
-				if (proj != null && proj.damager?.owner?.character?.isCCImmune() == true) continue;
-
+				if (proj != null && proj.damager.owner.alliance == cch.owner.alliance) {
+					continue;
+				}
 				var mech = go as RideArmor;
-				if (mech != null && mech.player != null && mech.player.alliance == cch.owner.alliance) continue;
-
-				var oo = actor as OverdriveOstrich;
-				if (oo != null && oo.player != null && oo.player.alliance == cch.owner.alliance) continue;
-
+				if (mech != null && mech.player != null && mech.player.alliance == cch.owner.alliance) {
+					continue;
+				}
+				var mvrk = actor as Maverick;
+				if (mvrk != null && mvrk.player != null && mvrk.player.alliance == cch.owner.alliance) {
+					continue;
+				}
 				if (cch.pos.distanceTo(actor.getCenterPos()) < CrystalHunterCharged.radius) {
-					if (cch.isSnails) slowAmount = 0.5f;
-					if (oo != null && oo.ownedByLocalPlayer && oo.state is not OverdriveOCrystalizedState && oo.crystalizeCooldown == 0) {
+					if (cch.isSnails) {
+						slowAmount = 0.5f;
+					}
+					if (actor is OverdriveOstrich oo && oo.ownedByLocalPlayer &&
+						oo.state is not OverdriveOCrystalizedState && oo.crystalizeCooldown == 0
+					) {
 						oo.changeState(new OverdriveOCrystalizedState());
 					}
 					isSlown = true;
@@ -1724,13 +1928,18 @@ public partial class Level {
 				}
 			}
 
+		if (actor is Character chr2) {
+			if (chr2.virusTime > 0) {
+				if (!isSlown) {
+					slowAmount = 1;
+				}
+				slowAmount *= 1 - (0.25f * (chr2.virusTime / 8));
+				isSlown = true;
+			}
+		}
+
 		return isSlown;
 	}
-
-	float powerplant2DarkTime = -1;
-	int powerplant2State = 0;   //0 = light, 1 = fade to black, 2 = black, 3 = fade to light
-	public float blackJoinTime;
-	public int camNotSetFrames;
 
 	public void render() {
 		if (Global.level.mainPlayer == null) return;
@@ -1843,12 +2052,13 @@ public partial class Level {
 
 		// If a backwall wasn't set, the background becomes the backwall.
 		if (level.backwallSprites != null) {
+			DrawWrappers.DrawMapTiles(level.backwallSprites, 0, 0, srt, level.backwallShader);
 			DrawWrappers.DrawMapTiles(level.backgroundSprites, 0, 0, srt, level.backgroundShader);
 		}
 
-		level.drawKeyRange(keys, ZIndex.Background, ZIndex.Foreground, srt, walDrawObjects);;
+		level.drawKeyRange(keys, ZIndex.Background, ZIndex.Foreground, srt, walDrawObjects);
 
-		DrawWrappers.DrawMapTiles(level.foregroundSprites, 0, 0, srt, level.backgroundShader);
+		DrawWrappers.DrawMapTiles(level.foregroundSprites, 0, 0, srt, level.foregroundShader);
 
 		level.drawKeyRange(keys, ZIndex.Foreground, long.MaxValue, srt, walDrawObjects);
 
@@ -1981,10 +2191,6 @@ public partial class Level {
 
 	}
 
-	int virusColorState = 0;
-	float virusColorTime;
-	Color virusColor1 = new Color(99, 20, 99, 128);
-	Color virusColor2 = new Color(66, 20, 99, 128);
 	private void drawSigmaVirus() {
 		var rect = gameMode.safeZoneRect;
 
@@ -2162,6 +2368,7 @@ public partial class Level {
 
 	private void drawPowerplant2() {
 		byte alpha = 0;
+		byte alpha2 = 0;
 		if (powerplant2State == 0) {
 			powerplant2DarkTime += Global.spf * 0.5f;
 			if (powerplant2DarkTime >= 1) {
@@ -2169,56 +2376,47 @@ public partial class Level {
 				powerplant2DarkTime = 0;
 			}
 		} else if (powerplant2State == 1) {
-			alpha = (byte)(powerplant2DarkTime * 255);
+			alpha = (byte)(powerplant2DarkTime * 200);
+			alpha2 = (byte)(powerplant2DarkTime * 150);
 			powerplant2DarkTime += Global.spf * 2;
 			if (powerplant2DarkTime >= 1) {
 				powerplant2State = 2;
-				powerplant2DarkTime = 0;
+				powerplant2DarkTime = -3;
 			}
 		} else if (powerplant2State == 2) {
-			alpha = 255;
+			alpha = 200;
+			alpha2 = 150;
 			powerplant2DarkTime += Global.spf * 0.5f;
 			if (powerplant2DarkTime >= 1) {
 				powerplant2State = 3;
 				powerplant2DarkTime = 0;
 			}
 		} else if (powerplant2State == 3) {
-			alpha = (byte)((1 - powerplant2DarkTime) * 255);
+			alpha = (byte)((1 - powerplant2DarkTime) * 200);
+			alpha = (byte)((1 - powerplant2DarkTime) * 150);
 			powerplant2DarkTime += Global.spf * 2;
 			if (powerplant2DarkTime >= 1) {
 				powerplant2State = 0;
 				powerplant2DarkTime = 0;
 			}
 		}
+		DrawWrappers.DrawRect(0, 0, width, height, true,
+		new Color(0, 0, 0, alpha2), 1, ZIndex.AboveFont, isWorldPos: true);
 
-		DrawWrappers.DrawRect(0, 0, width, height, true, new Color(0, 0, 0, alpha), 1, Global.level.mainPlayer?.character?.zIndex ?? ZIndex.HUD, isWorldPos: true);
-	}
-
-	public float camCenterX { get { return camX + Global.halfScreenW * Global.viewSize; } }
-	public float camCenterY { get { return camY + Global.halfScreenH * Global.viewSize; } }
-
-	public float killY {
-		get {
-			if (levelData.killY != null) {
-				return (float)levelData.killY;
-			}
-			return height + 60;
-		}
+		DrawWrappers.DrawRect(0, 0, width, height, true, new Color(0, 0, 0, alpha), 1,
+		Global.level.mainPlayer?.character?.zIndex ?? ZIndex.HUD, isWorldPos: true);
 	}
 
 	public bool ignoreNoScrolls() {
 		return mainPlayer.weapon is WolfSigmaHandWeapon || (mainPlayer.character as Axl)?.isAnyZoom() == true;
 	}
 
-	public void updateCamPos(float deltaX, float deltaY) {
-		var playerX = camPlayer.character.getCamCenterPos().x;
-		var playerY = camPlayer.character.getCamCenterPos().y;
+	public void updateCamPos(float deltaX, float deltaY, float playerX, float playerY) {
+		bool dontMoveX = false;
+		bool dontMoveY = false;
 
-		var dontMoveX = false;
-		var dontMoveY = false;
-
-		var scaledCanvasW = Global.viewScreenW;
-		var scaledCanvasH = Global.viewScreenH;
+		uint scaledCanvasW = Global.viewScreenW;
+		uint scaledCanvasH = Global.viewScreenH;
 
 		var halfScaledCanvasW = Global.halfScreenW * Global.viewSize;
 		var halfScaledCanvasH = Global.halfScreenH * Global.viewSize;
@@ -2298,10 +2496,12 @@ public partial class Level {
 		float offsetX = 0;
 		float offsetY = 0;
 		if (shakeX > 0 || shakeY > 0) {
-			offsetX = 3 * (float)Math.Sin(shakeX * 100);
-			offsetY = 3 * (float)Math.Sin(shakeY * 100);
-			shakeX = Helpers.clampMin(shakeX - Global.spf, 0);
-			shakeY = Helpers.clampMin(shakeY - Global.spf, 0);
+			float shakePower = 4 + (shakeY / 12);
+			float piMul = 55f / MathF.PI;
+			offsetX = shakePower * MathF.Sin(shakeX * piMul);
+			offsetY = MathF.Round(shakePower * MathF.Sin(shakeY * piMul));
+			shakeX = Helpers.clampMin(shakeX - 1, 0);
+			shakeY = Helpers.clampMin(shakeY - 1, 0);
 		}
 
 		float yOff = 0;
@@ -2334,9 +2534,6 @@ public partial class Level {
 			}
 		}
 	}
-
-	public float shakeX;
-	public float shakeY;
 
 	public void snapCamPos(Point point, Point? prevCamPos) {
 		var camPos = computeCamPos(point, prevCamPos);
@@ -2479,6 +2676,41 @@ public partial class Level {
 		return unoccupied.GetRandomItem();
 	}
 
+	public SpawnPoint getFirstSpawnPoint(Player player) {
+		if (Global.overrideSpawnPoint != null) {
+			var sp = spawnPoints.FirstOrDefault(s => s.name == Global.overrideSpawnPoint);
+			if (sp != null) return sp;
+		}
+		if (isRace()) {
+			return raceStartSpawnPoints[player.getSpawnIndex(raceStartSpawnPoints.Count)];
+		}
+		if (is1v1()) {
+			return spawnPoints[player.getSpawnIndex(spawnPoints.Count)];
+		}
+		if (Global.quickStart && Global.quickStartSpawn != null) {
+			return spawnPoints[Global.quickStartSpawn.Value];
+		}
+		SpawnPoint[] availableSpawns;
+		if (!gameMode.useTeamSpawns() || player.newAlliance < 0 || player.newAlliance > 1) {
+			availableSpawns = spawnPoints.Where(
+				(spawnPoint) => {
+					return (
+						spawnPoint.alliance == -1
+					);
+				}
+			).ToArray();
+		} else {
+			availableSpawns = spawnPoints.Where(
+				(spawnPoint) => {
+					return (
+						spawnPoint.alliance == player.newAlliance
+					);
+				}
+			).ToArray();
+		}
+		return availableSpawns[player.getSpawnIndex(availableSpawns.Length)];
+	}
+
 	public bool isRace() {
 		return gameMode is Race;
 	}
@@ -2580,7 +2812,7 @@ public partial class Level {
 			dump += "NetId: " + redFlag.netId + "\n";
 			dump += "Owned By Local Player: " + redFlag.ownedByLocalPlayer + "\n";
 			dump += "Position: " + redFlag.pos.ToString() + "\n";
-			dump += "Carrier: " + redFlag.chr?.player?.name + "\n";
+			dump += "Carrier: " + redFlag.linkedChar?.player?.name + "\n";
 			if (redFlag.destroyed) dump += "DESTROYED\n";
 		}
 		dump += "\nBlue Flag:\n";
@@ -2588,7 +2820,7 @@ public partial class Level {
 			dump += "NetId: " + blueFlag.netId + "\n"; ;
 			dump += "Owned By Local Player: " + blueFlag.ownedByLocalPlayer + "\n"; ;
 			dump += "Position: " + blueFlag.pos.ToString() + "\n"; ;
-			dump += "Carrier: " + blueFlag.chr?.player?.name + "\n";
+			dump += "Carrier: " + blueFlag.linkedChar?.player?.name + "\n";
 			if (blueFlag.destroyed) dump += "DESTROYED\n";
 		}
 
@@ -2641,7 +2873,7 @@ public partial class Level {
 	public void clearOldActors() {
 		Dictionary<ushort, Actor> destroyedActorsByIdClone = new(destroyedActorsById);
 		foreach ((ushort actorId, Actor actor) in destroyedActorsByIdClone) {
-			long framesDestroyed = frameCount - actor.destroyedOnFrame;
+			long framesDestroyed = Global.floorFrameCount - actor.destroyedOnFrame;
 			if (framesDestroyed >= 240) {
 				destroyedActorsById.Remove(actorId);
 			}

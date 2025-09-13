@@ -30,6 +30,7 @@ public class PunchyZero : Character {
 	public AwakenedAura awakenedAuraWeapon = new();
 	public ZSaber saberSwingWeapon = new();
 	public ZeroBuster busterWeapon = new();
+	public PZeroLoadout loadout;
 	public int gigaAttackSelected;
 	
 	// Inputs.
@@ -45,6 +46,7 @@ public class PunchyZero : Character {
 	public float parryCooldown;
 	public float hadangekiCooldown;
 	public float genmureiCooldown;
+	public float tauntCooldown;
 
 	// Hypermode stuff.
 	public float donutTimer = 0;
@@ -54,21 +56,41 @@ public class PunchyZero : Character {
 	// Creation code.
 	public PunchyZero(
 		Player player, float x, float y, int xDir,
-		bool isVisible, ushort? netId, bool ownedByLocalPlayer, bool isWarpIn = true
-	) : base(
-		player, x, y, xDir, isVisible, netId, ownedByLocalPlayer, isWarpIn
+		bool isVisible, ushort? netId, bool ownedByLocalPlayer,
+		bool isWarpIn = true, PZeroLoadout? loadout = null,
+		int? heartTanks = null, bool isATrans = false
+	) : base( 
+		player, x, y, xDir, isVisible,
+		netId, ownedByLocalPlayer,
+		isWarpIn, heartTanks, isATrans
 	) {
 		charId = CharIds.PunchyZero;
 		// Loadout stuff.
-		PZeroLoadout pzeroLoadout = player.loadout.pzeroLoadout;
+		loadout ??= player.loadout.pzeroLoadout.clone();
+		this.loadout = loadout;
 
-		gigaAttackSelected = pzeroLoadout.gigaAttack;
-		gigaAttack = pzeroLoadout.gigaAttack switch {
-			1 => new CFlasher(),
+		gigaAttackSelected = loadout.gigaAttack;
+		gigaAttack = loadout.gigaAttack switch {
+			1 => new Messenkou(),
 			2 => new RekkohaWeapon(),
 			_ => new RakuhouhaWeapon(),
 		};
-		hyperMode = pzeroLoadout.hyperMode;
+		hyperMode = loadout.hyperMode;
+		altSoundId = AltSoundIds.X3;
+	}
+
+	public override CharState getAirJumpState() => new Jump() { sprite = "kuuenbu" };
+	public override CharState getJumpState() {
+		if (isDashing) {
+			return new Jump() { sprite = "kuuenbu" };
+		}
+		return new Jump();
+	}
+	public override CharState getTauntState() {
+		if (isAwakened && tauntCooldown <= 0) {
+			return new PAwakenedTaunt();
+		}
+		return new PZeroTaunt();
 	}
 
 	public override void update() {
@@ -78,7 +100,7 @@ public class PunchyZero : Character {
 		if (!Global.level.isHyper1v1()) {
 			if (isBlack) {
 				if (musicSource == null) {
-					addMusicSource("zero_X1", getCenterPos(), true);
+					addMusicSource("themeOfZeroMMZ_OldGsU", getCenterPos(), true);
 				}
 			} else if (isAwakened) {
 				if (musicSource == null) {
@@ -105,6 +127,9 @@ public class PunchyZero : Character {
 		Helpers.decrementFrames(ref dashAttackCooldown);
 		Helpers.decrementFrames(ref diveKickCooldown);
 		Helpers.decrementFrames(ref uppercutCooldown);
+		Helpers.decrementFrames(ref genmureiCooldown);
+		Helpers.decrementFrames(ref aiAttackCooldown);
+		Helpers.decrementFrames(ref tauntCooldown);
 		gigaAttack.update();
 		gigaAttack.charLinkedUpdate(this, true);
 		base.update();
@@ -120,14 +145,14 @@ public class PunchyZero : Character {
 				hyperModeTimer = 0;
 				if (hyperOvertimeActive && isAwakened && player.currency >= 4) {
 					awakenedPhase = 2;
-					heal(player, player.maxHealth * 2, true);
+					heal(player, awakenedPhase, true);
 					gigaAttack.addAmmoPercentHeal(100);
 				} else {
 					awakenedPhase = 0;
 					isBlack = false;
 					float oldAmmo = gigaAttack.ammo;
 					gigaAttack = gigaAttackSelected switch {
-						1 => new CFlasher(),
+						1 => new Messenkou(),
 						2 => new RekkohaWeapon(),
 						_ => new RakuhouhaWeapon(),
 					};
@@ -153,12 +178,14 @@ public class PunchyZero : Character {
 		}
 		// For the shooting animation.
 		if (shootAnimTime > 0) {
-			shootAnimTime -= Global.spf;
+			shootAnimTime -= Global.speedMul;
 			if (shootAnimTime <= 0) {
 				shootAnimTime = 0;
-				changeSpriteFromName(charState.defaultSprite, false);
-				if (charState is WallSlide) {
-					frameIndex = sprite.totalFrameNum - 1;
+				if (sprite.name == getSprite(charState.shootSpriteEx)) {
+					changeSpriteFromName(charState.defaultSprite, false);
+					if (charState is WallSlide) {
+						frameIndex = sprite.totalFrameNum - 1;
+					}
 				}
 			}
 		}
@@ -181,18 +208,20 @@ public class PunchyZero : Character {
 	}
 
 	public override bool chargeButtonHeld() {
+		if (charState.normalCtrl && player.currency > 0 && !player.isMainPlayer &&
+		ai?.aiState.randomlyChargeWeapon == true && getChargeLevel() <= getMaxChargeLevel()) return true;
 		return player.input.isHeld(Control.Shoot, player);
 	}
 
 	public void setShootAnim() {
-		string shootSprite = getSprite(charState.shootSprite);
+		string shootSprite = getSprite(charState.shootSpriteEx);
 		if (!Global.sprites.ContainsKey(shootSprite)) {
 			if (grounded) { shootSprite = "zero_shoot"; }
 			else { shootSprite = "zero_fall_shoot"; }
 		}
 		if (shootAnimTime == 0) {
 			changeSprite(shootSprite, false);
-		} else if (charState is Idle) {
+		} else if (charState is Idle && !charState.inTransition()) {
 			frameIndex = 0;
 			frameTime = 0;
 		}
@@ -203,7 +232,7 @@ public class PunchyZero : Character {
 				this.xDir = 1;
 			}
 		}
-		shootAnimTime = 0.3f;
+		shootAnimTime = DefaultShootAnimTime;
 	}
 
 	public void shoot(int chargeLevel) {
@@ -223,21 +252,21 @@ public class PunchyZero : Character {
 		// Shoot stuff.
 		if (chargeLevel == 1) {
 			currencyUse = 1;
-			playSound("buster2X3", sendRpc: true);
+			playSound("buster2", sendRpc: true);
 			new ZBuster2Proj(
-				shootPos, xDir, 0, player, player.getNextActorNetId(), rpc: true
+				shootPos, xDir, this, player, player.getNextActorNetId(), rpc: true
 			);
 		} else if (chargeLevel == 2) {
 			currencyUse = 1;
-			playSound("buster3X3", sendRpc: true);
+			playSound("buster2X3", sendRpc: true);
 			new ZBuster3Proj(
-				shootPos, xDir, 0, player, player.getNextActorNetId(), rpc: true
+				shootPos, xDir, this, player, player.getNextActorNetId(), rpc: true
 			);
 		} else if (chargeLevel == 3 || chargeLevel >= 4) {
 			currencyUse = 1;
-			playSound("buster4", sendRpc: true);
+			playSound("buster3X3", sendRpc: true);
 			new ZBuster4Proj(
-				shootPos, xDir, 0, player, player.getNextActorNetId(), rpc: true
+				shootPos, xDir, this, player, player.getNextActorNetId(), rpc: true
 			);
 		}
 		if (currencyUse > 0) {
@@ -280,10 +309,10 @@ public class PunchyZero : Character {
 
 		new ShingetsurinProj(
 			shootPos, xDir,
-			time / 60f, player, player.getNextActorNetId(), rpc: true
+			time / 60f, this, player, player.getNextActorNetId(), rpc: true
 		);
 		playSound("shingetsurinx5", forcePlay: false, sendRpc: true);
-		shootAnimTime = 0.3f;
+		shootAnimTime = DefaultShootAnimTime;
 	}
 
 	public void updateAwakenedAura() {
@@ -334,7 +363,7 @@ public class PunchyZero : Character {
 		}
 		if (player.currency >= cost &&
 			player.input.isHeld(Control.Special2, player) &&
-			charState is not HyperZeroStart and not WarpIn && (
+			charState is not HyperPunchyZeroStart and not WarpIn && (
 				!isViral && !isAwakened && !isBlack ||
 				isAwakened && !hyperOvertimeActive
 			)
@@ -373,11 +402,11 @@ public class PunchyZero : Character {
 			if (grounded && vel.y >= 0 && isGenmuZero) {
 				if (genmureiCooldown == 0) {
 					genmureiCooldown = 120;
-					changeState(new GenmureiState(), true);
+					changeState(new PunchyZeroGenmureiState(), true);
 					return true;
 				}
 			} else {
-				changeState(new AwakenedZeroHadangeki(), true);
+				changeState(new AwakenedPunchyZeroHadangeki(), true);
 				return true;
 			}
 			return true;
@@ -389,7 +418,7 @@ public class PunchyZero : Character {
 	}
 
 
-	public override bool changeState(CharState newState, bool forceChange = false) {
+	public override bool changeState(CharState newState, bool forceChange = true) {
 		// Save old state.
 		CharState oldState = charState;
 		// Base function call.
@@ -462,13 +491,7 @@ public class PunchyZero : Character {
 			if (gigaAttack.shootCooldown > 0 || gigaAttack.ammo < gigaAttack.getAmmoUsage(0)) {
 				return false;
 			}
-			if (gigaAttack is RekkohaWeapon) {
-				gigaAttack.addAmmo(-gigaAttack.getAmmoUsage(0), player);
-				changeState(new Rekkoha(gigaAttack), true);
-			} else {
-				gigaAttack.addAmmo(-gigaAttack.getAmmoUsage(0), player);
-				changeState(new Rakuhouha(gigaAttack), true);
-			}
+			gigaAttack.shoot(this, []);
 			return true;
 		}
 		if (isDashing) {
@@ -483,6 +506,9 @@ public class PunchyZero : Character {
 	}
 
 	public override string getSprite(string spriteName) {
+		if (Global.sprites.ContainsKey("pzero_" + spriteName)) {
+			return "pzero_" + spriteName;
+		}
 		return "zero_" + spriteName;
 	}
 
@@ -492,6 +518,19 @@ public class PunchyZero : Character {
 	public override bool canShoot() {
 		if (isInvulnerableAttack()) return false;
 		return base.canShoot();
+	}
+	public bool hypermodeActive() {
+		return isBlack || isAwakened || isViral;
+	}
+	public override void chargeGfx() {
+		if (ownedByLocalPlayer) {
+			chargeEffect.stop();
+		}
+		if (isCharging()) {
+			chargeSound.play();
+			int chargeType = 0;
+			chargeEffect.update(getChargeLevel(), chargeType);
+		}
 	}
 
 	public override List<ShaderWrapper> getShaders() {
@@ -509,9 +548,25 @@ public class PunchyZero : Character {
 		if (isViral) {
 			palette = player.nightmareZeroShader;
 		}
+		if (Global.isOnFrameCycle(4)) {
+			switch (getChargeLevel()) {
+				case 1:
+					palette = Player.ZeroBlueC;
+					break;
+				case 2:
+					palette = Player.ZeroBlueC;
+					break;
+				case 3:
+					palette = Player.ZeroPinkC;
+					break;
+				case 4:
+					palette = Player.ZeroGreenC;
+					break;
+			}
+		}
 		if (palette != null && hypermodeBlink > 0) {
 			float blinkRate = MathInt.Ceiling(hypermodeBlink / 30f);
-			palette = ((Global.frameCount % (blinkRate * 2) >= blinkRate) ? null : palette);
+			palette = ((Global.floorFrameCount % (blinkRate * 2) >= blinkRate) ? null : palette);
 		}
 		if (palette != null) {
 			shaders.Add(palette);
@@ -521,20 +576,6 @@ public class PunchyZero : Character {
 		}
 		shaders.AddRange(baseShaders);
 		return shaders;
-	}
-
-	public override Projectile? getProjFromHitbox(Collider hitbox, Point centerPoint) {
-		int meleeId = getHitboxMeleeId(hitbox);
-		if (meleeId == -1) {
-			return null;
-		}
-		Projectile? proj = getMeleeProjById(meleeId, centerPoint);
-		if (proj != null) {
-			proj.meleeId = meleeId;
-			proj.owningActor = this;
-			return proj;
-		}
-		return null;
 	}
 
 	public override int getHitboxMeleeId(Collider hitbox) {
@@ -557,31 +598,31 @@ public class PunchyZero : Character {
 		Projectile? proj = id switch {
 			(int)MeleeIds.Punch => new GenericMeleeProj(
 				meleeWeapon, projPos, ProjIds.PZeroPunch, player,
-				2, 0, 0.25f,
+				2, 0, 15,
 				addToLevel: addToLevel
 			),
 			(int)MeleeIds.Punch2 => new GenericMeleeProj(
-				meleeWeapon, projPos, ProjIds.PZeroPunch2, player, 2, Global.halfFlinch, 0.25f,
+				meleeWeapon, projPos, ProjIds.PZeroPunch2, player, 2, Global.halfFlinch, 15,
 				addToLevel: addToLevel
 			),
 			(int)MeleeIds.Spin => new GenericMeleeProj(
-				meleeWeapon, projPos, ProjIds.PZeroSenpuukyaku, player, 2, Global.halfFlinch, 0.5f,
+				meleeWeapon, projPos, ProjIds.PZeroSenpuukyaku, player, 2, Global.halfFlinch,
 				addToLevel: addToLevel
 			),
 			(int)MeleeIds.AirKick => new GenericMeleeProj(
-				meleeWeapon, projPos, ProjIds.PZeroAirKick, player, 3, 0, 0.25f,
+				meleeWeapon, projPos, ProjIds.PZeroAirKick, player, 3, 0, 15,
 				addToLevel: addToLevel
 			),
 			(int)MeleeIds.Uppercut => new GenericMeleeProj(
-				ZeroShoryukenWeapon.staticWeapon, projPos, ProjIds.PZeroShoryuken, player, 4, Global.defFlinch, 0.5f,
+				ZeroShoryukenWeapon.staticWeapon, projPos, ProjIds.PZeroShoryuken, player, 4, Global.defFlinch,
 				addToLevel: addToLevel
 			),
 			(int)MeleeIds.StrongPunch => new GenericMeleeProj(
-				MegaPunchWeapon.staticWeapon, projPos, ProjIds.PZeroYoudantotsu, player, 6, Global.defFlinch, 0.5f,
+				MegaPunchWeapon.staticWeapon, projPos, ProjIds.PZeroYoudantotsu, player, 6, Global.defFlinch,
 				addToLevel: addToLevel
 			),
 			(int)MeleeIds.DropKick => new GenericMeleeProj(
-				DropKickWeapon.staticWeapon, projPos, ProjIds.PZeroEnkoukyaku, player, 4, Global.halfFlinch, 0.5f,
+				DropKickWeapon.staticWeapon, projPos, ProjIds.PZeroEnkoukyaku, player, 4, Global.halfFlinch,
 				addToLevel: addToLevel
 			),
 			(int)MeleeIds.Parry => new GenericMeleeProj(
@@ -589,20 +630,20 @@ public class PunchyZero : Character {
 				addToLevel: addToLevel
 			),
 			(int)MeleeIds.ParryAttack => (new GenericMeleeProj(
-				parryWeapon, projPos, ProjIds.PZeroParryAttack, player, 4, Global.defFlinch, 0.5f,
+				parryWeapon, projPos, ProjIds.PZeroParryAttack, player, 4, Global.defFlinch,
 				addToLevel: addToLevel
 			) {
 				netcodeOverride = NetcodeModel.FavorDefender
 			}),
 			(int)MeleeIds.AwakenedAura => (new GenericMeleeProj(
-				awakenedAuraWeapon, projPos, ProjIds.AwakenedAura, player, 2, 0, 0.5f,
+				awakenedAuraWeapon, projPos, ProjIds.AwakenedAura, player, 2, 0,
 				addToLevel: addToLevel
 			) {
 				netcodeOverride = NetcodeModel.FavorDefender
 			}),
 			(int)MeleeIds.SaberSwing => new GenericMeleeProj(
 				saberSwingWeapon, projPos, ProjIds.ZSaberProjSwing, player,
-				3, Global.defFlinch, 0.5f, isReflectShield: true,
+				3, Global.defFlinch, isReflectShield: true,
 				addToLevel: addToLevel
 			),
 			_ => null
@@ -615,7 +656,6 @@ public class PunchyZero : Character {
 			Dictionary<int, Func<Projectile>> retProjs = new() {
 				[(int)ProjIds.AwakenedAura] = () => {
 					playSound("awakenedaura", forcePlay: true, sendRpc: true); 
-					Point centerPoint = globalCollider.shape.getRect().center();
 					float damage = 2;
 					int flinch = 0;
 					if (isGenmuZero) {
@@ -623,11 +663,17 @@ public class PunchyZero : Character {
 						flinch = Global.defFlinch;
 					}
 					Projectile proj = new GenericMeleeProj(
-						awakenedAuraWeapon, centerPoint,
-						ProjIds.AwakenedAura, player, damage, flinch, 0.5f
+						awakenedAuraWeapon, pos,
+						ProjIds.AwakenedAura, player, damage, flinch, 30,
+						addToLevel: true
 					) {
-						globalCollider = globalCollider.clone(),
-						meleeId = (int)MeleeIds.AwakenedAura
+						globalCollider = new Collider(
+							new Rect(0f, 0f, 30, 40).getPoints(),
+							false, this, false, false,
+							HitboxFlag.Hitbox, Point.zero
+						),
+						meleeId = (int)MeleeIds.AwakenedAura,
+						owningActor = this
 					};
 					return proj;
 				}
@@ -663,7 +709,7 @@ public class PunchyZero : Character {
 
 	// For parry purposes.
 	public override void onCollision(CollideData other) {
-		if (specialState == (int)SpecialStateIds.PZeroParry &&
+		if (charState.specialId == SpecialStateIds.PZeroParry &&
 			other.gameObject is Projectile proj &&
 			proj.damager?.owner?.teamAlliance != player.teamAlliance &&
 			charState is PZeroParry zeroParry &&
@@ -712,7 +758,7 @@ public class PunchyZero : Character {
 		float auraAlpha = 1;
 		if (isAwakened && visible && hypermodeBlink > 0) {
 			float blinkRate = MathInt.Ceiling(hypermodeBlink / 2f);
-			bool blinkActive = Global.frameCount % (blinkRate * 2) >= blinkRate;
+			bool blinkActive = Global.floorFrameCount % (blinkRate * 2) >= blinkRate;
 			if (!blinkActive) {
 				auraAlpha = 0.5f;
 			}
@@ -729,7 +775,7 @@ public class PunchyZero : Character {
 			}
 			var shaders = new List<ShaderWrapper>();
 			if (isGenmuZero &&
-				Global.frameCount % Global.normalizeFrames(6) > Global.normalizeFrames(3) &&
+				Global.flFrameCount % 6 > 3 &&
 				Global.shaderWrappers.ContainsKey("awakened")
 			) {
 				shaders.Add(Global.shaderWrappers["awakened"]);
@@ -778,5 +824,84 @@ public class PunchyZero : Character {
 		if (flags[0]) {
 			hypermodeBlink = data[2];
 		}
+	}
+	
+	public float aiAttackCooldown;
+	public override void aiAttack(Actor? target) {
+		float enemyDist = 300;
+		float enemyDistY = 30;
+		if (target != null) {
+			enemyDist = MathF.Abs(target.pos.x - pos.x);
+			enemyDistY = MathF.Abs(target.pos.y - pos.y);
+		}
+		bool isTargetClose = enemyDist <= 50;
+		bool isTargetDistant = enemyDist <= 90;
+		bool isTargetInAir = enemyDistY >= 20;
+		bool isFacingTarget = (pos.x < target?.pos.x && xDir == 1) || (pos.x >= target?.pos.x && xDir == -1);
+		if (player.currency >= Player.zeroHyperCost && !isInvulnerable() &&
+		   charState is not (HyperPunchyZeroStart or LadderClimb) && !hypermodeActive() && !player.isMainPlayer
+		) {
+			changeState(new HyperPunchyZeroStart(), true);
+		}
+		if (isAwakened) hyperOvertimeActive = true;
+		if (grounded && isTargetInAir && charState.attackCtrl && isTargetClose && !isInvulnerable()) {
+			changeState(new PZeroShoryuken(), true);
+		}
+		int ZKattack = Helpers.randomRange(0, 6);
+		if (!isInvulnerable() && charState is not LadderClimb && aiAttackCooldown <= 0 && charState.attackCtrl) {
+			switch (ZKattack) {
+				case 0 when grounded && isFacingTarget && isTargetClose:
+					changeState(new PZeroPunch1(), true);
+					break;
+				case 1 when grounded && isFacingTarget && isTargetInAir:
+					changeState(new PZeroShoryuken(), true);
+					break;
+				case 2 when charState is Dash && isTargetDistant:
+					changeState(new PZeroSpinKick(), true);
+					break;
+				case 3 when grounded && gigaAttack.shootCooldown <= 0 && gigaAttack.ammo >= gigaAttack.getAmmoUsage(0):
+					gigaAttack.shoot(this, []);
+					break;
+				case 4 when grounded && isFacingTarget && isTargetClose:
+					changeState(new PZeroYoudantotsu(), true);
+					break;
+				case 5 when charState is Fall:
+					changeState(new PZeroDiveKickState(), true);
+					break;
+				case 6 when charState is Jump or Fall && isTargetClose:
+					changeState(new PZeroKick(), true);
+					break;
+			}
+			aiAttackCooldown = 10;
+		}
+		base.aiAttack(target);
+	}
+	public override void aiUpdate(Actor? target) {
+		base.aiUpdate(target);
+		if (sprite.name == "zero_fall_shoot" && grounded) {
+			changeToIdleOrFall();
+		}
+		if (target != null && charState is not PZeroShoryuken && !charState.normalCtrl)
+			turnToPos(target.getCenterPos());
+	}
+	public override void aiDodge(Actor? target) {
+		foreach (GameObject gameObject in getCloseActors(48, true, false, false)) {
+			if (gameObject is Projectile proj && proj.damager.owner.alliance != player.alliance && charState.attackCtrl) {
+				//Projectile is not 
+				if (!(proj.projId == (int)ProjIds.RollingShieldCharged || proj.projId == (int)ProjIds.RollingShield
+					|| proj.projId == (int)ProjIds.MagnetMine || proj.projId == (int)ProjIds.FrostShield || proj.projId == (int)ProjIds.FrostShieldCharged
+					|| proj.projId == (int)ProjIds.FrostShieldAir || proj.projId == (int)ProjIds.FrostShieldChargedPlatform || proj.projId == (int)ProjIds.FrostShieldPlatform)
+				) {
+					if (gigaAttack.shootCooldown <= 0 && grounded && gigaAttack.ammo >= gigaAttack.getAmmoUsage(0)) {
+						gigaAttack.shoot(this, []);
+					} else if (!(proj.projId == (int)ProjIds.SwordBlock) && grounded) {
+						if (target != null)
+							turnToPos(target.getCenterPos());
+						changeState(new PZeroParry(), true);
+					}
+				}
+			}
+		}
+		base.aiDodge(target);
 	}
 }

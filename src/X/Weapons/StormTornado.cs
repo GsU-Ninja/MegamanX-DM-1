@@ -7,6 +7,7 @@ public class StormTornado : Weapon {
 
 	public static StormTornado netWeapon = new();
 	public StormTornado() : base() {
+		displayName = "StormTornado";
 		index = (int)WeaponIds.StormTornado;
 		killFeedIndex = 5;
 		weaponBarBaseIndex = 5;
@@ -15,13 +16,12 @@ public class StormTornado : Weapon {
 		weaknessIndex = (int)WeaponIds.ChameleonSting;
 		shootSounds = new string[] { "tornado", "tornado", "tornado", "buster3" };
 		fireRate = 120;
-		//switchCooldown = 0.5f;
-		switchCooldownFrames = 30;
+		switchCooldown = 30;
 		damage = "1/4";
-		effect = "Weak push. Extinguishes Fire. Ignores Shields.";
-		hitcooldown = "0.25/0.33";
-		Flinch = "0/26";
-		FlinchCD = "0/1";
+		effect = "U:Weak push. Projectile won't give assists.\nBoth:Extinguishes Fire.\nProjectile won't destroy on Hit.";
+		hitcooldown = "15/20";
+		flinch = "0/26";
+		flinchCD = "0/1";
 		maxAmmo = 16;
 		ammo = maxAmmo;
 	}
@@ -32,15 +32,17 @@ public class StormTornado : Weapon {
 	}
 
 	public override void shoot(Character character, int[] args) {
+		MegamanX mmx = character as MegamanX ?? throw new NullReferenceException();
+
 		int chargeLevel = args[0];
 		Point pos = character.getShootPos();
 		int xDir = character.getShootXDir();
 		Player player = character.player;
 
 		if (chargeLevel < 3) {
-			new TornadoProj(this, pos, xDir, false, player, player.getNextActorNetId(), true);
+			new TornadoProj(pos, xDir, false, mmx, player, player.getNextActorNetId(), true);
 		} else {
-			new TornadoProjCharged(this, pos, xDir, player, player.getNextActorNetId(), true);
+			new TornadoProjCharged(pos, xDir, mmx, player, player.getNextActorNetId(), true);
 		}
 	}
 }
@@ -56,16 +58,18 @@ public class TornadoProj : Projectile {
 	public float blowModifier = 0.25f;
 
 	public TornadoProj(
-		Weapon weapon, Point pos, int xDir, bool isStormE,
-		Player player, ushort netProjId, bool sendRpc = false
+		Point pos, int xDir, bool isStormE, Actor owner, Player player, ushort? netId, bool rpc = false
 	) : base(
-		weapon, pos, xDir, 400, 1, player, "tornado_mid", 
-		0, 0.25f, netProjId, player.ownedByLocalPlayer
+		pos, xDir, owner, "tornado_mid", netId, player	
 	) {
+		weapon = isStormE ? StormEagle.netWeapon : StormTornado.netWeapon;
+		damager.damage = 1;
+		vel = new Point(400 * xDir, 0);
+		damager.hitCooldown = 15;
 		projId = isStormE ? (int)ProjIds.StormETornado : (int)ProjIds.Tornado;
 		if (isStormE) {
 			blowModifier = 1;
-			damager.hitCooldown = 0.5f;
+			damager.hitCooldown = 30;
 		}
 		maxTime = 2;
 		sprite.visible = false;
@@ -80,15 +84,14 @@ public class TornadoProj : Projectile {
 		destroyOnHit = false;
 		shouldShieldBlock = false;
 
-		if (sendRpc) {
-			rpcCreate(pos, player, netProjId, xDir);
+		if (rpc) {
+			rpcCreate(pos, owner, ownerPlayer, netId, xDir, isStormE ? (byte) 1 : (byte)0);
 		}
 	}
 
-	public static Projectile rpcInvoke(ProjParameters arg) {
+	public static Projectile rpcInvoke(ProjParameters args) {
 		return new TornadoProj(
-			StormTornado.netWeapon, arg.pos, arg.xDir, 
-			false, arg.player, arg.netId
+			args.pos, args.xDir, args.extraData[0] == 1, args.owner, args.player, args.netId
 		);
 	}
 
@@ -134,21 +137,20 @@ public class TornadoProj : Projectile {
 	}
 
 	public override void onHitDamagable(IDamagable damagable) {
-		var character = damagable as Character;
-		if (character == null) return;
-		if (character.charState.invincible) return;
-		if (character.isImmuneToKnockback()) return;
-
-		//character.damageHistory.Add(new DamageEvent(damager.owner, weapon.killFeedIndex, true, Global.frameCount));
-		if (character.isClimbingLadder()) {
-			character.setFall();
-		} else if (!character.pushedByTornadoInFrame) {
-			float modifier = 1;
-			if (character.grounded) modifier = 0.5f;
-			if (character.charState is Crouch) modifier = 0.25f;
-			character.move(new Point(maxSpeed * 0.9f * xDir * modifier * blowModifier, 0));
+		base.onHitDamagable(damagable);
+		if (!damagable.isPlayableDamagable()) { return; }
+		if (damagable is not Actor actor || !actor.ownedByLocalPlayer) {
+			return;
+		}
+		float modifier = 1;
+		if (actor.grounded) { modifier = 0.5f; };
+		if (damagable is Character character) {
+			if (character.isPushImmune()) { return; }
+			if (character.charState is Crouch) { modifier = 0.25f; }
 			character.pushedByTornadoInFrame = true;
 		}
+		//character.damageHistory.Add(new DamageEvent(damager.owner, weapon.killFeedIndex, true, Global.frameCount));
+		actor.move(new Point(maxSpeed * 0.9f * xDir * modifier * blowModifier, 0));
 	}
 }
 
@@ -164,12 +166,15 @@ public class TornadoProjCharged : Projectile {
 	public float maxLengthTime = 0;
 
 	public TornadoProjCharged(
-		Weapon weapon, Point pos, int xDir, 
-		Player player, ushort netProjId, bool rpc = false
+		Point pos, int xDir, Actor owner, Player player, ushort? netId, bool rpc = false
 	) : base(
-		weapon, pos, xDir, 0, 2, player, "tornado_charge", 
-		Global.defFlinch, 0.33f, netProjId, player.ownedByLocalPlayer
+		pos, xDir, owner, "tornado_charge", netId, player	
 	) {
+		weapon = StormTornado.netWeapon;
+		damager.damage = 2;
+		damager.flinch = Global.defFlinch;
+		vel = new Point(0 * xDir, 0);
+		damager.hitCooldown = 20;
 		projId = (int)ProjIds.TornadoCharged;
 		sprite.visible = false;
 		spriteStart = new Sprite("tornado_charge");
@@ -182,13 +187,14 @@ public class TornadoProjCharged : Projectile {
 		destroyOnHit = false;
 		shouldShieldBlock = false;
 
-		if (rpc) rpcCreate(pos, player, netProjId, xDir);
+		if (rpc) {
+			rpcCreate(pos, owner, ownerPlayer, netId, xDir);
+		}	
 	}
 
-	public static Projectile rpcInvoke(ProjParameters arg) {
+	public static Projectile rpcInvoke(ProjParameters args) {
 		return new TornadoProjCharged(
-			StormTornado.netWeapon, arg.pos, arg.xDir, 
-			arg.player, arg.netId
+			args.pos, args.xDir, args.owner, args.player, args.netId
 		);
 	}
 
@@ -205,8 +211,8 @@ public class TornadoProjCharged : Projectile {
 
 	public void ground() {
 		var ground = Global.level.raycast(pos.addxy(0, -10), pos.addxy(0, Global.level.height), new List<Type> { typeof(Wall) });
-		if (ground != null) {
-			pos.y = ((Point)ground.hitData.hitPoint).y;
+		if (ground.hitData.hitPoint != null) {
+			pos.y = ground.hitData.hitPoint.Value.y;
 		}
 	}
 
@@ -236,14 +242,5 @@ public class TornadoProjCharged : Projectile {
 			}
 		}
 
-	}
-
-	public override void onHitDamagable(IDamagable damagable) {
-		/*
-		character.move(new Point(this.speed * 0.9 * this.xDir, 0));
-		if(character.isClimbingLadder()) {
-		  character.setFall();
-		}
-		*/
 	}
 }

@@ -1,34 +1,21 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Text;
 using SFML.Graphics;
 
 namespace MMXOnline;
 
-public class XUPParry : Weapon {
-	public static XUPParry netWeapon = new XUPParry();
-
-	public XUPParry() : base() {
-		fireRate = 45;
-		index = (int)WeaponIds.UPParry;
-		killFeedIndex = 168;
-	}
-}
-
-// If fixing parry code also fix kknuckle parry
 public class XUPParryStartState : CharState {
-	MegamanX mmx;
-
-	public XUPParryStartState() : base("unpo_parry_start", "", "", "") {
+	public RagingChargeX mmx = null!;
+	public XUPParryStartState() : base("unpo_parry_start") {
 	}
 
 	public override void update() {
 		base.update();
 
-		if (stateTime < 0.1f) {
+		//if (stateTime < 0.1f) {
 			character.turnToInput(player.input, player);
-		}
+		//}
 
 		if (character.isAnimOver()) {
 			character.changeToIdleOrFall();
@@ -38,14 +25,15 @@ public class XUPParryStartState : CharState {
 	public void counterAttack(Player? damagingPlayer, Actor? damagingActor, float damage) {
 		Actor? counterAttackTarget = null;
 		Projectile? absorbedProj = null;
-		
+		/*
 		if (player.weapon is XBuster { isUnpoBuster: true }) {
 			player.weapon.ammo = player.weapon.maxAmmo;
-		}
-		
-		if (damagingActor is GenericMeleeProj gmp) {
-			counterAttackTarget = gmp.owningActor;
-		} else if (damagingActor is Projectile proj) {
+		}*/
+		mmx.addPercentAmmo(100);
+		if (damagingActor is Projectile proj) {
+			if (proj.owningActor != null) {
+				counterAttackTarget = proj.owningActor;
+			}
 			if (!proj.isMelee && proj.shouldVortexSuck) {
 				absorbedProj = proj;
 				absorbedProj.destroySelfNoEffect(doRpcEvenIfNotOwned: true);
@@ -58,8 +46,8 @@ public class XUPParryStartState : CharState {
 				bool absorbThenShoot = false;
 				character.playSound("upParryAbsorb", sendRpc: true);
 				if (!player.input.isWeaponLeftOrRightHeld(player)) {
-					mmx.unpoAbsorbedProj = absorbedProj;
-					//character.player.weapons.Add(new AbsorbWeapon(absorbedProj));
+					mmx.absorbedProj = absorbedProj;
+					character.player.weapons.Add(new AbsorbWeapon(absorbedProj));
 				} else {
 					shootProj = true;
 					absorbThenShoot = true;
@@ -82,7 +70,6 @@ public class XUPParryStartState : CharState {
 				chr.changeState(new ParriedState(), true);
 			}
 		}
-		mmx.refillUnpoBuster();
 		character.playSound("upParry", sendRpc: true);
 		character.changeState(new XUPParryMeleeState(counterAttackTarget, damage), true);
 	}
@@ -93,17 +80,17 @@ public class XUPParryStartState : CharState {
 
 	public override void onEnter(CharState oldState) {
 		base.onEnter(oldState);
-		mmx = character as MegamanX;
+		mmx = player.character as RagingChargeX ?? throw new NullReferenceException();
 	}
 
-	public override void onExit(CharState newState) {
+	public override void onExit(CharState? newState) {
 		base.onExit(newState);
 		mmx.parryCooldown = mmx.maxParryCooldown;
 	}
 }
 
 public class ParriedState : CharState {
-	public ParriedState() : base("grabbed", "", "", "") {
+	public ParriedState() : base("grabbed") {
 	}
 
 	public override bool canEnter(Character character) {
@@ -124,18 +111,21 @@ public class ParriedState : CharState {
 
 public class UPParryMeleeProj : Projectile {
 	public UPParryMeleeProj(
-		Weapon weapon, Point pos, int xDir, float damage,
-		Player player, ushort netProjId, bool rpc = false
+		Point pos, int xDir, float damage, Actor owner, Player player, ushort? netId, bool rpc = false
 	) : base(
-		weapon, pos, xDir, 0, damage, player, "mmx_unpo_parry_proj",
-		Global.defFlinch, 0.5f, netProjId, player.ownedByLocalPlayer
+		pos, xDir, owner, "mmx_unpo_parry_proj", netId, player
 	) {
+		weapon = RCXParry.netWeapon;
+		damager.damage = damage;
+		damager.hitCooldown = 30;
+		damager.flinch = Global.defFlinch;
+		vel = new Point(0 * xDir, 0);
 		projId = (int)ProjIds.UPParryMelee;
 		setIndestructableProperties();
 		maxTime = 0.25f;
 
 		if (rpc) {
-			rpcCreate(pos, player, netProjId, xDir, (byte)damage);
+			rpcCreate(pos, owner, ownerPlayer, netId, xDir, (byte)damage);
 		}
 	}
 
@@ -147,9 +137,7 @@ public class UPParryMeleeProj : Projectile {
 
 	public static Projectile rpcInvoke(ProjParameters args) {
 		return new UPParryMeleeProj(
-			XUPParry.netWeapon, args.pos,
-			args.xDir, args.extraData[0],
-			args.player, args.netId
+			args.pos, args.xDir, args.extraData[0], args.owner, args.player, args.netId
 		);
 	}
 }
@@ -157,7 +145,8 @@ public class UPParryMeleeProj : Projectile {
 public class XUPParryMeleeState : CharState {
 	Actor counterAttackTarget;
 	float damage;
-	public XUPParryMeleeState(Actor counterAttackTarget, float damage) : base("unpo_parry_attack", "", "", "") {
+	public RagingChargeX mmx = null!;
+	public XUPParryMeleeState(Actor counterAttackTarget, float damage) : base("unpo_parry_attack") {
 		invincible = true;
 		this.counterAttackTarget = counterAttackTarget;
 		this.damage = damage;
@@ -165,10 +154,8 @@ public class XUPParryMeleeState : CharState {
 
 	public override void update() {
 		base.update();
-
 		if (counterAttackTarget != null) {
 			character.turnToPos(counterAttackTarget.pos);
-
 			float dist = character.pos.distanceTo(counterAttackTarget.pos);
 			if (dist < 150) {
 				if (character.frameIndex >= 4 && !once) {
@@ -178,15 +165,14 @@ public class XUPParryMeleeState : CharState {
 				}
 			}
 		}
-
 		Point? shootPos = character.getFirstPOI("melee");
 		if (!once && shootPos != null) {
 			once = true;
-			new UPParryMeleeProj(new XUPParry(), shootPos.Value, character.xDir, damage, player, player.getNextActorNetId(), rpc: true);
+			new UPParryMeleeProj(shootPos.Value, character.xDir, damage,
+			mmx, player, player.getNextActorNetId(), rpc: true);
 			character.playSound("upParryAttack", sendRpc: true);
 			character.shakeCamera(sendRpc: true);
 		}
-
 		if (character.isAnimOver()) {
 			character.changeToIdleOrFall();
 		}
@@ -194,36 +180,30 @@ public class XUPParryMeleeState : CharState {
 
 	public override void onEnter(CharState oldState) {
 		base.onEnter(oldState);
+		mmx = player.character as RagingChargeX ?? throw new NullReferenceException();
+		character.clenaseDmgDebuffs();
 		//character.frameIndex = 2;
 	}
 
-	public override void onExit(CharState newState) {
+	public override void onExit(CharState? newState) {
 		base.onExit(newState);
-		if (character is MegamanX mmx) {
-			mmx.parryCooldown = mmx.maxParryCooldown;
-		}
+		mmx.parryCooldown = mmx.maxParryCooldown;
 	}
 }
 
-public class AbsorbWeapon : Weapon {
-	public Projectile absorbedProj;
-	public AbsorbWeapon(Projectile otherProj) {
-		index = (int)WeaponIds.UPParry;
-		weaponSlotIndex = 118;
-		killFeedIndex = 168;
-		this.absorbedProj = otherProj;
-		drawAmmo = false;
-	}
-}
 
 public class UPParryRangedProj : Projectile {
 	public UPParryRangedProj(
-		Weapon weapon, Point pos, int xDir, string sprite,
-		float damage, int flinch, float hitCooldown, Player player,
-		ushort netProjId, bool rpc = false
+		Point pos, int xDir, string sprite, float damage, int flinch, float hitCooldown,
+		Actor owner, Player player, ushort? netId, bool rpc = false
 	) : base(
-		weapon, pos, xDir, 350, damage, player, sprite, flinch, hitCooldown, netProjId, player.ownedByLocalPlayer
+		pos, xDir, owner, sprite, netId, player
 	) {
+		weapon = RCXParry.netWeapon;
+		damager.damage = damage;
+		damager.hitCooldown = hitCooldown;
+		damager.flinch = flinch;
+		vel = new Point(350 * xDir, 0);
 		projId = (int)ProjIds.UPParryProj;
 		maxDistance = 150;
 		damager.damage = MathInt.Ceiling(damage);
@@ -235,9 +215,8 @@ public class UPParryRangedProj : Projectile {
 			};
 			extraBytes.AddRange(BitConverter.GetBytes(hitCooldown));
 			extraBytes.AddRange(Encoding.ASCII.GetBytes(sprite));
-			rpcCreate(
-				pos, player, netProjId, xDir, extraBytes.ToArray()
-			);
+			rpcCreate(pos, owner, ownerPlayer, netId, xDir, extraBytes.ToArray());
+
 		}
 	}
 
@@ -246,10 +225,8 @@ public class UPParryRangedProj : Projectile {
 		string sprite = Encoding.ASCII.GetString(args.extraData[6..]);
 
 		return new UPParryRangedProj(
-			XUPParry.netWeapon, args.pos,
-			args.xDir, sprite,
-			args.extraData[0], args.extraData[1], hitCooldown,
-			args.player, args.netId
+			args.pos, args.xDir, sprite, args.extraData[0],
+			args.extraData[1], hitCooldown, args.owner, args.player, args.netId
 		);
 	}
 }
@@ -259,21 +236,20 @@ public class XUPParryProjState : CharState {
 	Anim? absorbAnim;
 	bool shootProj;
 	bool absorbThenShoot;
-	public XUPParryProjState(Projectile otherProj, bool shootProj, bool absorbThenShoot) : base("unpo_parry_attack", "", "", "") {
+	public RagingChargeX mmx = null!;
+	public XUPParryProjState(Projectile otherProj, bool shootProj, bool absorbThenShoot) : base("unpo_parry_attack") {
 		this.otherProj = otherProj;
-		invincible = true;
 		this.shootProj = shootProj;
 		this.absorbThenShoot = absorbThenShoot;
+		invincible = true;
 	}
 
 	public override void update() {
 		base.update();
-
 		if (!shootProj && character.sprite.frameIndex >= 1) {
 			character.sprite.frameIndex = 1;
 			character.sprite.frameSpeed = 0;
 		}
-
 		if (absorbAnim != null) {
 			absorbAnim.moveToPos(character.getFirstPOIOrDefault(), 350);
 			absorbAnim.xScale -= Global.spf * 5;
@@ -287,17 +263,19 @@ public class XUPParryProjState : CharState {
 				}
 			}
 		}
-
 		Point? shootPos = character.getFirstPOI("proj");
 		if (!once && shootPos != null) {
 			once = true;
 			float damage = Math.Max(otherProj.damager.damage * 2, 4);
 			//int flinch = otherProj.damager.flinch;
 			int flinch = Global.defFlinch;
-			float hitCooldown = otherProj.damager.hitCooldown;
-			new UPParryRangedProj(new XUPParry(), shootPos.Value, character.xDir, otherProj.sprite.name, damage, flinch, hitCooldown, player, player.getNextActorNetId(), rpc: true);
+			float hitCooldown = otherProj.damager.hitCooldownSeconds;
+			new UPParryRangedProj(
+				shootPos.Value, character.xDir,
+				otherProj.sprite.name, damage, flinch, hitCooldown,
+				mmx, player, player.getNextActorNetId(), rpc: true
+			);
 		}
-
 		if (character.isAnimOver()) {
 			character.changeToIdleOrFall();
 		}
@@ -305,34 +283,29 @@ public class XUPParryProjState : CharState {
 
 	public override void onEnter(CharState oldState) {
 		base.onEnter(oldState);
+		mmx = player.character as RagingChargeX ?? throw new NullReferenceException();
+		character.clenaseDmgDebuffs();
 		if (!shootProj || absorbThenShoot) {
-			absorbAnim = new Anim(otherProj.pos, otherProj.sprite.name, otherProj.xDir, player.getNextActorNetId(), false, sendRpc: true);
+			absorbAnim = new Anim(
+				otherProj.pos, otherProj.sprite.name, otherProj.xDir,
+				player.getNextActorNetId(), false, sendRpc: true
+			);
 			absorbAnim.syncScale = true;
 		}
 	}
 
-	public override void onExit(CharState newState) {
+	public override void onExit(CharState? newState) {
 		base.onExit(newState);
 		absorbAnim?.destroySelf();
-		if (character is MegamanX mmx) {
-			mmx.parryCooldown = mmx.maxParryCooldown;
-		}
+		mmx.parryCooldown = mmx.maxParryCooldown;
 	}
 }
 
-public class XUPPunch : Weapon {
-	public XUPPunch(Player player) : base() {
-		fireRate = 45;
-		index = (int)WeaponIds.UPPunch;
-		killFeedIndex = 167;
-		damager = new Damager(player, 3, Global.defFlinch, 0.5f);
-	}
-}
 
 public class XUPPunchState : CharState {
 	float slideVelX;
 	bool isGrounded;
-	public XUPPunchState(bool isGrounded) : base(isGrounded ? "unpo_punch" : "unpo_air_punch", "", "", "") {
+	public XUPPunchState(bool isGrounded) : base(isGrounded ? "unpo_punch" : "unpo_air_punch") {
 		this.isGrounded = isGrounded;
 		landSprite = "unpo_punch";
 		airMove = true;
@@ -357,20 +330,12 @@ public class XUPPunchState : CharState {
 	}
 }
 
-public class XUPGrab : Weapon {
-	public XUPGrab() : base() {
-		fireRate = 45;
-		index = (int)WeaponIds.UPGrab;
-		killFeedIndex = 92;
-	}
-}
-
 public class XUPGrabState : CharState {
 	public Character? victim;
 	float leechTime = 1;
 	public bool victimWasGrabbedSpriteOnce;
 	float timeWaiting;
-	public XUPGrabState(Character? victim) : base("unpo_grab", "", "", "") {
+	public XUPGrabState(Character? victim) : base("unpo_grab") {
 		this.victim = victim;
 		grabTime = UPGrabbed.maxGrabTime;
 	}
@@ -420,7 +385,7 @@ public class XUPGrabState : CharState {
 			leechTime = 0;
 			character.addHealth(1);
 			var damager = new Damager(player, 1, 0, 0);
-			damager.applyDamage(victim, false, new XUPGrab(), character, (int)ProjIds.UPGrab);
+			damager.applyDamage(victim, false, new RCXGrab(), character, (int)ProjIds.UPGrab);
 		}
 
 		if (player.input.isPressed(Control.Special1, player)) {
@@ -439,10 +404,10 @@ public class XUPGrabState : CharState {
 		character.useGravity = false;
 	}
 
-	public override void onExit(CharState newState) {
+	public override void onExit(CharState? newState) {
 		base.onExit(newState);
 		character.useGravity = true;
-		character.grabCooldown = 1;
+		//character.grabCooldown = 1;
 		victim.grabInvulnTime = 2;
 		victim?.releaseGrab(character);
 	}
@@ -463,13 +428,13 @@ public class UPGrabbed : CharState {
 
 	public override void onEnter(CharState oldState) {
 		base.onEnter(oldState);
-		character.stopMoving();
+		character.stopMovingS();
 		character.stopCharge();
 		savedZIndex = character.zIndex;
 		character.setzIndex(grabber.zIndex - 100);
 	}
 
-	public override void onExit(CharState newState) {
+	public override void onExit(CharState? newState) {
 		base.onExit(newState);
 		character.grabInvulnTime = 2;
 		character.setzIndex(savedZIndex);
@@ -503,10 +468,11 @@ public class XReviveStart : CharState {
 	float subStateTime;
 	Anim drLightAnim;
 
-	MegamanX mmx;
+	RagingChargeX mmx;
 
 	public XReviveStart() : base("revive_start") {
 		invincible = true;
+		statusEffectImmune = true;
 	}
 
 	public bool cancellable() {
@@ -581,18 +547,18 @@ public class XReviveStart : CharState {
 				dialogWaitTime = 0;
 				if (dialogIndex < 4) {
 					dialogWaitTime = 0.03f;
-					if (Global.frameCount % 5 == 0) Global.playSound("text");
+					if (Global.flFrameCount % 5 == 0) Global.playSound("text");
 				} else if (dialogIndex == 4) {
 					dialogWaitTime = 0.4f;
 				} else {
-					if (Global.frameCount % 5 == 0) Global.playSound("text");
+					if (Global.flFrameCount % 5 == 0) Global.playSound("text");
 				}
 			} else {
 				dialogWaitTime = 0.03f;
 				if (dialogIndex == dialogLine3Content.Length) {
 					dialogWaitTime = 0.4f;
 				} else {
-					if (Global.frameCount % 5 == 0) Global.playSound("text");
+					if (Global.flFrameCount % 5 == 0) Global.playSound("text");
 				}
 			}
 
@@ -628,14 +594,10 @@ public class XReviveStart : CharState {
 			"drlight", -character.xDir, player.getNextActorNetId(), false, sendRpc: true
 		);
 		drLightAnim.blink = true;
-		int busterIndex = player.weapons.FindIndex(w => w is XBuster);
-		if (busterIndex >= 0) {
-			player.changeWeaponSlot(busterIndex);
-		}
-		mmx = character as MegamanX;
+		mmx = character as RagingChargeX;
 	}
 
-	public override void onExit(CharState newState) {
+	public override void onExit(CharState? newState) {
 		base.onExit(newState);
 		drLightAnim.destroySelf();
 	}
@@ -643,47 +605,32 @@ public class XReviveStart : CharState {
 
 public class XRevive : CharState {
 	public float radius = 200;
-	XReviveAnim reviveAnim;
-	MegamanX mmx;
+	XReviveAnim reviveAnim = null!;
+	RagingChargeX rcx = null!;
 
 	public XRevive() : base("revive_shake") {
 		invincible = true;
-		immuneToWind = true;
+		statusEffectImmune = true;
+		enterSound = "xRevive";
 	}
 
 	public override void update() {
 		base.update();
-		if (!character.ownedByLocalPlayer) return;
-
 		if (!once && character.frameIndex >= 1 && sprite == "revive") {
 			character.playSound("ching", sendRpc: true);
-			player.health = 1;
-			character.addHealth(player.maxHealth);
-
-			player.weapons.RemoveAll(w => w is not XBuster);
-			player.weapons.Add(new RagingChargeBuster());
-			player.weaponSlot = 0;
-			
-			/* if (player.weapons.Count == 0) {
-				player.weapons.Add(new Buster());
-			}
-			var busterWeapon = player.weapons.FirstOrDefault(w => w is Buster) as Buster;
-			if (busterWeapon != null) {
-				busterWeapon.setUnpoBuster(mmx);
-			} */
-			
-
+			character.health = 1;
+			character.addHealth(character.maxHealth);
 			once = true;
-			var flash = new Anim(character.pos.addxy(0, -33), "up_flash", character.xDir, player.getNextActorNetId(), true, sendRpc: true);
+			var flash = new Anim(
+				character.pos.addxy(0, -33), "up_flash",
+				character.xDir, player.getNextActorNetId(), true, sendRpc: true
+			);
 			flash.grow = true;
 		}
-
 		if (character.isAnimOver()) {
-			mmx.isHyperX = true;
 			character.changeToIdleOrFall();
 			return;
 		}
-
 		if (sprite == "revive_shake" && character.loopCount > 6) {
 			sprite = "revive_shake2";
 			character.changeSpriteFromName(sprite, true);
@@ -695,24 +642,26 @@ public class XRevive : CharState {
 
 	public override void onEnter(CharState oldState) {
 		base.onEnter(oldState);
+		character.visible = true;
 		reviveAnim = new XReviveAnim(character.getCenterPos(), player.getNextActorNetId(), sendRpc: true);
-		character.playSound("xRevive", sendRpc: true);
-		mmx = character as MegamanX;
+		rcx = character as RagingChargeX ?? throw new NullReferenceException();
 	}
 
-	public override void onExit(CharState newState) {
+	public override void onExit(CharState? newState) {
 		base.onExit(newState);
 		character.useGravity = true;
-		mmx.isHyperX = true;
-		Global.level.addToGrid(character);
-		mmx.invulnTime = 2;
+		rcx.invulnTime = 2;
 	}
 }
 
 public class XReviveAnim : Anim {
 	public float startRadius = 150;
-	public XReviveAnim(Point pos, ushort? netId = null, bool sendRpc = false, bool ownedByLocalPlayer = true) :
-		base(pos, "empty", 1, netId, false, sendRpc, ownedByLocalPlayer) {
+
+	public XReviveAnim(
+		Point pos, ushort? netId = null, bool sendRpc = false, bool ownedByLocalPlayer = true
+	) : base(
+		pos, "empty", 1, netId, false, sendRpc, ownedByLocalPlayer
+	) {
 		ttl = 1f;
 	}
 
@@ -722,6 +671,9 @@ public class XReviveAnim : Anim {
 
 	public override void render(float x, float y) {
 		base.render(x, y);
-		DrawWrappers.DrawCircle(pos.x + x, pos.y + y, startRadius * (1 - (time / ttl.Value)), false, Color.White, 5, zIndex + 1, true, Color.White);
+		DrawWrappers.DrawCircle(
+			pos.x + x, pos.y + y, startRadius * (1 - (time / ttl ?? 1)),
+			false, Color.White, 5, zIndex + 1, true, Color.White
+		);
 	}
 }

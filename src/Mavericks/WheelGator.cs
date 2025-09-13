@@ -4,6 +4,11 @@ using System.Collections.Generic;
 namespace MMXOnline;
 
 public class WheelGator : Maverick {
+	public WheelGatorDrillSpinWeapon GatorSpinWeapon = new WheelGatorDrillSpinWeapon();
+	public WheelGatorEatWeapon GatorEatWeapon = new WheelGatorEatWeapon();
+	public WheelGatorFallWeapon GatorFallWeapon = new WheelGatorFallWeapon();
+	public WheelGatorGrabWeapon GatorGrabWeapon = new WheelGatorGrabWeapon();
+
 	public static Weapon getWeapon() { return new Weapon(WeaponIds.WheelGGeneric, 142); }
 	public static Weapon getUpBiteWeapon(Player player) { return new Weapon(WeaponIds.WheelGGeneric, 142, new Damager(player, 4, Global.defFlinch, 0.25f)); }
 	public Weapon upBiteWeapon;
@@ -12,12 +17,15 @@ public class WheelGator : Maverick {
 	//public ShaderWrapper eatenShader;
 
 	public WheelGator(
-		Player player, Point pos, Point destPos, int xDir, ushort? netId, bool ownedByLocalPlayer, bool sendRpc = false
+		Player player, Point pos, Point destPos, int xDir,
+		ushort? netId, bool ownedByLocalPlayer, bool sendRpc = false
 	) : base(
 		player, pos, destPos, xDir, netId, ownedByLocalPlayer
 	) {
-		stateCooldowns.Add(typeof(WheelGShootState), new MaverickStateCooldown(false, false, 1.25f));
-		stateCooldowns.Add(typeof(WheelGSpinState), new MaverickStateCooldown(false, false, 2f));
+		stateCooldowns = new() {
+			{ typeof(WheelGShootState), new MaverickStateCooldown(75) },
+			{ typeof(WheelGSpinState), new MaverickStateCooldown(2 * 60) }
+		};
 
 		weapon = getWeapon();
 		upBiteWeapon = getUpBiteWeapon(player);
@@ -37,6 +45,8 @@ public class WheelGator : Maverick {
 
 		armorClass = ArmorClass.Heavy;
 		canStomp = true;
+		gameMavs = GameMavs.X2;
+		height = 40;
 	}
 
 	public override void update() {
@@ -76,7 +86,7 @@ public class WheelGator : Maverick {
 	}
 
 	public override float getRunSpeed() {
-		return 85;
+		return 85 * getRunDebuffs();
 	}
 
 	public override List<ShaderWrapper> getShaders() {
@@ -88,50 +98,83 @@ public class WheelGator : Maverick {
 		return new List<ShaderWrapper>();
 	}
 
-	public override Projectile? getProjFromHitbox(Collider hitbox, Point centerPoint) {
-		if (sprite.name.Contains("drill_loop")) {
-			return new GenericMeleeProj(weapon, centerPoint, ProjIds.WheelGSpin, player, damage: 1, flinch: Global.defFlinch, hitCooldown: 0.1f, owningActor: this);
+	// Melee IDs for attacks.
+	public enum MeleeIds {
+		None = -1,
+		Drill,
+		Eat,
+		Fall,
+		Grab,
+
+	}
+
+	// This can run on both owners and non-owners. So data used must be in sync.
+	public override int getHitboxMeleeId(Collider hitbox) {
+		return (int)(sprite.name switch {
+			"wheelg_drill_loop" => MeleeIds.Drill,
+			"wheelg_eat_start" => MeleeIds.Eat,
+			"wheelg_fall" => MeleeIds.Fall,
+			"wheelg_grab_start" => MeleeIds.Grab,
+			_ => MeleeIds.None
+		});
+	}
+
+	// This can be called from a RPC, so make sure there is no character conditionals here.
+	public override Projectile? getMeleeProjById(int id, Point pos, bool addToLevel = true) {
+		return (MeleeIds)id switch {
+			MeleeIds.Drill => new GenericMeleeProj(
+				GatorSpinWeapon, pos, ProjIds.WheelGSpin, player,
+				1, Global.defFlinch, 6, addToLevel: addToLevel
+			),
+			MeleeIds.Eat => new GenericMeleeProj(
+				GatorEatWeapon, pos, ProjIds.WheelGEat, player,
+				6, Global.defFlinch, addToLevel: addToLevel
+			),
+			MeleeIds.Fall => new GenericMeleeProj(
+				GatorFallWeapon, pos, ProjIds.WheelGStomp, player,
+				4, Global.defFlinch, 60, addToLevel: addToLevel
+			),
+			MeleeIds.Grab => new GenericMeleeProj(
+				GatorGrabWeapon, pos, ProjIds.WheelGGrab, player,
+				0, 0, 0, addToLevel: addToLevel
+			),
+			_ => null
+		};
+	}
+
+	public override void updateProjFromHitbox(Projectile proj) {
+		if (proj.projId == (int)ProjIds.WheelGStomp) {
+			float damage = Helpers.clamp(MathF.Floor(deltaPos.y * 0.9f), 1, 4);
+			proj.damager.damage = damage;
 		}
-		if (sprite.name.Contains("eat_start")) {
-			if (hitbox.name == "eat") {
-				return new GenericMeleeProj(weapon, centerPoint, ProjIds.WheelGEat, player, damage: 0, flinch: 0, hitCooldown: 0.5f, owningActor: this);
-			} else {
-				return new GenericMeleeProj(weapon, centerPoint, ProjIds.WheelGBite, player, damage: 6, flinch: Global.defFlinch, hitCooldown: 0.5f, owningActor: this);
-			}
-		}
-		if (sprite.name.Contains("grab_start") && deltaPos.y <= 0) {
-			return new GenericMeleeProj(weapon, centerPoint, ProjIds.WheelGGrab, player, damage: 0, flinch: 0, hitCooldown: 0.5f, owningActor: this);
-		}
-		if (sprite.name.Contains("fall")) {
-			float damagePercent = 0;
-			if (deltaPos.y > 100 * Global.spf) damagePercent = 0.5f;
-			if (deltaPos.y > 200 * Global.spf) damagePercent = 0.75f;
-			if (deltaPos.y > 300 * Global.spf) damagePercent = 1;
-			if (damagePercent > 0) {
-				return new GenericMeleeProj(weapon, centerPoint, ProjIds.WheelGStomp, player, damage: 4 * damagePercent, flinch: Global.defFlinch, hitCooldown: 1);
-			}
-		}
-		return null;
+	}
+
+	public override MaverickState[] strikerStates() {
+		return [
+			new WheelGBiteState(),
+			new WheelGShootState(),
+			new WheelGSpinState(),
+		];
 	}
 
 	public override MaverickState[] aiAttackStates() {
-		var attacks = new MaverickState[]
-		{
-				new WheelGBiteState(),
-				new WheelGShootState(),
-				new WheelGSpinState(),
-		};
-		return attacks;
-	}
-
-	public override MaverickState getRandomAttackState() {
-		var attacks = new MaverickState[]
-		{
-				new WheelGBiteState(),
-				new WheelGShootState(),
-				new WheelGUpBiteState(),
-		};
-		return attacks.GetRandomItem();
+		float enemyDist = 300;
+		float enemyDistY = 30;
+		if (target != null) {
+			enemyDist = MathF.Abs(target.pos.x - pos.x);
+			enemyDistY = MathF.Abs(target.pos.y - pos.y);
+		}
+		List<MaverickState> aiStates = [
+			new WheelGShootState(),
+			new WheelGSpinState()
+		];
+		if (enemyDist <= 20) {
+			aiStates.Add(new WheelGBiteState());
+		}
+		if (enemyDistY >= 15 && enemyDist <= 15) {
+			aiStates.Add(new WheelGUpBiteState());
+		}
+		return aiStates.ToArray();
 	}
 
 	public override List<byte> getCustomActorNetData() {
@@ -148,16 +191,56 @@ public class WheelGator : Maverick {
 		damageEaten = data[0];
 	}
 }
+public class WheelGatorGenericWeapon : Weapon {
+	public static WheelGatorGenericWeapon netWeapon = new();
+	public WheelGatorGenericWeapon() {
+		index = (int)WeaponIds.WheelGGeneric;
+		killFeedIndex = 142;
+	}
+}
+public class WheelGatorDrillSpinWeapon : Weapon {
+	public static WheelGatorDrillSpinWeapon netWeapon = new();
+	public WheelGatorDrillSpinWeapon() {
+		index = (int)WeaponIds.WheelGSpinWeapon;
+		killFeedIndex = 142;
+	}
+}
+
+public class WheelGatorEatWeapon : Weapon {
+	public static WheelGatorEatWeapon netWeapon = new();
+	public WheelGatorEatWeapon() {
+		index = (int)WeaponIds.WheelGEatWeapon;
+		killFeedIndex = 142;
+	}
+}
+public class WheelGatorFallWeapon : Weapon {
+	public static WheelGatorFallWeapon netWeapon = new();
+	public WheelGatorFallWeapon() {
+		index = (int)WeaponIds.WheelGFallWeapon;
+		killFeedIndex = 142;
+	}
+}
+
+public class WheelGatorGrabWeapon : Weapon {
+	public static WheelGatorGrabWeapon netWeapon = new();
+	public WheelGatorGrabWeapon() {
+		index = (int)WeaponIds.WheelGGrabWeapon;
+		killFeedIndex = 142;
+	}
+}
 
 public class WheelGSpinWheelProj : Projectile {
 	float lastHitTime;
 	const float hitCooldown = 0.2f;
 	public WheelGSpinWheelProj(
-		Weapon weapon, Point pos, int xDir, Player player, ushort netProjId, bool rpc = false
+		Point pos, int xDir, Actor owner, Player player, ushort? netId, bool rpc = false
 	) : base(
-		weapon, pos, xDir, 250, 1, player, "wheelg_proj_wheel",
-		Global.defFlinch, hitCooldown, netProjId, player.ownedByLocalPlayer
+		pos, xDir, owner, "wheelg_proj_wheel", netId, player
 	) {
+		weapon = WheelGatorGenericWeapon.netWeapon;
+		damager.damage = 1;
+		damager.hitCooldown = 12;
+		damager.flinch = Global.defFlinch;
 		projId = (int)ProjIds.WheelGSpinWheel;
 		maxTime = 2f;
 
@@ -167,8 +250,13 @@ public class WheelGSpinWheelProj : Projectile {
 		collider.wallOnly = true;
 
 		if (rpc) {
-			rpcCreate(pos, player, netProjId, xDir);
+			rpcCreate(pos, owner, ownerPlayer, netId, xDir);
 		}
+	}
+	public static Projectile rpcInvoke(ProjParameters args) {
+		return new WheelGSpinWheelProj(
+			args.pos, args.xDir, args.owner, args.player, args.netId
+		);
 	}
 
 	public override void update() {
@@ -199,14 +287,14 @@ public class WheelGSpinWheelProj : Projectile {
 
 	public override void onHitDamagable(IDamagable damagable) {
 		if (damagable is CrackedWall) {
-			damager.hitCooldown = hitCooldown;
+			damager.hitCooldownSeconds = hitCooldown;
 			return;
 		}
 
 		lastHitTime = hitCooldown;
 
 		var chr = damagable as Character;
-		if (chr != null && chr.ownedByLocalPlayer && !chr.isImmuneToKnockback()) {
+		if (chr != null && chr.ownedByLocalPlayer && !chr.isSlowImmune()) {
 			chr.vel = Point.lerp(chr.vel, Point.zero, Global.spf * 10);
 			chr.slowdownTime = 0.25f;
 		}
@@ -214,13 +302,26 @@ public class WheelGSpinWheelProj : Projectile {
 		base.onHitDamagable(damagable);
 	}
 }
+public class WheelGMState : MaverickState {
+	public WheelGator WheelAlligates = null!;
+	public WheelGMState(
+		string sprite, string transitionSprite = ""
+	) : base(
+		sprite, transitionSprite
+	) {
+	}
 
-public class WheelGShootState : MaverickState {
+	public override void onEnter(MaverickState oldState) {
+		base.onEnter(oldState);
+		WheelAlligates = maverick as WheelGator ?? throw new NullReferenceException();
+	}
+}
+
+public class WheelGShootState : WheelGMState {
 	int state;
 	bool shotOnce;
 	public WheelGShootState() : base("wheelthrow_start") {
 	}
-
 	public override void update() {
 		base.update();
 
@@ -234,7 +335,10 @@ public class WheelGShootState : MaverickState {
 			if (!shotOnce && shootPos != null) {
 				shotOnce = true;
 				maverick.playSound("wheelgSpinWheel", sendRpc: true);
-				new WheelGSpinWheelProj((maverick as WheelGator).weapon, shootPos.Value, maverick.xDir, player, player.getNextActorNetId(), rpc: true);
+				new WheelGSpinWheelProj(
+					shootPos.Value, maverick.xDir, WheelAlligates,
+					player, player.getNextActorNetId(), rpc: true
+				);
 			}
 
 			if (maverick.isAnimOver()) {
@@ -247,7 +351,10 @@ public class WheelGShootState : MaverickState {
 			if (!shotOnce && shootPos != null) {
 				shotOnce = true;
 				maverick.playSound("wheelgSpinWheel", sendRpc: true);
-				new WheelGSpinWheelProj((maverick as WheelGator).weapon, shootPos.Value, maverick.xDir, player, player.getNextActorNetId(), rpc: true);
+				new WheelGSpinWheelProj(
+					shootPos.Value, maverick.xDir, WheelAlligates,
+					player, player.getNextActorNetId(), rpc: true
+				);
 			}
 
 			if (maverick.isAnimOver()) {
@@ -321,65 +428,96 @@ public class WheelGEatState : MaverickState {
 }
 
 public class WheelGSpitProj : Projectile {
+	public int type = 0;
 	public WheelGSpitProj(
-		Weapon weapon, Point pos, int xDir, Point unitVel, Player player, ushort netProjId, bool rpc = false
+		Point pos, int xDir, int type,
+		Actor owner, Player player, ushort? netId, bool rpc = false
 	) : base(
-		weapon, pos, xDir, 0, 2, player, "wheelg_proj_spit", 0, 0.01f, netProjId, player.ownedByLocalPlayer
+		pos, xDir, owner, "wheelg_proj_spit", netId, player	
 	) {
+		weapon = WheelGatorGenericWeapon.netWeapon;
+		damager.damage = 2;
+		damager.hitCooldown = 1;
+		this.type = type;
+		if (type == 0) vel = new Point(400 * xDir, 0);	
+		if (type == 1) vel = new Point(400 * xDir, -125);
+		if (type == 2) vel = new Point(400 * xDir, -225);
+		if (type == 3) vel = new Point(400 * xDir, 125);
+		if (type == 4) vel = new Point(400 * xDir, 225);
 		projId = (int)ProjIds.WheelGSpit;
-		maxDistance = 150;
-		vel = unitVel.times(400);
-
+		fadeSprite = "explosion";
+		fadeSound = "explosionX2";
+		maxDistance = 200;
+		fadeOnAutoDestroy = true;
 		if (rpc) {
-			rpcCreate(pos, player, netProjId, xDir);
-		}
-		// ToDo: Make local.
-		canBeLocal = false;
+			rpcCreate(pos, owner, ownerPlayer, netId, xDir, (byte)type);
+		}	
+	}
+	public static Projectile rpcInvoke(ProjParameters args) {
+		return new WheelGSpitProj(
+			args.pos, args.xDir, args.extraData[0], args.owner, args.player, args.netId
+		);
 	}
 }
 
-public class WheelGSpitState : MaverickState {
+public class WheelGSpitState : WheelGMState {
 	bool shotOnce;
 	float damageEaten;
+	public int UPorDown;
 	public WheelGSpitState(float damageEaten) : base("eat_spit") {
 		this.damageEaten = damageEaten;
 	}
 
 	public override void update() {
 		base.update();
-
-		Point? shootPos = maverick.getFirstPOI();
-		if (!shotOnce && shootPos != null) {
+		bool upHeld = player.input.isHeld(Control.Up, player);
+		bool downHeld = player.input.isHeld(Control.Down, player);
+		bool LeftOrRightHeld = player.input.isHeld(Control.Left, player) || 
+							   player.input.isHeld(Control.Right, player);
+		bool SpecialPressed = player.input.isHeld(Control.Special1, player);
+		//if (!SpecialPressed) {
+		//	maverick.frameIndex = 5;
+		//}
+		if (!shotOnce && SpecialPressed) {
 			shotOnce = true;
-			maverick.playSound("wheelgSpit", sendRpc: true);
+			maverick.frameIndex = 4;
+			WheelAlligates.playSound("wheelgSpit", sendRpc: true);
 
-			Point moveDir = new Point(maverick.xDir, 0);
-			var targets = Global.level.getTargets(shootPos.Value, maverick.player.alliance, true);
-			foreach (var target in targets) {
-				Point dirTo = shootPos.Value.directionToNorm(target.getCenterPos());
-				if (dirTo.isSideways() && MathF.Sign(dirTo.x) == maverick.xDir) {
-					moveDir = dirTo;
-					break;
-				}
-			}
-
-			new WheelGSpitProj((maverick as WheelGator).weapon, shootPos.Value, maverick.xDir, moveDir, player, player.getNextActorNetId(), rpc: true);
+			if (downHeld && LeftOrRightHeld) {
+				Proj(3);
+			} else if (downHeld) {
+				Proj(4);
+			} else if (upHeld && LeftOrRightHeld) {
+				Proj(1);
+			} else if (upHeld) {
+				Proj(2);
+			} else 
+				Proj(0);
+			
 			damageEaten--;
 		}
 
 		if (maverick.isAnimOver()) {
 			if (damageEaten > 0) {
-				maverick.frameIndex = maverick.sprite.totalFrameNum - 2;
+				//maverick.frameIndex = maverick.sprite.totalFrameNum - 2;
 				shotOnce = false;
 			} else {
 				maverick.changeToIdleOrFall();
 			}
 		}
 	}
+	public void Proj(int type) {
+		int xDir = maverick.xDir;
+		new WheelGSpitProj(
+			WheelAlligates.getCenterPos().addxy(32 * xDir, 1), xDir,
+			type, WheelAlligates, player, player.getNextActorNetId(), rpc: true
+		);
+	}
 
 	public override void onEnter(MaverickState oldState) {
 		base.onEnter(oldState);
 		maverick.frameSpeed = 1;
+		maverick.frameIndex = 0;
 	}
 }
 
@@ -431,8 +569,8 @@ public class WheelGSpinState : MaverickState {
 	}
 }
 
-public class WheelGUpBiteState : MaverickState {
-	public Character victim;
+public class WheelGUpBiteState : WheelGMState {
+	public Character? victim;
 	int state;
 	int shootFramesHeld;
 	bool shootReleased;
@@ -462,7 +600,7 @@ public class WheelGUpBiteState : MaverickState {
 		}
 	}
 
-	public Character getVictim() {
+	public Character? getVictim() {
 		if (victim == null) return null;
 		if (victim.sprite.name.EndsWith("_grabbed")) {
 			return null;
@@ -474,7 +612,7 @@ public class WheelGUpBiteState : MaverickState {
 		if (victim == null) {
 			victim = grabbed;
 			if (maverick.ownedByLocalPlayer) {
-				(maverick as WheelGator).upBiteWeapon.applyDamage(victim, false, maverick, (int)ProjIds.WheelGUpBite, sendRpc: true);
+				WheelAlligates.upBiteWeapon.applyDamage(victim, false, WheelAlligates, (int)ProjIds.WheelGUpBite, sendRpc: true);
 				maverick.playSound("wheelgBite", sendRpc: true);
 			}
 			return true;
@@ -491,7 +629,7 @@ public class WheelGUpBiteState : MaverickState {
 }
 
 public class WheelGGrabbed : GenericGrabbedState {
-	public Character grabbedChar;
+	public Character? grabbedChar;
 	public float timeNotGrabbed;
 	string lastGrabberSpriteName;
 	public const float maxGrabTime = 4;

@@ -28,10 +28,16 @@ public class Projectile : Actor {
 	public bool neverReflect = false;
 	public int projId;
 	public float speed;
-	public int healAmount;
+	public float healAmount;
 	public bool isShield;
 	public bool isReflectShield;
 	public bool isDeflectShield;
+	//Hit sprites effect stuff
+	public bool isZSaberEffect;
+	public bool isZSaberEffect2;
+	public bool isZSaberEffect2B;
+	//Clang for Zero (or could be in all characters in general)
+	public bool isZSaberClang;
 	public bool shouldVortexSuck = true;
 	bool damagedOnce;
 	//public int? destroyFrames;
@@ -103,22 +109,25 @@ public class Projectile : Actor {
 		this.ownerPlayer = player;
 		canBeLocal = true;
 	}
+
 	public Projectile(
 		Point pos, int xDir, Actor owner, string sprite,
 		ushort? netId, Player? player = null, bool? ownedByLocalPlayer = null, bool addToLevel = true
 	) : base(
 		sprite, pos, netId,
 		ownedByLocalPlayer ?? player?.ownedByLocalPlayer ?? owner?.ownedByLocalPlayer ??
-		(netId != null ? Global.level.getPlayerById(netId.Value).ownedByLocalPlayer : true),
+		(netId == null || Global.level.getPlayerByIdSafe(netId.Value).ownedByLocalPlayer),
 		!addToLevel
 	) {
 		weapon = Weapon.baseNetWeapon;
 		useGravity = false;
-		ownerPlayer = player ?? owner?.netOwner ?? Global.level.getPlayerById(netId!.Value);
+		ownerPlayer = (
+			player ?? owner?.netOwner ?? Global.level.getPlayerByIdSafe(netId)
+		);
 		damager = new Damager(ownerPlayer, 0, 0, 0);
 		owningActor = owner;
 		this.xDir = xDir;
-		if ((Global.level.gameMode.isTeamMode && Global.level.mainPlayer != ownerPlayer) &&
+		if (Global.level.gameMode.isTeamMode && Global.level.mainPlayer != ownerPlayer &&
 			this is not NapalmPartProj or FlameBurnerProj
 		) {
 			RenderEffectType? allianceEffect = ownerPlayer.alliance switch {
@@ -145,11 +154,6 @@ public class Projectile : Actor {
 
 	public float getSpeed() {
 		return vel.magnitude;
-	}
-
-	public int getRpcAngle() {
-		if (angle == null) return 0;
-		return (int)(Helpers.to360(angle.Value) * 0.5f);
 	}
 
 	public override void update() {
@@ -276,11 +280,11 @@ public class Projectile : Actor {
 		float velAngle = vel.angle;
 		if ((velAngle > 45 && velAngle < 135) || (velAngle > 225 && velAngle < 315)) {
 			angle = Helpers.to360(velAngle + Helpers.SignOr1(vel.x) * 135);
-			vel = Point.createFromAngle(angle.Value).times(vel.magnitude);
+			vel = Point.createFromAngle(angle).times(vel.magnitude);
 			xDir = 1;
 		} else {
 			angle = Helpers.to360(velAngle - Helpers.SignOr1(vel.x) * 135);
-			vel = Point.createFromAngle(angle.Value).times(vel.magnitude);
+			vel = Point.createFromAngle(angle).times(vel.magnitude);
 			xDir = 1;
 		}
 		time = 0;
@@ -294,9 +298,11 @@ public class Projectile : Actor {
 		if (reflectCount > 0) return;
 		reflectCount++;
 
-		if (this is TorpedoProj torpedo) {
-			torpedo.reflect(reflectAngle);
-		} else if (this is GrenadeProj grenade) {
+		if (this is TorpedoProjX torpedo) torpedo.reflect(reflectAngle);
+		else if (this is TorpedoProjChargedX torpedoC) torpedoC.reflect(reflectAngle);
+		else if (this is TorpedoProjChargedOcto torpedoO) torpedoO.reflect(reflectAngle);
+		else if (this is TorpedoProjMech torpedoM) torpedoM.reflect(reflectAngle);		
+		else if (this is GrenadeProj grenade) {
 			if (grenade.deltaPos.isZero()) return;
 			grenade.vel = Point.createFromAngle(reflectAngle).times(grenade.speed);
 		} else {
@@ -374,6 +380,8 @@ public class Projectile : Actor {
 		if (!defender.sprite.name.Contains("attack") && !defender.sprite.name.Contains("block")) return false;
 		if (defender.sprite.name.Contains("sigma2")) return false;
 		if ((attacker as Zero)?.hypermodeActive() == true) return false;
+		if ((attacker as BusterZero)?.isBlackZero == true) return false;
+
 		if ((defender as BusterZero)?.player.UnlockTree == true && (defender as BusterZero)?.isBlackZero == false) return false;
 		if ((attacker as Iris)?.hypermodeActive() == true) return false;
 		// Not facing each other
@@ -407,8 +415,8 @@ public class Projectile : Actor {
 			}
 		}
 
-		var isSaber = GenericMeleeProj.isZSaberClang(projId);
-		if (isSaber && owner.character?.isCCImmune() != true) {
+		//var isSaber = GenericMeleeProj.isZSaberClangBool(otherProj);
+		if (isZSaberClang && owner.character?.isStunImmune() == false) {
 			// Case 1: hitting a clangable projectile.
 			if (ownedByLocalPlayer && owner.character != null &&
 				otherProj != null && otherProj.owner.alliance != owner.alliance
@@ -436,6 +444,30 @@ public class Projectile : Actor {
 			// This logic could have also lived in "canBeDamaged" but since it's related to the clang code above, it's put here
 			if (owner.character != null && other.gameObject is Character chr) {
 				if (charsCanClang(owner.character, chr)) {
+					return;
+				}
+			}
+		}
+
+		if (otherProj != null && otherProj.ownedByLocalPlayer &&
+			(otherProj.isDeflectShield || otherProj.isReflectShield)
+		) {
+			if (otherProj.isReflectShield &&
+				reflectable && damager.owner.alliance != otherProj.damager.owner.alliance
+			) {
+				if (deltaPos.x != 0 && Math.Sign(deltaPos.x) != otherProj.xDir) {
+					reflect(otherProj.owner, sendRpc: true);
+					playSound("sigmaSaberBlock", sendRpc: true);
+					return;
+				}
+			}
+
+			if (otherProj.isDeflectShield && reflectable &&
+				damager.owner.alliance != otherProj.damager.owner.alliance
+			) {
+				if (deltaPos.x != 0 && Math.Sign(deltaPos.x) != otherProj.xDir) {
+					deflect(otherProj.owner, sendRpc: true);
+					playSound("sigmaSaberBlock", forcePlay: false, sendRpc: true);
 					return;
 				}
 			}
@@ -498,6 +530,7 @@ public class Projectile : Actor {
 				if (deltaPos.x != 0 && Math.Sign(deltaPos.x) != otherProj.xDir) {
 					reflect(otherProj.owner, sendRpc: true);
 					playSound("sigmaSaberBlock", sendRpc: true);
+					return;
 				}
 			}
 
@@ -507,6 +540,7 @@ public class Projectile : Actor {
 				if (deltaPos.x != 0 && Math.Sign(deltaPos.x) != otherProj.xDir) {
 					deflect(otherProj.owner, sendRpc: true);
 					playSound("sigmaSaberBlock", forcePlay: false, sendRpc: true);
+					return;
 				}
 			}
 
@@ -573,7 +607,7 @@ public class Projectile : Actor {
 				if (hitPos != null && destroyOnHit) changePos(hitPos.Value);
 
 				bool weakness = false;
-				if (character != null && character.player.isX) {
+				if (character is MegamanX) {
 					int wi = character.player.weapon.weaknessIndex;
 					if (wi > 0 && wi == weapon.index) weakness = true;
 				}
@@ -588,30 +622,17 @@ public class Projectile : Actor {
 				}
 
 				if (shouldDealDamage(damagable)) {
-					if (Global.level.server.favorHost && Global.level.server.isP2P) {
-						if (Global.serverClient?.isHost == true) {
-							damager.applyDamage(damagable, weakness, weapon, this, projId);
-						}
-					} else {
-						if (!isDefenderFavored()) {
-							if (ownedByLocalPlayer) {
-								damager.applyDamage(damagable, weakness, weapon, this, projId);
-							}
-						} else {
-							if (damagable.actor().ownedByLocalPlayer) {
-								damager.applyDamage(damagable, weakness, weapon, this, projId);
-							}
-						}
+					if (isNetcodeDamageOwner(damagable.actor())) {
+						damager.applyDamage(damagable, weakness, weapon, this, projId);
 					}
 				}
-
 				onHitDamagable(damagable);
 			}
 
 			bool isMaverickHealProj = projId == (int)ProjIds.MorphMCScrap || projId == (int)ProjIds.MorphMPowder;
 			if (ownedByLocalPlayer &&
 				(damagable != damager.owner.character || isMaverickHealProj) &&
-				(damagable is not Maverick || !damager.owner.mavericks.Contains(damagable)) &&
+				/*(damagable is not Maverick || !damager.owner.mavericks.Contains(damagable)) && */
 				damagable.canBeHealed(damager.owner.alliance) && healAmount > 0
 			) {
 				if (Global.serverClient == null || damagableActor?.ownedByLocalPlayer == true) {
@@ -620,7 +641,8 @@ public class Projectile : Actor {
 					RPC.heal.sendRpc(owner, damagableActor?.netId ?? ushort.MaxValue, healAmount);
 				}
 				onHitDamagable(damagable);
-				if (destroyOnHit) {
+				if (destroyOnHit && !destroyed) {
+					damagedOnce = true;
 					destroySelf(fadeSprite, fadeSound, favorDefenderProjDestroy: isDefenderFavoredAndOwner());
 				}
 			}
@@ -644,26 +666,41 @@ public class Projectile : Actor {
 		return true;
 	}
 
-	// This method is run even on non-owners of the projectile, so it can be used to apply effects to other clients without creating a new RPC
+	public virtual bool isNetcodeDamageOwner(Actor enemyActor) {
+		if (Global.serverClient == null) {
+			return true;
+		}
+		if (Global.level.server.favorHost && Global.level.server.isP2P) {
+			if (isDefenderFavored()) {
+				return Global.serverClient.isHost;
+			}
+			return ownedByLocalPlayer;
+		}
+		if (isDefenderFavored()) {
+			return enemyActor.ownedByLocalPlayer;
+		}
+		return ownedByLocalPlayer;
+	}
+
+	// This method is run even on non-owners of the projectile,
+	// so it can be used to apply effects to other clients without creating a new RPC
 	// However, this means that if you want a owner-only effect, you need an ownedByLocalPlayer check in front.
-	// Keep in mind, the client's collision check would use a "favor the defender model", so if you want an effect to favor the shooter, then
+	// Keep in mind, the client's collision check would use a "favor the defender model",
+	// so if you want an effect to favor the shooter, then
 	// it needs to be in the Damager class as a "on<PROJ>Damage() method"
 	// Also, this runs on every hit regardless of hit cooldown, so if hit cooldown must be factored, use onDamage
 	public virtual void onHitDamagable(IDamagable damagable) {
 		if (destroyOnHit) {
 			damagedOnce = true;
-			if (Global.level.server.isP2P && Global.level.server.favorHost) {
-				if (Global.serverClient?.isHost != true) {
-					return;
-				}
+			if (isNetcodeDamageOwner(damagable.actor())) {
 				destroySelf(fadeSprite, fadeSound, doRpcEvenIfNotOwned: true);
-				return;
 			}
-			destroySelf(fadeSprite, fadeSound, favorDefenderProjDestroy: isDefenderFavoredAndOwner());
 		}
 	}
 
-	// Can be used in lieu of the on<PROJ>Damage() method in damager method with caveat that this causes issues where the actor isn't created yet leading to point blank shots under lag not running this
+	// Can be used in lieu of the on<PROJ>Damage() method
+	// in damager method with caveat that this causes issues
+	// where the actor isn't created yet leading to point blank shots under lag not running this
 	public virtual DamagerMessage? onDamage(IDamagable damagable, Player attacker) {
 		return null;
 	}
@@ -694,7 +731,7 @@ public class Projectile : Actor {
 
 	private void rpcCreateHelper(
 		Point pos, Player player, ushort? netProjId,
-		int xDirOrAngle, bool isAngle,
+		int xDirOrAngle, bool isAngle, Actor? owner,
 		params byte[] extraData
 	) {
 		if (netProjId == null) {
@@ -707,6 +744,7 @@ public class Projectile : Actor {
 		// Create bools of data.
 		byte dataInf = Helpers.boolArrayToByte(new bool[] {
 			isAngle,
+			owner?.netId != null,
 			extraData != null && extraData.Length > 0
 		});
 		if (!isAngle) {
@@ -722,6 +760,9 @@ public class Projectile : Actor {
 			netProjIdByte[0], netProjIdByte[1],
 			(byte)xDirOrAngle
 		};
+		if (owner?.netId != null) {
+			bytes.AddRange(BitConverter.GetBytes(owner.netId.Value));
+		}
 		if (extraData != null && extraData.Length > 0) {
 			bytes.AddRange(extraData);
 		}
@@ -732,7 +773,7 @@ public class Projectile : Actor {
 		Point pos, Player player, ushort? netProjId,
 		int xDir, params byte[] extraData
 	) {
-		rpcCreateHelper(pos, player, netProjId, xDir, false, extraData);
+		rpcCreateHelper(pos, player, netProjId, xDir, false, null, extraData);
 	}
 
 	public virtual void rpcCreateAngle(
@@ -740,7 +781,7 @@ public class Projectile : Actor {
 		float angle, params byte[] extraData
 	) {
 		int byteAngle = MathInt.Round((angle / 1.40625f) % 256f);
-		rpcCreateHelper(pos, player, netProjId, byteAngle, true, extraData);
+		rpcCreateHelper(pos, player, netProjId, byteAngle, true, null, extraData);
 	}
 
 	public virtual void rpcCreateByteAngle(
@@ -748,7 +789,28 @@ public class Projectile : Actor {
 		float angle, params byte[] extraData
 	) {
 		int byteAngle = MathInt.Round(angle % 256f);
-		rpcCreateHelper(pos, player, netProjId, byteAngle, true, extraData);
+		rpcCreateHelper(pos, player, netProjId, byteAngle, true, null, extraData);
+	}
+
+	public virtual void rpcCreate(
+		Point pos, Actor owner, Player player, ushort? netProjId,
+		int xDir, params byte[] extraData
+	) {
+		rpcCreateHelper(pos, player, netProjId, xDir, false, owner, extraData);
+	}
+	public virtual void rpcCreateByteAngle(
+		Point pos, Actor owner, Player player, ushort? netProjId,
+		float angle, params byte[] extraData
+	) {
+		int byteAngle = MathInt.Round(angle % 256f);
+		rpcCreateHelper(pos, player, netProjId, byteAngle, true, owner, extraData);
+	}
+	public virtual void rpcCreateAngle(
+		Point pos, Actor owner, Player player, ushort? netProjId,
+		float angle, params byte[] extraData
+	) {
+		int byteAngle = MathInt.Round((angle / 1.40625f) % 256f);
+		rpcCreateHelper(pos, player, netProjId, byteAngle, true, owner, extraData);
 	}
 
 	public void acidFadeEffect() {
@@ -786,15 +848,15 @@ public class Projectile : Actor {
 
 	public void acidSplashParticles(Point hitPoint, bool isSide, int yDir, int downY, ProjIds projId) {
 		if (!isSide) {
-			new AcidBurstProjSmall(weapon, hitPoint.addxy(0, -5 * yDir), 1, new Point(xDir * 50, -150 * downY), projId, owner, owner.getNextActorNetId(), rpc: true);
-			new AcidBurstProjSmall(weapon, hitPoint.addxy(0, -5 * yDir), 1, new Point(xDir * 25, -150 * downY), projId, owner, owner.getNextActorNetId(), rpc: true);
-			new AcidBurstProjSmall(weapon, hitPoint.addxy(0, -5 * yDir), 1, new Point(xDir * -25, -150 * downY), projId, owner, owner.getNextActorNetId(), rpc: true);
-			new AcidBurstProjSmall(weapon, hitPoint.addxy(0, -5 * yDir), 1, new Point(xDir * -50, -150 * downY), projId, owner, owner.getNextActorNetId(), rpc: true);
+			new AcidBurstProjSmall(hitPoint.addxy(0, -5 * yDir), 1, new Point(xDir * 50, -150 * downY), false, projId, this, owner, owner.getNextActorNetId(), rpc: true);
+			new AcidBurstProjSmall(hitPoint.addxy(0, -5 * yDir), 1, new Point(xDir * 25, -150 * downY), false, projId, this, owner, owner.getNextActorNetId(), rpc: true);
+			new AcidBurstProjSmall(hitPoint.addxy(0, -5 * yDir), 1, new Point(xDir * -25, -150 * downY), false, projId, this, owner, owner.getNextActorNetId(), rpc: true);
+			new AcidBurstProjSmall(hitPoint.addxy(0, -5 * yDir), 1, new Point(xDir * -50, -150 * downY), false, projId, this, owner, owner.getNextActorNetId(), rpc: true);
 		} else {
-			new AcidBurstProjSmall(weapon, hitPoint.addxy(-5 * xDir, 0), 1, new Point(-xDir * 10, -150), projId, owner, owner.getNextActorNetId(), rpc: true);
-			new AcidBurstProjSmall(weapon, hitPoint.addxy(-5 * xDir, 0), 1, new Point(-xDir * 20, -75), projId, owner, owner.getNextActorNetId(), rpc: true);
-			new AcidBurstProjSmall(weapon, hitPoint.addxy(-5 * xDir, 0), 1, new Point(-xDir * 30, -35), projId, owner, owner.getNextActorNetId(), rpc: true);
-			new AcidBurstProjSmall(weapon, hitPoint.addxy(-5 * xDir, 0), 1, new Point(-xDir * 40, 0), projId, owner, owner.getNextActorNetId(), rpc: true);
+			new AcidBurstProjSmall(hitPoint.addxy(-5 * xDir, 0), 1, new Point(-xDir * 10, -150), false, projId, this, owner, owner.getNextActorNetId(), rpc: true);
+			new AcidBurstProjSmall(hitPoint.addxy(-5 * xDir, 0), 1, new Point(-xDir * 20, -75), false, projId, this, owner, owner.getNextActorNetId(), rpc: true);
+			new AcidBurstProjSmall(hitPoint.addxy(-5 * xDir, 0), 1, new Point(-xDir * 30, -35), false, projId, this, owner, owner.getNextActorNetId(), rpc: true);
+			new AcidBurstProjSmall(hitPoint.addxy(-5 * xDir, 0), 1, new Point(-xDir * 40, 0), false, projId, this, owner, owner.getNextActorNetId(), rpc: true);
 		}
 	}
 

@@ -46,6 +46,7 @@ public class RideArmor : Actor, IDamagable {
 	public static ShaderWrapper? paletteFrog = Helpers.cloneGenericPaletteShader("paletteFrog");
 
 	bool netColorShadersSet;
+	public static Weapon netWeapon = new Weapon(WeaponIds.MechGenericWeapon, 0);
 
 	public RideArmor(
 		Player owner, Point pos, int raNum, int neutralId, ushort? netId, bool ownedByLocalPlayer, bool sendRpc = false
@@ -75,6 +76,7 @@ public class RideArmor : Actor, IDamagable {
 			setColorShaders();
 		}
 
+		slideOnIce = true;
 		useFrameProjs = true;
 		splashable = true;
 		Global.level.addGameObject(this);
@@ -123,11 +125,19 @@ public class RideArmor : Actor, IDamagable {
 	}
 
 	public void setMaxHealth() {
-		if (raNum == 2) maxHealth = 24; // + Helpers.clampMax(netOwner.heartTanks * netOwner.getHeartTankModifier(), 8);
-		else if (raNum == 3) maxHealth = 24; // + Helpers.clampMax(netOwner.heartTanks * netOwner.getHeartTankModifier(), 8);
-		else maxHealth = 32;
-		if (raNum == 4) goliathHealth = 32;
-		maxHealth = Player.getModifiedHealth(maxHealth);
+		if (raNum == 2) {
+			maxHealth = 24;
+			// + Helpers.clampMax(netOwner.heartTanks * netOwner.getHeartTankModifier(), 8);
+		} else if (raNum == 3) {
+			maxHealth = 24;
+			// + Helpers.clampMax(netOwner.heartTanks * netOwner.getHeartTankModifier(), 8);
+		} else {
+			maxHealth = 32;
+		}
+		if (raNum == 4) {
+			goliathHealth = MathF.Ceiling(32 * Player.getHpMod());
+		}
+		maxHealth = MathF.Ceiling(Player.getModifiedHealth(maxHealth) * Player.getHpMod());
 	}
 
 	public void setRaNum(int raNum) {
@@ -210,6 +220,7 @@ public class RideArmor : Actor, IDamagable {
 	public override void preUpdate() {
 		base.preUpdate();
 		changedStateInFrame = false;
+		updateProjectileCooldown();
 	}
 
 	public override void update() {
@@ -259,6 +270,14 @@ public class RideArmor : Actor, IDamagable {
 				character = mk5Rider;
 			}
 		}
+		if (character is Vile vile) {
+			if (vile.chargeButtonHeld()) {
+				vile.increaseCharge();
+			}
+			if (vile.getChargeLevel() >= 3 && !vile.chargeButtonHeld()) {
+				vile.laserWeapon.vileShoot(WeaponIds.VileLaser, vile);
+			}
+		}
 	}
 
 	public Point getMK5Pos() {
@@ -278,11 +297,8 @@ public class RideArmor : Actor, IDamagable {
 
 	public override void postUpdate() {
 		Player? player = this.player ?? netOwner;
-		MegamanX? mmx = character as MegamanX;
-
+		RagingChargeX? rcx = character as RagingChargeX;
 		base.postUpdate();
-
-		updateProjectileCooldown();
 
 		if (grounded && flyTime > 0) {
 			flyTime -= Global.spf * 6;
@@ -300,7 +316,7 @@ public class RideArmor : Actor, IDamagable {
 			else if (selfDestructTime >= 6 && selfDestructTime < 8) flashFrequency = 15;
 			else if (selfDestructTime >= 8) flashFrequency = 5;
 
-			if (Global.frameCount % flashFrequency == 0) {
+			if (Global.floorFrameCount % flashFrequency == 0) {
 				addRenderEffect(RenderEffectType.Hit);
 			} else {
 				removeRenderEffect(RenderEffectType.Hit);
@@ -360,7 +376,7 @@ public class RideArmor : Actor, IDamagable {
 		}
 		if (punchCooldown > 0) {
 			punchCooldown -= Global.spf;
-			if (mmx?.isHyperX == true) punchCooldown -= Global.spf;
+			if (rcx != null) punchCooldown -= Global.spf;
 			if (punchCooldown < 0) punchCooldown = 0;
 		}
 
@@ -386,11 +402,11 @@ public class RideArmor : Actor, IDamagable {
 					healAmount--;
 					health = Helpers.clampMax(health + 1, maxHealth);
 					if (player == Global.level.mainPlayer || playHealSound) {
-						if(raNum == 0 || raNum == 5) {
-						playSound("heal", forcePlay: true, sendRpc: true);
+						if (raNum == 0 || raNum == 5) {
+							playSound("heal", forcePlay: true, sendRpc: true);
 						}
 						else {
-						playSound("healX3", forcePlay: true, sendRpc: true);
+							playSound("healX3", forcePlay: true, sendRpc: true);
 						}
 					}
 				}
@@ -398,8 +414,9 @@ public class RideArmor : Actor, IDamagable {
 		}
 
 		Helpers.decrementTime(ref missileCooldown);
-		if (mmx?.isHyperX == true) Helpers.decrementTime(ref missileCooldown);
-
+		if (rcx != null) {
+			Helpers.decrementTime(ref missileCooldown);
+		}
 		if (consecutiveJumpTimeout > 0) {
 			consecutiveJumpTimeout -= Global.spf;
 			if (consecutiveJumpTimeout <= 0) {
@@ -418,7 +435,7 @@ public class RideArmor : Actor, IDamagable {
 					if (poiTag == "b" && player != null) {
 						Point shootPos = pos.addxy(poi.x * xDir, poi.y);
 						if (!isBombDrop) {
-							new MechMissileProj(new MechMissileWeapon(player), shootPos, xDir, sprite.name.Contains("down"), player, player.getNextActorNetId(), rpc: true);
+							new MechMissileProj(new MechMissileWeapon(), shootPos, xDir, sprite.name.Contains("down"), player, player.getNextActorNetId(), rpc: true);
 							new Anim(shootPos, "dust", 1, player.getNextActorNetId(), true, true, true) { vel = new Point(0, -100) };
 						} else {
 							if (character is Vile vile) {
@@ -426,11 +443,17 @@ public class RideArmor : Actor, IDamagable {
 								if (i == 1) xDirMod = 1;
 								Projectile grenade;
 								if (vile.napalmWeapon.type == (int)NapalmType.SplashHit) {
-									grenade = new SplashHitGrenadeProj(vile.napalmWeapon, shootPos, xDir * xDirMod, player, player.getNextActorNetId(), rpc: true);
+									grenade = new SplashHitGrenadeProj(
+										shootPos, xDir * xDirMod, vile, player, player.getNextActorNetId(), rpc: true
+									);
 								} else if (vile.napalmWeapon.type == (int)NapalmType.FireGrenade) {
-									grenade = new MK2NapalmGrenadeProj(vile.napalmWeapon, shootPos, xDir * xDirMod, player, player.getNextActorNetId(), rpc: true);
+									grenade = new MK2NapalmGrenadeProj(
+										shootPos, xDir * xDirMod, vile, player, player.getNextActorNetId(), rpc: true
+									);
 								} else {
-									grenade = new NapalmGrenadeProj(new Napalm(NapalmType.RumblingBang), shootPos, xDir * xDirMod, player, player.getNextActorNetId(), rpc: true);
+									grenade = new NapalmGrenadeProj(
+										shootPos, xDir * xDirMod, vile, player, player.getNextActorNetId(), rpc: true
+									);
 								}
 								grenade.vel = new Point();
 							}
@@ -448,7 +471,7 @@ public class RideArmor : Actor, IDamagable {
 					string poiTag = currentFrame.POITags[i];
 					if (poiTag == "b" && player != null) {
 						Point shootPos = pos.addxy(poi.x * xDir, poi.y);
-						new TorpedoProj(new MechTorpedoWeapon(player), shootPos, xDir, player, 2, player.getNextActorNetId(), rpc: true);
+						new TorpedoProjMech(shootPos, xDir, this, player, player.getNextActorNetId(), rpc: true);
 					}
 				}
 				playSound("frogShootX3", forcePlay: false, sendRpc: true);
@@ -603,7 +626,7 @@ public class RideArmor : Actor, IDamagable {
 						} else if (!(ownedByLocalPlayer && chr.ownedByLocalPlayer)) {
 							return;
 						}
-					} else if (chr?.startRideArmor != this || selfDestructTime > 0) {
+					} else if (chr?.linkedRideArmor != this || selfDestructTime > 0) {
 						return;
 					}
 				} else {
@@ -617,72 +640,114 @@ public class RideArmor : Actor, IDamagable {
 			}
 		}
 	}
+	
+	// Melee IDs for attacks.
+	public enum MeleeIds {
+		None = -1,
+		Punch,
+		KPunch,
+		GPunch,
+		DPunch,
+		Charge,
+		Stomp,
+		KStomp,
+		GStomp,
+		DStomp,
+		HStomp,
+		FStomp,
+		FStomp2,
+		Groundpound,
+		Deactive,
+	}
 
-	public override Projectile? getProjFromHitbox(Collider hitbox, Point centerPoint) {
-		if (hitbox == null || player == null || sprite?.name == null) {
+	// This can run on both owners and non-owners. So data used must be in sync.
+	public override int getHitboxMeleeId(Collider hitbox) {
+		if (sprite.name.Contains("attack")) {
+			if (raNum == 0) return (int)MeleeIds.Punch;
+			if (raNum == 1) return (int)MeleeIds.KPunch;
+			if (raNum == 4) return (int)MeleeIds.GPunch;
+			if (raNum == 5) return (int)MeleeIds.DPunch;
+		}
+		if (sprite.name.Contains("deactive")) {
+			return (int)MeleeIds.Deactive;
+		}
+		if (sprite.name.Contains("charge")) {
+			return (int)MeleeIds.Charge;
+		}
+		if (sprite.name.Contains("groundpound")) {
+			return (int)MeleeIds.FStomp2;
+		}
+		bool canDamage = deltaPos.y > 150 * Global.spf;
+		if (hitbox.name.Contains("stomp") && canDamage) {
+			if (raNum == 0) return (int)MeleeIds.Stomp;
+			if (raNum == 1) return (int)MeleeIds.KStomp;
+			if (raNum == 2) return (int)MeleeIds.HStomp;
+			if (raNum == 3) return (int)MeleeIds.FStomp;
+			if (raNum == 4) return (int)MeleeIds.GStomp;
+			if (raNum == 5) return (int)MeleeIds.DStomp;
+		}
+		return (int)MeleeIds.None;
+	}
+
+	// This can be called from a RPC, so make sure there is no character conditionals here.
+	public override Projectile? getMeleeProjById(int id, Point pos, bool addToLevel = true) {
+		if (player == null) {
 			return null;
 		}
-		// whats the center point value?
-		Projectile? proj = null;
-
-		if (sprite.name.Contains("attack")) {
-			switch (raNum) {
-				case 0:
-					proj = new GenericMeleeProj(new MechPunchWeapon(player),
-					 centerPoint, ProjIds.MechPunch, player);
-					break;
-				case 1:
-					proj = new GenericMeleeProj(new MechKangarooPunchWeapon(player),
-					 centerPoint, ProjIds.MechKangarooPunch, player);
-					break;
-				case 4:
-					proj = new GenericMeleeProj(new MechGoliathPunchWeapon(player),
-					 centerPoint, ProjIds.MechGoliathPunch, player);
-					break;
-				case 5:
-					proj = new GenericMeleeProj(new MechDevilBearPunchWeapon(player),
-					 centerPoint, ProjIds.MechDevilBearPunch, player);
-					break;
-			}
-		}
-		else if (sprite.name.Contains("charge")) {
-			proj = new GenericMeleeProj(new MechChainChargeWeapon(player), centerPoint, ProjIds.MechChain, player);
-		}
-		else if (hitbox.name == "stomp" && deltaPos.y > 150 * Global.spf && character != null) {
-			bool canDamage = deltaPos.y > 150 * Global.spf;
-			float? overrideDamage = sprite.name.EndsWith("groundpound") ? 4 : null;
-			if (!canDamage) overrideDamage = 0;
-			ProjIds overrideProjId = sprite.name.EndsWith("groundpound") ? ProjIds.MechFrogGroundPound : ProjIds.MechStomp;
-			switch (raNum) {
-				case 0:
-					proj = new GenericMeleeProj(new MechStompWeapon(player),
-					 centerPoint, ProjIds.MechStomp, player, damage: !canDamage ? 0 : null);
-					break;
-				case 1:
-					proj = new GenericMeleeProj(new MechKangarooStompWeapon(player),
-					 centerPoint, ProjIds.MechStomp, player, damage: !canDamage ? 0 : null);
-					break;
-				case 2:
-					proj = new GenericMeleeProj(new MechHawkStompWeapon(player),
-					 centerPoint, ProjIds.MechStomp, player, damage: !canDamage ? 0 : null);
-					break;
-				case 3:
-					proj = new GenericMeleeProj(new MechFrogStompWeapon(player),
-					 centerPoint, overrideProjId, player, damage: overrideDamage);
-					break;
-				case 4:
-					proj = new GenericMeleeProj(new MechGoliathStompWeapon(player),
-					 centerPoint, ProjIds.MechStomp, player, damage: !canDamage ? 0 : null);
-					break;
-				case 5:
-					proj = new GenericMeleeProj(new MechDevilBearStompWeapon(player),
-					 centerPoint, ProjIds.MechStomp, player, damage: !canDamage ? 0 : null);
-					break;
-			}
-		}
-
-		return proj;
+		bool canDamage = deltaPos.y > 150 * Global.spf;
+		return (MeleeIds)id switch {
+			MeleeIds.Punch =>new GenericMeleeProj(
+				new MechPunchWeapon(), pos, ProjIds.MechPunch, player,
+				damage: 3, flinch: Global.defFlinch, 30, addToLevel: addToLevel
+			),
+			MeleeIds.KPunch =>new GenericMeleeProj(
+				new MechKangarooPunchWeapon(), pos, ProjIds.MechKangarooPunch, player,
+				damage: 4, flinch: Global.defFlinch, 30, addToLevel: addToLevel
+			),
+			MeleeIds.GPunch =>new GenericMeleeProj(
+				new MechGoliathPunchWeapon(), pos, ProjIds.MechGoliathPunch, player,
+				damage: 4, flinch: Global.defFlinch, 30, addToLevel: addToLevel
+			),
+			MeleeIds.DPunch =>new GenericMeleeProj(
+				new MechDevilBearPunchWeapon(), pos, ProjIds.MechDevilBearPunch, player,
+				damage: 2, flinch: Global.defFlinch, 15, addToLevel: addToLevel
+			),
+			MeleeIds.Charge =>new GenericMeleeProj(
+				new MechChainChargeWeapon(), pos, ProjIds.MechChain, player,
+				damage: 1, flinch: Global.defFlinch, 6, addToLevel: addToLevel
+			),
+			MeleeIds.Stomp =>new GenericMeleeProj(
+				new MechStompWeapon(), pos, ProjIds.MechStomp, player,
+				damage: !canDamage ? 0 : 3, flinch: Global.defFlinch, 45, addToLevel: addToLevel
+			),
+			MeleeIds.KStomp =>new GenericMeleeProj(
+				new MechKangarooStompWeapon(), pos, ProjIds.MechStomp, player,
+				damage: 3, flinch: Global.defFlinch, 45, addToLevel: addToLevel
+			),
+			MeleeIds.GStomp =>new GenericMeleeProj(
+				new MechGoliathStompWeapon(), pos, ProjIds.MechStomp, player,
+				damage: 3, flinch: Global.defFlinch, 45, addToLevel: addToLevel
+			),
+			MeleeIds.DStomp =>new GenericMeleeProj(
+				new MechDevilBearStompWeapon(), pos, ProjIds.MechStomp, player,
+				damage: 3, flinch: Global.defFlinch, 45, addToLevel: addToLevel
+			),
+			MeleeIds.HStomp =>new GenericMeleeProj(
+				new MechHawkStompWeapon(), pos, ProjIds.MechStomp, player,
+				damage: 3, flinch: Global.defFlinch, 45, addToLevel: addToLevel
+			),
+			MeleeIds.FStomp =>new GenericMeleeProj(
+				new MechFrogStompWeapon(), pos, ProjIds.MechStomp, player,
+				damage: 3, flinch: Global.defFlinch, 45, addToLevel: addToLevel
+			),
+			MeleeIds.FStomp2 =>new GenericMeleeProj(
+				new MechFrogStompWeapon(), pos, ProjIds.MechFrogGroundPound, player,
+				damage: 4, flinch: Global.defFlinch, 45, addToLevel: addToLevel
+			),
+			_ => null
+		};
 	}
+	
 
 	bool healedOnEnter;
 	public void putCharInRideArmor(Character chr) {
@@ -691,7 +756,7 @@ public class RideArmor : Actor, IDamagable {
 		chr.changeState(new InRideArmor(), true);
 		changeState(new RAIdle("ridearmor_activating"), true);
 		if (character != null) {
-			if (!healedOnEnter && raNum == 4 && character.ownedByLocalPlayer && character.startRideArmor == this) {
+			if (!healedOnEnter && raNum == 4 && character.ownedByLocalPlayer && character.linkedRideArmor == this) {
 				healedOnEnter = true;
 				character.fillHealthToMax();
 			}
@@ -742,7 +807,7 @@ public class RideArmor : Actor, IDamagable {
 			health -= damage;
 		}
 
-		if (owner != null && weaponIndex != null) {
+		if ((damage > 0 || Damager.alwaysAssist(projId)) && owner != null && weaponIndex != null) {
 			damageHistory.Add(new DamageEvent(owner, weaponIndex.Value, projId, false, Global.time));
 		}
 
@@ -750,7 +815,7 @@ public class RideArmor : Actor, IDamagable {
 			health = 0;
 		}
 		if (health <= 0) {
-			if (character != null && !ownedByMK5 && character.startRideArmor == this) {
+			if (character != null && !ownedByMK5 && character.linkedRideArmor == this) {
 				character.invulnTime = 1;
 			}
 
@@ -798,7 +863,9 @@ public class RideArmor : Actor, IDamagable {
 					piece.useGravity = true;
 					piece.vel = new Point(Helpers.randomRange(-300, 300), Helpers.randomRange(-300, 25));
 				} else {
-					piece = new RAShrapnelProj(new VileLaser(VileLaserType.NecroBurst), centerPos, piecesSpriteName, 1, hasRaColorShader, netOwner, netOwner.getNextActorNetId(), rpc: true);
+					piece = new RAShrapnelProj(
+						centerPos, piecesSpriteName, 1, hasRaColorShader, this,
+						netOwner, netOwner.getNextActorNetId(), rpc: true);
 					piece.vel = shrapnelVels[i];
 				}
 				piece.frameIndex = i;
@@ -989,7 +1056,7 @@ public class RideArmor : Actor, IDamagable {
 
 		if (character != null && !(character.charState is Die)) {
 			if (!ownedByMK5) {
-				character.changeState(new Fall(), true);
+				character.changeState(character.getFallState(), true);
 				character.changePos(pos.addxy(0, -10));
 			}
 
@@ -1004,7 +1071,18 @@ public class RideArmor : Actor, IDamagable {
 		if (colorShader != null) {
 			shaders.Add(colorShader);
 		}
+		if (timeStopTime > timeStopThreshold && player != null) {
+			if (!Global.level.darkHoldProjs.Any(
+				dhp => dhp.screenShader != null && dhp.inRange(this))
+			) {
+				shaders.Add(Player.darkHoldShader);
+			}
+		}
 		return shaders;
+	}
+
+	public bool isPlayableDamagable() {
+		return true;
 	}
 
 	public void creditKill(Player? killer, Player? assister, int? weaponIndex) {
@@ -1311,7 +1389,7 @@ public class RADeactive : RideArmorState {
 	public override void onEnter(RideArmorState? oldState) {
 		base.onEnter(oldState);
 		if (rideArmor.character != null) {
-			rideArmor.character.changeState(new Fall(), true);
+			rideArmor.character.changeState(character.getFallState(), true);
 			rideArmor.removeCharacter();
 		}
 		rideArmor.consecutiveJumpTimeout = 0;
@@ -1355,7 +1433,7 @@ public class RAIdle : RideArmorState {
 		if (rideArmor.isAttacking()) shootHeldTime = 0;
 
 		if (character.flag == null) {
-			if (player != null && player.isVile && player.input.isHeld(Control.Down, player)) {
+			if (character is Vile && player.input.isHeld(Control.Down, player)) {
 				(character.charState as InRideArmor)?.setHiding(true);
 				if (!rideArmor.isAttacking()) {
 					if (player.input.isHeld(Control.Left, player)) rideArmor.xDir = -1;
@@ -1380,16 +1458,16 @@ public class RAIdle : RideArmorState {
 				float modifier = 1;
 				if (rideArmor.consecutiveJump == 1) {
 					sound = "frogjump2X3";
-					modifier = 1.25f;
+					modifier = 1.75f;
 				} else if (rideArmor.consecutiveJump == 2) {
 					sound = "frogjump3X3";
-					modifier = 1.5f;
+					modifier = 2.1f;
 				}
 
 				if (dashHeld) modifier *= 0.75f;
 
 				rideArmor.playSound(sound, forcePlay: true, sendRpc: true);
-				rideArmor.vel.y = -rideArmor.getJumpPower() * 1.5f * modifier;
+				rideArmor.vel.y = -rideArmor.getJumpPower() * modifier;
 				rideArmor.changeState(new RAJump(isDash: dashHeld));
 				return;
 			}
@@ -1417,7 +1495,7 @@ public class RAIdle : RideArmorState {
 
 			if (Global.level.gameMode.isOver && player != null && character != null) {
 				if (Global.level.gameMode.playerWon(player)) {
-					if (player.isVile && character.rideArmor != null) {
+					if (character is Vile && character.rideArmor != null) {
 						var inRideArmor = character.charState as InRideArmor;
 						if (inRideArmor != null) inRideArmor.setHiding(false);
 						rideArmor.changeState(new RATaunt());
@@ -1441,7 +1519,7 @@ public class RAGrab : RideArmorState {
 }
 
 public class RATaunt : RideArmorState {
-	public RATaunt() : base("ridearmor_taunt", "", "", "") {
+	public RATaunt() : base("ridearmor_taunt") {
 	}
 
 	public override void update() {
@@ -1639,12 +1717,13 @@ public class RAFall : RideArmorState {
 			if (!rideArmor.sprite.name.Contains("swim") && !rideArmor.sprite.name.Contains("attack")) {
 				rideArmor.changeSprite("frog_swim", true);
 			}
-
+			rideArmor.vel.x = 120 * character.xDir;
 			rideArmor.vel.y = -106;
 		} else {
 			if (rideArmor.raNum == 3 && rideArmor.sprite.name.Contains("swim") && swimTime == 0) {
 				rideArmor.changeSprite("frog_fall", true);
 			}
+			rideArmor.vel.x = 0;
 		}
 
 		if (!rideArmor.isUnderwater() && player != null) {
@@ -1726,6 +1805,7 @@ public class RAGroundPound : RideArmorState {
 
 public class RAGroundPoundLand : RideArmorState {
 	public RAGroundPoundLand(string transitionSprite = "") : base("frog_groundpound_land") {
+		enterSound = "crash";
 	}
 
 	public override void update() {
@@ -1739,8 +1819,7 @@ public class RAGroundPoundLand : RideArmorState {
 	public override void onEnter(RideArmorState? oldState) {
 		base.onEnter(oldState);
 		if (player == null) return;
-		rideArmor.playSound("crash", sendRpc: true);
-		new MechFrogStompShockwave(new MechFrogStompWeapon(player), rideArmor.pos.addxy(6 * rideArmor.xDir, 0), rideArmor.xDir, player, player.getNextActorNetId(), rpc: true);
+		new MechFrogStompShockwave(new MechFrogStompWeapon(), rideArmor.pos.addxy(6 * rideArmor.xDir, 0), rideArmor.xDir, player, player.getNextActorNetId(), rpc: true);
 		if (rideArmor.consecutiveJump < 2) rideArmor.consecutiveJumpTimeout = 0.25f;
 		else rideArmor.consecutiveJump = 0;
 	}
@@ -1752,17 +1831,14 @@ public class RADash : RideArmorState {
 	public Character? draggedChar;
 
 	public RADash() : base("ridearmor_dash", "ridearmor_attack_dash", "ridearmor_carry_dash") {
-		enterSound = "";
+		enterSound = "ridedash";
 	}
 
 	public override void onEnter(RideArmorState? oldState) {
+		if (enterSound == "ridedash" && rideArmor.raNum >= 1 && rideArmor.raNum <= 4) {
+			enterSound = "ridedashx3";
+		}
 		base.onEnter(oldState);
-		if (rideArmor.raNum == 0 || rideArmor.raNum == 5) {
-			rideArmor.playSound("ridedash", false, true);
-		}
-		if (rideArmor.raNum == 1 || rideArmor.raNum == 2 || rideArmor.raNum == 3 || rideArmor.raNum == 4) {
-			rideArmor.playSound("ridedashX3", false, true);
-		}
 		rideArmor.isDashing = true;
 		new Anim(rideArmor.pos.addxy(rideArmor.xDir * -15, 0), "dash_sparks", rideArmor.xDir, null, true);
 	}
@@ -1794,7 +1870,7 @@ public class RADash : RideArmorState {
 					rideArmor.shakeCamera(sendRpc: true);
 					rideArmor.changeState(new RAIdle());
 					if (draggedChar != null) {
-						var mgpw = new MechGoliathPunchWeapon(player);
+						var mgpw = new MechGoliathPunchWeapon();
 						mgpw.applyDamage(draggedChar, false, rideArmor, (int)ProjIds.MechPunch);
 					}
 					return;
@@ -1827,7 +1903,7 @@ public class RACalldown : RideArmorState {
 	int phase = 0;
 	Point summonPos;
 	bool isNew;
-	public RACalldown(Point summonPos, bool isNew) : base("vile_warp_beam") {
+	public RACalldown(Point summonPos, bool isNew) : base("vile_warp_beam2") {
 		this.summonPos = summonPos;
 		this.isNew = isNew;
 		enterSound = "warpIn";
@@ -1862,7 +1938,7 @@ public class RACalldown : RideArmorState {
 		rideArmor.useGravity = false;
 		origYPos = rideArmor.pos.y;
 		if (rideArmor.character != null && !rideArmor.ownedByMK5 && (rideArmor.character as Vile)?.isVileMK5 != true) {
-			rideArmor.character.changeState(new Fall(), false);
+			rideArmor.character.changeState(rideArmor.character.getFallState(), false);
 			rideArmor.character.changePos(rideArmor.pos.addxy(0, -10));
 			rideArmor.removeCharacter();
 		}
@@ -1879,11 +1955,7 @@ public class RACalldown : RideArmorState {
 }
 
 public class RAChainCharge : RideArmorState {
-	public RAChainCharge() : base("ridearmor_charge", "", "") {
-	}
-
-	public override void onEnter(RideArmorState? oldState) {
-		base.onEnter(oldState);
+	public RAChainCharge() : base("ridearmor_charge") {
 	}
 
 	public override void onExit(RideArmorState? newState) {
@@ -1927,15 +1999,17 @@ public class RAChainChargeDash : RideArmorState {
 	string dashControl;
 	public float dashTime;
 	public bool isSlow;
-	public RAChainChargeDash(string dashControl, bool isSlow) : base("ridearmor_charge_dash", "", "") {
+	public RAChainChargeDash(string dashControl, bool isSlow) : base("ridearmor_charge_dash") {
 		this.dashControl = dashControl;
 		this.isSlow = isSlow;
-		enterSound = "dash";
+		enterSound = "ridedash";
 	}
 
 	public override void onEnter(RideArmorState? oldState) {
+		if (enterSound == "ridedash" && rideArmor.raNum >= 1 && rideArmor.raNum <= 4) {
+			enterSound = "ridedashx3";
+		}
 		base.onEnter(oldState);
-		rideArmor.playSound("ridedashX3", false, true);	
 		rideArmor.isDashing = true;
 		new Anim(rideArmor.pos, "dash_sparks", rideArmor.xDir, null, true);
 	}
@@ -1988,7 +2062,7 @@ public class RAChainAttack : RideArmorState {
 	float frame5Time;
 	MechChainProj? mcp;
 	int once;
-	public RAChainAttack() : base("ridearmor_chain", "", "") {
+	public RAChainAttack() : base("ridearmor_chain") {
 	}
 
 	public Point chainOrigin() {
@@ -2013,7 +2087,7 @@ public class RAChainAttack : RideArmorState {
 
 		if (rideArmor.frameIndex == 1 && once == 0 && rideArmor.player != null) {
 			once = 1;
-			mcp = new MechChainProj(new MechChainWeapon(player), chainOrigin(), rideArmor.xDir, rideArmor.player, player.getNextActorNetId(), rpc: true);
+			mcp = new MechChainProj(new MechChainWeapon(), chainOrigin(), rideArmor.xDir, rideArmor.player, player.getNextActorNetId(), rpc: true);
 		}
 		if (rideArmor.frameIndex == 14 && once == 1) {
 			once = 2;
@@ -2047,16 +2121,8 @@ public class RAChainAttack : RideArmorState {
 public class RAGoliathShoot : RideArmorState {
 	bool grounded;
 	bool once;
-	public RAGoliathShoot(bool grounded) : base(grounded ? "ridearmor_shoot" : "ridearmor_jump_shoot", "", "") {
+	public RAGoliathShoot(bool grounded) : base(grounded ? "ridearmor_shoot" : "ridearmor_jump_shoot") {
 		this.grounded = grounded;
-	}
-
-	public override void onEnter(RideArmorState? oldState) {
-		base.onEnter(oldState);
-	}
-
-	public override void onExit(RideArmorState? newState) {
-		base.onExit(newState);
 	}
 
 	public override void update() {
@@ -2071,7 +2137,7 @@ public class RAGoliathShoot : RideArmorState {
 			once = true;
 			//mechBusterCooldown = 1f;
 			if (player != null) {
-				var mbw = new MechBusterWeapon(player);
+				var mbw = new MechBusterWeapon();
 				rideArmor.playSound("buster2X3", forcePlay: false, sendRpc: true);
 				new MechBusterProj2(mbw, rideArmor.pos.addxy(15 * rideArmor.xDir, -36), rideArmor.xDir, 0, player, player.getNextActorNetId(), rpc: true);
 				new MechBusterProj(mbw, rideArmor.pos.addxy(15 * rideArmor.xDir, -36), rideArmor.xDir, player, player.getNextActorNetId(), rpc: true);
@@ -2129,7 +2195,7 @@ public class InRideArmor : CharState {
 
 		Helpers.decrementTime(ref innerCooldown);
 
-		float healthPercent = player.health / player.maxHealth;
+		float healthPercent = (float)(character.health / character.maxHealth);
 		if (frozenTime > 0) {
 			if (freezeAnim == null) freezeAnim = new Anim(character.pos, "frozen_block_head", character.xDir, character.player.getNextActorNetId(), false, sendRpc: true);
 			freezeAnim.pos = character.pos;
@@ -2192,7 +2258,7 @@ public class InRideArmor : CharState {
 		if (ejectInput) {
 			if (character.canEjectFromRideArmor()) {
 				character.vel.y = -character.getJumpPower();
-				character.changeState(new Jump(), true);
+				character.changeState(character.getJumpState(), true);
 			}
 		}
 	}
@@ -2205,20 +2271,20 @@ public class InRideArmor : CharState {
 		if (vile.napalmWeapon.type == (int)NapalmType.SplashHit) {
 			vile.setVileShootTime(vile.napalmWeapon);
 			grenade = new SplashHitGrenadeProj(
-				vile.napalmWeapon, character.pos.addxy(0, -3),
-				character.xDir, character.player, character.player.getNextActorNetId(), rpc: true
+				character.pos.addxy(0, -3), character.xDir, vile,
+				character.player, character.player.getNextActorNetId(), rpc: true
 			);
 		} else if (vile.napalmWeapon.type == (int)NapalmType.FireGrenade) {
 			vile.setVileShootTime(vile.napalmWeapon);
 			grenade = new MK2NapalmGrenadeProj(
-				vile.napalmWeapon, character.pos.addxy(0, -3), character.xDir,
+				character.pos.addxy(0, -3), character.xDir, vile,
 				character.player, character.player.getNextActorNetId(), rpc: true
 			);
 		} else {
 			vile.setVileShootTime(vile.napalmWeapon, targetCooldownWeapon: new Napalm(NapalmType.RumblingBang));
 			grenade = new NapalmGrenadeProj(
-				new Napalm(NapalmType.RumblingBang), character.pos.addxy(0, -3),
-				character.xDir, character.player, character.player.getNextActorNetId(), rpc: true
+				character.pos.addxy(0, -3), character.xDir, vile, 
+				character.player, character.player.getNextActorNetId(), rpc: true
 			);
 		}
 		/*
@@ -2275,12 +2341,9 @@ public class InRideArmor : CharState {
 		character.setGlobalColliderTrigger(true);
 		var mechWeapon = player.weapons.FirstOrDefault(m => m is MechMenuWeapon) as MechMenuWeapon;
 		if (mechWeapon != null) mechWeapon.isMenuOpened = false;
-		if (character.isCharging() && !player.isVile) {
-			character.stopCharge();
-		}
 	}
 
-	public override void onExit(CharState newState) {
+	public override void onExit(CharState? newState) {
 		character.rideArmor = null;
 		character.useGravity = true;
 		character.frameSpeed = 1;

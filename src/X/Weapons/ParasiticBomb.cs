@@ -1,6 +1,6 @@
 ﻿using System.Collections.Generic;
 using System.Linq;
-
+using System;
 namespace MMXOnline;
 
 public class ParasiticBomb : Weapon {
@@ -9,8 +9,10 @@ public class ParasiticBomb : Weapon {
 	public static float beeRange = 120;
 
 	public ParasiticBomb() : base() {
+		displayName = "Parasitic Bomb";
 		shootSounds = new string[] { "", "", "", "" };
 		fireRate = 60;
+		switchCooldown = 45;
 		index = (int)WeaponIds.ParasiticBomb;
 		weaponBarBaseIndex = 18;
 		weaponBarIndex = weaponBarBaseIndex;
@@ -18,10 +20,12 @@ public class ParasiticBomb : Weapon {
 		killFeedIndex = 41;
 		weaknessIndex = (int)WeaponIds.GravityWell;
 		damage = "4/4";
-		effect = "Inflicts Wince. Can carry enemies. Homing bees.";
-		hitcooldown = "0/0.5";
-		Flinch = "26-CarryT/26";
-		FlinchCD = "iwish";
+		effect = "U:Slows down enemies and slams them\nif detonated unless mashed off.\nC:Homing bees.";
+		hitcooldown = "0";
+		flinch = "26/26";
+		flinchCD = "0";
+		maxAmmo = 16;
+		ammo = maxAmmo;
 	}
 	
 	public override float getAmmoUsage(int chargeLevel) {
@@ -32,7 +36,7 @@ public class ParasiticBomb : Weapon {
 	public override bool canShoot(int chargeLevel, Player player) {
 		if (!base.canShoot(chargeLevel, player) || player.character is not MegamanX mmx) return false;
 
-		return mmx.beeSwarm == null;
+		return mmx.chargedParasiticBomb == null;
 	}
 
 	public override void shoot(Character character, int[] args) {
@@ -40,13 +44,17 @@ public class ParasiticBomb : Weapon {
 		Point pos = character.getShootPos();
 		int xDir = character.getShootXDir();
 		Player player = character.player;
+		MegamanX mmx = character as MegamanX ?? throw new NullReferenceException();
 
 		if (chargeLevel < 3) {
 			character.playSound("busterX3");
-			new ParasiticBombProj(this, pos, xDir, player, player.getNextActorNetId(), true);
+			new ParasiticBombProj(pos, xDir, mmx, player, player.getNextActorNetId(), true);
 		} else {
-			if (character.ownedByLocalPlayer && character is MegamanX mmx && mmx.beeSwarm == null) {
-				mmx.beeSwarm = new BeeSwarm(mmx);
+			if (character.ownedByLocalPlayer) {
+				if (mmx.chargedParasiticBomb != null) {
+					mmx.chargedParasiticBomb.destroy();
+				}
+				mmx.chargedParasiticBomb = new BeeSwarm(mmx);
 			}
 		}
 	}
@@ -55,31 +63,30 @@ public class ParasiticBomb : Weapon {
 public class ParasiticBombProj : Projectile {
 	public Character? host;
 	public ParasiticBombProj(
-		Weapon weapon, Point pos, int xDir,
-		Player player, ushort netProjId, bool rpc = false
+		Point pos, int xDir, Actor owner, Player player, ushort? netId, bool rpc = false
 	) : base(
-		weapon, pos, xDir, 200, 0, player, "parasitebomb", 
-		0, 0, netProjId, player.ownedByLocalPlayer
+		pos, xDir, owner, "parasitebomb", netId, player	
 	) {
-		this.weapon = weapon;
+		weapon = ParasiticBomb.netWeapon;
+		vel = new Point(200 * xDir, 0);
 		maxTime = 0.6f;
 		projId = (int)ProjIds.ParasiticBomb;
 		destroyOnHit = true;
 		shouldShieldBlock = true;
 		if (rpc) {
-			rpcCreate(pos, player, netProjId, xDir);
+			rpcCreate(pos, owner, ownerPlayer, netId, xDir);
 		}
 	}
 
-	public static Projectile rpcInvoke(ProjParameters arg) {
+	public static Projectile rpcInvoke(ProjParameters args) {
 		return new ParasiticBombProj(
-			ParasiticBomb.netWeapon, arg.pos, arg.xDir, arg.player, arg.netId
+			args.pos, args.xDir, args.owner, args.player, args.netId
 		);
 	}
 
 	public override void render(float x, float y) {
 		base.render(x, y);
-		Global.sprites["parasitebomb_light"].draw(MathInt.Round(Global.frameCount * 0.25f) % 4, pos.x + x, pos.y + y, 1, 1, null, 1, 1, 1, zIndex);
+		Global.sprites["parasitebomb_light"].draw(MathInt.Round(Global.flFrameCount * 0.25f) % 4, pos.x + x, pos.y + y, 1, 1, null, 1, 1, 1, zIndex);
 	}
 }
 
@@ -99,7 +106,7 @@ public class ParasiteCarry : CharState {
 	public override bool canEnter(Character character) {
 		if (!character.ownedByLocalPlayer) return false;
 		if (!base.canEnter(character)) return false;
-		if (character.isCCImmune()) return false;
+		if (character.isStatusImmune()) return false;
 		if (character.isInvulnerable()) return false;
 		if (character.charState.superArmor) return false;
 		return !character.charState.invincible;
@@ -118,9 +125,9 @@ public class ParasiteCarry : CharState {
 		maxMoveAmount = character.getCenterPos().distanceTo(otherChar.getCenterPos()) * 1.5f;
 	}
 
-	public override void onExit(CharState newState) {
+	public override void onExit(CharState? newState) {
 		base.onExit(newState);
-		player.character.useGravity = true;
+		character.useGravity = true;
 	}
 
 	public override void update() {
@@ -236,7 +243,6 @@ public class BeeSwarm {
 	}
 
 	public bool shouldDestroy() {
-		//if (!mmx.player.input.isHeld(Control.Shoot, mmx.player)) return true;
 		if (mmx.player.weapon is not ParasiticBomb) return true;
 		var pb = mmx.player.weapon as ParasiticBomb;
 		if (pb?.ammo <= 0) return true;
@@ -248,7 +254,7 @@ public class BeeSwarm {
 			beeCursor.destroySelf();
 		}
 		beeCursors.Clear();
-		mmx.beeSwarm = null;
+		mmx.chargedParasiticBomb = null;
 	}
 }
 
@@ -280,7 +286,7 @@ public class BeeCursorAnim : Anim {
 		} else if (state == 2) {
 			if (target!.destroyed) {
 				state = 3;
-				return;			
+				return;	
 			}
 			move(pos.directionToNorm(target.getCenterPos()).times(350));
 			if (pos.distanceTo(target.getCenterPos()) < 5) {
@@ -297,10 +303,16 @@ public class BeeCursorAnim : Anim {
 					if (character != null) {
 						//character.chargeTime = character.charge3Time;
 						//character.shoot(character.getChargeLevel());
-						if (character.charState.attackCtrl) character.setShootAnim();
-						player.weapon.addAmmo(-player.weapon.getAmmoUsage(3), player);
+						if (character.charState.attackCtrl) {
+							character.setShootAnim();
+							character.shootAnimTime = Character.DefaultShootAnimTime;
+						}
+						if (character.currentWeapon is ParasiticBomb) {
+							character.currentWeapon.addAmmo(-character.currentWeapon.getAmmoUsage(3), player);
+						}
 						character.chargeTime = 0;
-						new ParasiticBombProjCharged(new ParasiticBomb(), character.getShootPos(), character.pos.x - target.getCenterPos().x < 0 ? 1 : -1, character.player, character.player.getNextActorNetId(), target, rpc: true);
+						new ParasiticBombProjCharged(character.getShootPos(), character.pos.x - target.getCenterPos().x < 0 ? 1 : -1,
+						character, character.player, character.player.getNextActorNetId(), target, rpc: true);
 					}	
 				}
 			}
@@ -319,36 +331,41 @@ public class ParasiticBombProjCharged : Projectile, IDamagable {
 	public Point lastMoveAmount;
 	const float maxSpeed = 150;
 	public ParasiticBombProjCharged(
-		Weapon weapon, Point pos, int xDir, Player player, 
-		ushort netProjId, Actor host, bool rpc = false
+		Point pos, int xDir, Actor owner, Player player, ushort? netId, Actor host, bool rpc = false
 	) : base(
-		weapon, pos, xDir, 0, 4, player, "parasitebomb_bee", 
-		Global.defFlinch, 0.5f, netProjId, player.ownedByLocalPlayer
+		pos, xDir, owner, "parasitebomb_bee", netId, player	
 	) {
-		this.weapon = weapon;
+		weapon = ParasiticBomb.netWeapon;
+		damager.damage = 4;
+		damager.hitCooldown = 30;
+		damager.flinch = Global.defFlinch;
+		vel = new Point(0 * xDir, 0);
 		this.host = host;
 		fadeSprite = "explosion";
-		fadeSound = "explosion";
+		fadeSound = "explosionX3";
 		maxTime = 3f;
 		projId = (int)ProjIds.ParasiticBombCharged;
 		destroyOnHit = true;
 		shouldShieldBlock = true;
 		if (rpc) {
-			rpcCreate(pos, player, netProjId, xDir);
+			rpcCreate(pos, owner, ownerPlayer, netId, xDir);
 		}
 		canBeLocal = false;
 	}
 
-	public static Projectile rpcInvoke(ProjParameters arg) {
+	public static Projectile rpcInvoke(ProjParameters args) {
 		return new ParasiticBombProjCharged(
-			ParasiticBomb.netWeapon, arg.pos, arg.xDir,
-			arg.player, arg.netId, null!
+			args.pos, args.xDir, args.owner, args.player, args.netId, null!
 		);
+	}
+
+	public override void preUpdate() {
+		base.preUpdate();
+		updateProjectileCooldown();
 	}
 
 	public override void update() {
 		base.update();
-		updateProjectileCooldown();
 		if (!ownedByLocalPlayer) return;
 
 		if (!host.destroyed) {
@@ -379,4 +396,6 @@ public class ParasiticBombProjCharged : Projectile, IDamagable {
 
 	public void heal(Player healer, float healAmount, bool allowStacking = true, bool drawHealText = false) {
 	}
+
+	public bool isPlayableDamagable() { return false; }
 }

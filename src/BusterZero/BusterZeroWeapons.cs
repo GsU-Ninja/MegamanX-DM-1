@@ -10,7 +10,7 @@ public class ZeroBuster : Weapon {
 		killFeedIndex = 160;
 		weaponBarBaseIndex = 0;
 		weaponBarIndex = weaponBarBaseIndex;
-		weaponSlotIndex = 0;
+		weaponSlotIndex = 117;
 		shootSounds = new string[] { "", "", "", "" };
 		displayName = "Z-Buster";
 		description = new string[] { "Shoot uncharged Z-Buster with ATTACK." };
@@ -38,7 +38,7 @@ public class ZeroBuster2 : Weapon {
 		killFeedIndex = 160;
 		weaponBarBaseIndex = 0;
 		weaponBarIndex = weaponBarBaseIndex;
-		weaponSlotIndex = 0;
+		weaponSlotIndex = 117;
 		shootSounds = new string[] { "", "", "", "" };
 		fireRate = 9;
 		displayName = "Z-Buster";

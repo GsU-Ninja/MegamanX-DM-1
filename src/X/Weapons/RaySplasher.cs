@@ -9,8 +9,9 @@ public class RaySplasher : Weapon {
 	public static RaySplasher netWeapon = new RaySplasher();
 
 	public RaySplasher() : base() {
-		shootSounds = new string[] { "raySplasher", "raySplasher", "raySplasher", "warpIn" };
-		fireRate = 60;
+		displayName = "Ray Splasher";
+		shootSounds = ["raySplasher", "raySplasher", "raySplasher", "warpIn"];
+		fireRate = 80;
 		index = (int)WeaponIds.RaySplasher;
 		weaponBarBaseIndex = 21;
 		weaponBarIndex = weaponBarBaseIndex;
@@ -18,33 +19,72 @@ public class RaySplasher : Weapon {
 		killFeedIndex = 44;
 		weaknessIndex = (int)WeaponIds.SpinningBlade;
 		damage = "1/1";
-		effect = "Charged: Grants Super Armor.";
-		hitcooldown = "0.075";
+		effect = "C:Grants Flinch Immunity.";
+		hitcooldown = "5";
+		hasCustomChargeAnim = true;
 	}
 
 	public override void shoot(Character character, int[] args) {
 		int chargeLevel = args[0];
+		MegamanX mmx = character as MegamanX ?? throw new NullReferenceException();
 
 		if (chargeLevel < 3) {
-			if (character is MegamanX mmx) {
-				mmx.setShootRaySplasher(true);
-			}
+			mmx.shootingRaySplasher = this;
 		} else {
 			if (character.ownedByLocalPlayer) {
 				character.changeState(new RaySplasherChargedState(), true);
 			}
 		}
 	}
+
+	public void burstLogic(MegamanX mmx) {
+		if (mmx.currentWeapon is RaySplasher && mmx.invulnTime <= 0 && mmx.charState is not WarpIn) {
+			if (mmx.shootingRaySplasher != null) {
+				mmx.raySplasherCooldown += Global.speedMul;
+				if (mmx.raySplasherCooldown > 1) {
+					//Stop when invincible
+					if (mmx.charState.invincible) return;
+					if (mmx.invulnTime > 0) return;
+					if (!mmx.charState.attackCtrl) return;
+					if (mmx.raySplasherCooldown >= 4) {
+						addAmmo(-0.15f, mmx.player);
+						mmx.raySplasherCooldown = 1;
+						new RaySplasherProj(
+							mmx.getShootPos(), mmx.getShootXDir(), mmx.raySplasherFrameIndex % 3,
+							 (mmx.raySplasherFrameIndex / 5) % 5, mmx,
+							mmx.player, mmx.player.getNextActorNetId(), true
+						);
+						mmx.raySplasherFrameIndex++;
+					}
+					mmx.shootAnimTime = 10;
+					mmx.raySplasherCooldown2 += Global.speedMul;
+				}
+				if (mmx.raySplasherCooldown2 >= 66) {
+					mmx.shootingRaySplasher = null;
+					mmx.raySplasherCooldown2 = 0;
+				}
+			}
+		} else {
+			mmx.shootingRaySplasher = null;
+			mmx.raySplasherFrameIndex = 0;
+		}
+		if (mmx.shootingRaySplasher == null) {
+			mmx.raySplasherFrameIndex = 0;
+		}
+	}
 }
 
 public class RaySplasherProj : Projectile {
 	public RaySplasherProj(
-		Weapon weapon, Point pos, int xDir, int spriteType, int dirType,
-		Player player, ushort netProjId, bool rpc = false
+		Point pos, int xDir, int spriteType, int dirType, Actor owner,
+		Player player, ushort? netId, bool rpc = false
 	) : base(
-		weapon, pos, xDir, 600, 1, player, "raysplasher_proj",
-		0, 0.075f, netProjId, player.ownedByLocalPlayer
+		pos, xDir, owner, "raysplasher_proj", netId, player
 	) {
+		weapon = RaySplasher.netWeapon;
+		damager.damage = 1;
+		damager.hitCooldown = 6;
+		vel = new Point(600 * xDir, 0);
 		maxTime = 0.25f;
 		projId = (int)ProjIds.RaySplasher;
 		
@@ -61,19 +101,23 @@ public class RaySplasherProj : Projectile {
 		if (dirType == 2) {
 			vel = new Point(600 * xDir, 0);
 		}
+		if (dirType == 3) {
+			vel = new Point(600 * xDir, -250);
+		}
+		if (dirType == 4) {
+			vel = new Point(600 * xDir, 250);
+		}
 
 		if (rpc) {
-			rpcCreate(
-				pos, player, netProjId, xDir,
-				new byte[] { (byte)spriteType, (byte)dirType}
-			);
+			rpcCreate(pos, owner, ownerPlayer, netId, xDir,
+			new byte[] { (byte)spriteType, (byte)dirType});
 		}
 	}
 
 	public static Projectile rpcInvoke(ProjParameters args) {
 		return new RaySplasherProj(
-			RaySplasher.netWeapon, args.pos, args.xDir,
-			args.extraData[0], args.extraData[1], args.player, args.netId
+			args.pos, args.xDir, args.extraData[0], args.extraData[1],
+			args.owner, args.player, args.netId
 		);
 	}
 
@@ -88,6 +132,7 @@ public class RaySplasherProj : Projectile {
 }
 
 public class RaySplasherTurret : Actor, IDamagable {
+	MegamanX? mmx;
 	int state = 0;
 	Actor? target;
 	float health = 4;
@@ -102,8 +147,11 @@ public class RaySplasherTurret : Actor, IDamagable {
 	static ShaderWrapper replaceColorShaderRed = Helpers.cloneShaderSafe("replacecolor");
 	ShaderWrapper? replaceColorShader;
 
-	public RaySplasherTurret(Point pos, Player player, int xDir, ushort netId, bool ownedByLocalPlayer, bool rpc = false) :
-		base("raysplasher_turret_start", pos, netId, ownedByLocalPlayer, false) {
+	public RaySplasherTurret(
+		Point pos, Player player, int xDir, ushort netId, bool ownedByLocalPlayer, bool rpc = false, MegamanX? mmx = null
+	) : base("raysplasher_turret_start", pos, netId, ownedByLocalPlayer, false
+	) {
+		this.mmx = mmx;
 		useGravity = false;
 		velY = -50;
 
@@ -144,9 +192,13 @@ public class RaySplasherTurret : Actor, IDamagable {
 		return null;
 	}
 
+	public override void preUpdate() {
+		base.preUpdate();
+		updateProjectileCooldown();
+	}
+
 	public override void update() {
 		base.update();
-		updateProjectileCooldown();
 
 		if (!ownedByLocalPlayer) return;
 
@@ -171,7 +223,10 @@ public class RaySplasherTurret : Actor, IDamagable {
 			}
 		} else if (state == 1) {
 			isStatic = true;
-			var closestTarget = Global.level.getClosestTarget(pos, netOwner.alliance, true, aMaxDist: range);
+			Actor? closestTarget = null;
+			if (netOwner != null) {
+				closestTarget = Global.level.getClosestTarget(pos, netOwner.alliance, true, aMaxDist: range);
+			}
 			if (closestTarget != null) {
 				target = closestTarget;
 				state = 2;
@@ -182,7 +237,9 @@ public class RaySplasherTurret : Actor, IDamagable {
 			if (target != null) {
 				Actor oldTarget = target;
 			}
-			target = Global.level.getClosestTarget(pos, netOwner.alliance, true);
+			if (netOwner != null) {
+				target = Global.level.getClosestTarget(pos, netOwner.alliance, true);
+			}
 			if (target == null || pos.distanceTo(target.getCenterPos()) >= range) {
 				state = 1;
 				target = null;
@@ -190,15 +247,13 @@ public class RaySplasherTurret : Actor, IDamagable {
 			} else {
 				raySplasherShootTime += Global.spf;
 				if (raySplasherShootTime > 0.1f) {
-					float ang = pos.directionToNorm(target.getCenterPos()).angle;
-					ang += Helpers.randomRange(-22.5f, 22.5f);
+					float ang = pos.directionToNorm(target.getCenterPos()).byteAngle;
+					byteAngle += Helpers.randomRange(-22.5f, 22.5f);
 
 					new RaySplasherTurretProj(
-						new RaySplasher(), pos, (pos.x > target.getCenterPos().x ? -1 : 1), 
-						raySplasherMod % 3, ang, netOwner, netOwner.getNextActorNetId(), rpc: true);
-
-					
-
+						pos, (pos.x > target.getCenterPos().x ? -1 : 1), raySplasherMod % 3, ang,
+						this, netOwner!, netOwner!.getNextActorNetId(), rpc: true
+					);
 					//float randAngle = Helpers.randomRange(0, 360);
 					//proj.vel = new Point(600 * Helpers.cosd(randAngle), 600 * Helpers.sind(randAngle));
 
@@ -225,7 +280,7 @@ public class RaySplasherTurret : Actor, IDamagable {
 
 	public bool canBeDamaged(int damagerAlliance, int? damagerPlayerId, int? projId) {
 		if (sprite.name == "raysplasher_turret_start") return false;
-		return projId == (int)ProjIds.RaySplasherHurtSelf || netOwner.alliance != damagerAlliance;
+		return projId == (int)ProjIds.RaySplasherHurtSelf || netOwner?.alliance != damagerAlliance;
 	}
 
 	public bool isInvincible(Player attacker, int? projId) {
@@ -233,7 +288,7 @@ public class RaySplasherTurret : Actor, IDamagable {
 	}
 
 	public bool canBeHealed(int healerAlliance) {
-		return netOwner.alliance == healerAlliance && health < maxHealth;
+		return netOwner?.alliance == healerAlliance && health < maxHealth;
 	}
 
 	public void heal(Player healer, float healAmount, bool allowStacking = true, bool drawHealText = false) {
@@ -251,12 +306,12 @@ public class RaySplasherTurret : Actor, IDamagable {
 		new Anim(pos, "raysplasher_turret_pieces", -1, null, false) { ttl = 2, useGravity = true, vel = Point.random(50, 150, -100, -50), frameIndex = 0, frameSpeed = 0 };
 		new Anim(pos, "raysplasher_turret_pieces", 1, null, false) { ttl = 2, useGravity = true, vel = Point.random(-150, -50, -100, -50), frameIndex = 1, frameSpeed = 0 };
 		new Anim(pos, "raysplasher_turret_pieces", -1, null, false) { ttl = 2, useGravity = true, vel = Point.random(50, 150, -100, -50), frameIndex = 1, frameSpeed = 0 };
-		netOwner.turrets.Remove(this);
+		mmx?.rayTurrets.Remove(this);
 	}
 
 	public override void render(float x, float y) {
 		base.render(x, y);
-		if (netOwner.alliance == Global.level.mainPlayer.alliance) {
+		if (netOwner?.alliance == Global.level.mainPlayer.alliance) {
 			float healthBarInnerWidth = 14;
 			Color color = new Color();
 
@@ -271,67 +326,79 @@ public class RaySplasherTurret : Actor, IDamagable {
 			DrawWrappers.DrawRect(pos.x - 7, pos.y - 2 - offY, pos.x - 7 + width, pos.y - 1 - offY, true, color, 0, ZIndex.HUD - 1);
 		}
 
-		if (netOwner.isMainPlayer && replaceColorShader == null) {
+		if (netOwner?.isMainPlayer == true && replaceColorShader == null) {
 			Global.sprites["cursorchar"].draw(0, pos.x + x, pos.y + y - 17, 1, 1, null, 1, 1, 1, zIndex + 1);
 		}
 
 		renderDamageText(10);
+	}
+
+	public bool isPlayableDamagable() {
+		return false;
 	}
 }
 
 
 public class RaySplasherTurretProj : Projectile {
 	public RaySplasherTurretProj(
-		Weapon weapon, Point pos, int xDir, int spriteType, float ang,
-		Player player, ushort? netProjId, bool rpc = false
+		Point pos, int xDir, int spriteType, float byteAngle, Actor owner,
+		Player player, ushort? netId, bool rpc = false
 	) : base (
-		weapon, pos, xDir, 600, 1, player, "raysplasher_proj",
-		0, 0, netProjId, player.ownedByLocalPlayer
+		pos, xDir, owner, "raysplasher_proj", netId, player
 	) {
+		weapon = RaySplasher.netWeapon;
+		damager.damage = 1;
 		maxTime = 0.25f;
 		projId = (int)ProjIds.RaySplasherChargedProj;
 		frameIndex = spriteType;
 		frameSpeed = 0;
 		fadeSprite = "raysplasher_fade";
-		vel = Point.createFromByteAngle(ang).times(speed);
-
+		byteAngle = byteAngle % 256;
+		this.byteAngle = byteAngle;
+		vel = Point.createFromByteAngle(byteAngle).times(600);
+			
 		if (rpc) {
-			rpcCreate(
-				pos, player, netProjId, xDir,
-				new byte[] { (byte)spriteType, (byte)ang }
-			);
+			rpcCreateByteAngle(pos, owner, ownerPlayer, netId, byteAngle, 
+			new byte[] { (byte)spriteType,});
 		}
 	}
 
 	public static Projectile rpcInvoke(ProjParameters args) {
 		return new RaySplasherTurretProj(
-			RaySplasher.netWeapon, args.pos, args.xDir,
-			args.extraData[0], args.extraData[1], args.player, args.netId
+			args.pos, args.xDir, args.extraData[0], args.byteAngle,
+			args.owner, args.player, args.netId
 		);
 	}
 }
 
 
 public class RaySplasherChargedState : CharState {
+	MegamanX mmx = null!;
 	bool fired = false;
-	public RaySplasherChargedState() : base("point_up", "", "", "") {
+	public RaySplasherChargedState() : base("point_up") {
 		superArmor = true;
+		landSprite = "point_up";
+		airSprite = "point_up_air";
+		useDashJumpSpeed = true;
 	}
 
 	public override void update() {
 		base.update();
 
-		if (character.frameIndex >= 3 && !fired) {
+		if (character.frameIndex >= 5 && !fired) {
 			fired = true;
-
-			var turret = new RaySplasherTurret(character.getShootPos(), player, character.xDir, player.getNextActorNetId(), character.ownedByLocalPlayer, rpc: true);
-			player.turrets.Add(turret);
-			if (player.turrets.Count > 1) {
-				player.turrets[0].destroySelf();
+			var turret = new RaySplasherTurret(
+				character.getShootPos(), player, character.xDir, 
+				player.getNextActorNetId(), character.ownedByLocalPlayer, rpc: true,
+				mmx
+			);
+			mmx.rayTurrets.Add(turret);
+			if (mmx.rayTurrets.Count > 1) {
+				mmx.rayTurrets[0].destroySelf();
+				mmx.rayTurrets.RemoveAt(0);
 			}
 		}
-
-		if (stateTime > 0.5f) {
+		if (character.isAnimOver()) {
 			character.changeToIdleOrFall();
 		}
 	}
@@ -340,9 +407,14 @@ public class RaySplasherChargedState : CharState {
 		base.onEnter(oldState);
 		character.useGravity = false;
 		character.vel = new Point();
+		mmx = character as MegamanX ?? throw new NullReferenceException();
+		if (!character.grounded) {
+			sprite = airSprite;
+			character.changeSpriteFromName(sprite, true);
+		}
 	}
 
-	public override void onExit(CharState newState) {
+	public override void onExit(CharState? newState) {
 		base.onExit(newState);
 		character.useGravity = true;
 	}

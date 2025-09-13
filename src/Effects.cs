@@ -5,7 +5,11 @@ namespace MMXOnline;
 
 public class ChargeParticle : Actor {
 	public float time;
-	public ChargeParticle(Point pos, float time, ushort? netId) : base("charge_part_1", new Point(pos.x, pos.y), netId, true, true) {
+	public ChargeParticle(
+		Point pos, float time, ushort? netId
+	) : base(
+		"charge_part_1", new Point(pos.x, pos.y), netId, true, true
+	) {
 		this.time = time;
 	}
 
@@ -42,14 +46,14 @@ public class ChargeEffect {
 		};
 
 		chargeParts = new List<ChargeParticle>() {
-			new ChargeParticle(point1.clone(), 0, null),
-			new ChargeParticle(point2.clone(), 3, null),
-			new ChargeParticle(point3.clone(), 0, null),
-			new ChargeParticle(point4.clone(), 1.5f, null),
-			new ChargeParticle(point5.clone(), -1.5f, null),
-			new ChargeParticle(point6.clone(), -3, null),
-			new ChargeParticle(point7.clone(), -1.5f, null),
-			new ChargeParticle(point8.clone(), -1.5f, null)
+			new ChargeParticle(point1, 0, null),
+			new ChargeParticle(point2, 3, null),
+			new ChargeParticle(point3, 0, null),
+			new ChargeParticle(point4, 1.5f, null),
+			new ChargeParticle(point5, -1.5f, null),
+			new ChargeParticle(point6, -3, null),
+			new ChargeParticle(point7, -1.5f, null),
+			new ChargeParticle(point8, -1.5f, null)
 		};
 	}
 
@@ -78,6 +82,9 @@ public class ChargeEffect {
 			}
 			if (chargeType == 3 && chargeLevel >= 3) {
 				chargePart = "charge_part_4";
+			}
+			else if (chargeType == 1 && chargeLevel >= 3) {
+				chargePart = "hypercharge_part_1";
 			} else {
 				chargePart = "charge_part_" + chargeLevel.ToString();
 			}
@@ -116,8 +123,8 @@ public class ChargeEffect {
 	}
 
 	public void destroy() {
-		foreach (var chargePart in chargeParts) {
-			chargePart.destroySelf(null, null);
+		foreach (ChargeParticle chargePart in chargeParts) {
+			chargePart.destroySelf();
 		}
 	}
 
@@ -144,7 +151,7 @@ public class DieEffectParticles {
 		for (var i = ang; i < ang + 360; i += 22.5f) {
 			var x = this.centerPos.x + Helpers.cosd(i) * time * 150;
 			var y = this.centerPos.y + Helpers.sind(i) * time * 150;
-			var diePartSprite = charNum == 1 ? "die_particle_zero" : "die_particle";
+			var diePartSprite = charNum == 1 || charNum == 5 || charNum == 6 ? "die_particle_zero" : "die_particle";
 			var diePart = new DieParticleActor(diePartSprite, new Point(centerPos.x, centerPos.y));
 			dieParts.Add(diePart);
 		}
@@ -217,16 +224,21 @@ public class ExplodeDieEffect : Effect {
 	public float timer = 3;
 	public float spawnTime = 0;
 	public int radius;
-	public Anim exploder;
+	public Anim? exploder;
 	public bool isExploderVisible;
 	public bool destroyed;
-	public Player owner;
+	public Player? owner;
 	public bool silent;
-	public Actor host;
+	public Actor? host;
+	public bool doExplosion = true;
 
-	public ExplodeDieEffect(Player owner, Point centerPos, Point animPos, string spriteName, int xDir, long zIndex, bool isExploderVisible, int radius, float maxTime, bool isMaverick) : base(centerPos) {
+	public ExplodeDieEffect(Player owner, Point centerPos, Point animPos, string spriteName, int xDir,
+		long zIndex, bool isExploderVisible, int radius, float maxTime,
+		bool isMaverick, bool doExplosion = true) : base(centerPos)
+	{
 		this.owner = owner;
 		this.radius = radius;
+		this.doExplosion = doExplosion;
 		timer = maxTime;
 		if (!owner.ownedByLocalPlayer) return;
 
@@ -237,12 +249,12 @@ public class ExplodeDieEffect : Effect {
 		exploder.maverickFade = isMaverick;
 	}
 
-	public static ExplodeDieEffect createFromActor(Player owner, Actor actor, int radius, float maxTime, bool isMaverick, Point? overrideCenterPos = null) {
-		return new ExplodeDieEffect(owner, overrideCenterPos ?? actor.getCenterPos(), actor.pos, actor.sprite.name, actor.xDir, actor.zIndex, true, radius, maxTime, isMaverick);
+	public static ExplodeDieEffect createFromActor(Player owner, Actor actor, int radius, float maxTime, bool isMaverick, Point? overrideCenterPos = null, bool doExplosion = true) {
+		return new ExplodeDieEffect(owner, overrideCenterPos ?? actor.getCenterPos(), actor.pos, actor.sprite.name, actor.xDir, actor.zIndex, true, radius, maxTime, isMaverick, doExplosion);
 	}
 
 	public override void update() {
-		if (!owner.ownedByLocalPlayer) {
+		if (!owner?.ownedByLocalPlayer == true) {
 			destroySelf();
 			return;
 		}
@@ -255,7 +267,7 @@ public class ExplodeDieEffect : Effect {
 
 		timer -= Global.spf;
 		if (timer <= 0) {
-			exploder.destroySelf();
+			exploder?.destroySelf();
 			destroySelf();
 			return;
 		}
@@ -266,14 +278,14 @@ public class ExplodeDieEffect : Effect {
 			int randX = Helpers.randomRange(-radius, radius);
 			int randY = Helpers.randomRange(-radius, radius);
 			var randomPos = pos.addxy(randX, randY);
-
-			if (owner != null && owner.ownedByLocalPlayer) {
-				new Anim(randomPos, "explosion", 1, owner.getNextActorNetId(), true, sendRpc: true);
-			}
-
-			if (!exploder.maverickFade) {
-				if (!silent) {
-					exploder.playSound("explosion", sendRpc: true);
+			if (doExplosion) {
+				if (owner != null && owner.ownedByLocalPlayer) {
+					new Anim(randomPos, "explosion", 1, owner.getNextActorNetId(), true, sendRpc: true);
+				}
+				if (!exploder?.maverickFade == true) {
+					if (!silent) {
+					exploder?.playSound("explosion", sendRpc: true);
+					}
 				}
 			}
 		}

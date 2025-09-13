@@ -5,6 +5,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using SFML.System;
+using System.Numerics;
 
 namespace MMXOnline;
 
@@ -14,7 +15,9 @@ public static class Extensions {
 	}
 
 	public static T GetRandomItem<T>(this IList<T> list) {
-		if (list.Count == 0) return default(T);
+		if (list.Count == 0) {
+			throw new Exception("Error: Ran GetRandomItem() on a empty list.");
+		}
 		int randomIndex = Helpers.randomRange(0, list.Count - 1);
 		return list[randomIndex];
 	}
@@ -69,12 +72,12 @@ public static class Extensions {
 		return s.Substring(0, maxLength) + "...";
 	}
 
-	public static TValue GetValueOrDefault<TKey, TValue>(
+	/*public static TValue GetValueOrDefault<TKey, TValue>(
 		this IDictionary<TKey, TValue> dictionary,
 		TKey key) {
 		TValue value;
 		return dictionary.TryGetValue(key, out value) ? value : default;
-	}
+	}*/
 
 	public static TValue GetValueOrCreate<TKey, TValue>(
 		this IDictionary<TKey, TValue> dictionary,
@@ -117,7 +120,7 @@ public static class Extensions {
 	}
 
 	public static Actor actor(this IDamagable damagable) {
-		return damagable as Actor;
+		return damagable as Actor ?? throw new Exception("Damagable could not be converted into actor");
 	}
 
 	public static void SendStringMessage(this TcpClient client, string message, NetworkStream networkStream) {
@@ -188,5 +191,112 @@ public static class Extensions {
 		}
 
 		return bytes;
+	}
+}
+
+public class ProtectedInt {
+	private int internalVal;
+	private int internalValMul;
+	private int mul = Helpers.randomRange(2, 8);
+
+	public int unsafeVal => internalVal;
+
+	public int value {
+		get {
+			if (internalVal * mul != internalValMul) {
+				throw new Exception("Error on modified protected value");
+			}
+			return internalVal;
+		}
+		set {
+			internalValMul = value * mul;
+			internalVal = value;
+		}
+	}
+
+	public ProtectedInt(int value) {
+		this.value = value;
+	}
+
+	public ProtectedInt() {
+		this.value = (default);
+	}
+}
+
+public class ProtectedFloat {
+	private float internalVal;
+	private float internalValMul;
+	private float mul = Helpers.randomRange(2, 8);
+
+	public float unsafeVal => internalVal;
+
+	public float value {
+		get {
+			if (internalVal * mul != internalValMul) {
+				throw new Exception("Error on modified protected value");
+			}
+			return internalVal;
+		}
+		set {
+			internalValMul = value * mul;
+			internalVal = value;
+		}
+	}
+
+	public ProtectedFloat(float value) {
+		this.value = value;
+	}
+
+	public ProtectedFloat() {
+		this.value = 0f;
+	}
+}
+
+public class ProtectedArrayInt {
+	private int[] internalVal;
+	private int[] internalValMul;
+	private int mul = Helpers.randomRange(2, 8);
+
+	public int unsafeVal(int index) => internalVal[index];
+
+	public int Length => internalVal.Length;
+
+	public int this[int index] {
+		get {
+			if (internalVal[index] * mul != internalValMul[index]) {
+				throw new Exception("Error on modified protected value");
+			}
+			return internalVal[index];
+		}
+		set {
+			internalValMul[index] = value * mul;
+			internalVal[index] = value;
+		}
+	}
+
+	public ProtectedArrayInt(int size) {
+		internalVal = new int[size];
+		internalValMul = new int[size];
+	}
+}
+
+public class ProtectedIntMap<TKey> : Dictionary<TKey, (int valMul, int val)> where TKey : notnull {
+	private readonly int mul = Helpers.randomRange(2, 8);
+
+	public new int this[TKey key] {
+		get {
+			(int valMul, int val) = base[key];
+			if (val * mul != valMul) {
+				throw new Exception("Error on modified protected value");
+			}
+			return val;
+		}
+		set {
+			base[key] = (value * mul, value);
+		}
+	}
+
+	public int quickVal(TKey key) {
+		return base[key].val;
 	}
 }

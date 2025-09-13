@@ -29,7 +29,9 @@ public partial class Actor {
 
 	public void changeGlobalCollider(List<Point> newPoints) {
 		Global.level.removeFromGrid(this);
-		_globalCollider._shape.points = newPoints;
+		if (_globalCollider != null) {
+			_globalCollider._shape.points = newPoints;
+		}
 		Global.level.addToGrid(this);
 	}
 
@@ -64,7 +66,7 @@ public partial class Actor {
 		return new Rect(minX, minY, maxX, maxY).getShape();
 	}
 
-	public Collider collider {
+	public Collider? collider {
 		get {
 			Collider? stdColl = getAllColliders().FirstOrDefault();
 			if (stdColl == null) {
@@ -83,14 +85,14 @@ public partial class Actor {
 	}
 
 	public List<Collider> getAllColliders() {
-		var colliders = new List<Collider>();
+		List<Collider> colliders = new();
 		if (globalCollider != null) {
 			colliders.Add(globalCollider);
 		}
-		foreach (var collider in sprite.hitboxes) {
+		foreach (Collider collider in sprite.hitboxes) {
 			colliders.Add(collider);
 		}
-		foreach (var collider in sprite.frameHitboxes[frameIndex]) {
+		foreach (Collider collider in sprite.frameHitboxes[frameIndex]) {
 			colliders.Add(collider);
 		}
 		return colliders;
@@ -102,8 +104,7 @@ public partial class Actor {
 		}
 		bool hasNonAttackColider = false;
 		foreach (Collider allCollider in getAllColliders()) {
-			
-			if (allCollider._shape.points.Count == 4) {
+			if (allCollider._shape.points.Count == 4 && allCollider._shape.isRect()) {
 				Color hitboxColor = new Color(50, 100, 255, 50);
 				Color outlineColor = new Color(0, 0, 255, 200);
 				if (allCollider.isAttack()) {
@@ -113,10 +114,10 @@ public partial class Actor {
 					hasNonAttackColider = true;
 				}
 				Rect rect = allCollider.shape.getRect();
-				rect.x1 += 1;
-				rect.y1 += 1;
-				rect.x2 -= 1;
-				rect.y2 -= 1;
+				rect.x1 = MathF.Round(rect.x1 + 1);
+				rect.y1 = MathF.Round(rect.y1 + 1);
+				rect.x2 = MathF.Round(rect.x2 - 1);
+				rect.y2 = MathF.Round(rect.y2 - 1);
 				DrawWrappers.DrawRect(
 					rect.x1, rect.y1, rect.x2, rect.y2,
 					true, hitboxColor, 1, zIndex + 1, true,
@@ -141,10 +142,10 @@ public partial class Actor {
 				return;
 			}
 			Rect rect = terrainCollider.shape.getRect();
-			rect.x1 += 1;
-			rect.y1 += 1;
-			rect.x2 -= 1;
-			rect.y2 -= 1;
+			rect.x1 = MathF.Round(rect.x1 + 1);
+			rect.y1 = MathF.Round(rect.y1 + 1);
+			rect.x2 = MathF.Round(rect.x2 - 1);
+			rect.y2 = MathF.Round(rect.y2 - 1);
 			DrawWrappers.DrawPolygon(
 				rect.getPoints(),
 				new Color(0, 255, 0, 150),
@@ -156,8 +157,11 @@ public partial class Actor {
 
 	public HashSet<Tuple<Collider, Collider>> collidedInFrame = new HashSet<Tuple<Collider, Collider>>();
 	public void registerCollision(CollideData collideData) {
+		if (collideData.myCollider == null || collideData.otherCollider == null) {
+			return;
+		}
 		var tuple = new Tuple<Collider, Collider>(collideData.myCollider, collideData.otherCollider);
-		
+
 		if (!collidedInFrame.Contains(tuple)) {
 			collidedInFrame.Add(tuple);
 			onCollision(collideData);
@@ -189,7 +193,7 @@ public partial class Actor {
 	public Dictionary<string, Collider?> spriteToCollider = new();
 
 	public void changeGlobalColliderOnSpriteChange(string newSpriteName) {
-		if (spriteToColliderMatch(newSpriteName, out Collider overrideGlobalCollider)) {
+		if (spriteToColliderMatch(newSpriteName, out Collider? overrideGlobalCollider)) {
 			changeGlobalColliderWithoutGridChange(overrideGlobalCollider);
 		} else {
 			changeGlobalColliderWithoutGridChange(getGlobalCollider());
@@ -246,6 +250,7 @@ public partial class Actor {
 		if (proj != null) {
 			proj.meleeId = meleeId;
 			proj.owningActor = this;
+			updateProjFromHitbox(proj);
 		}
 		return proj;
 	}
@@ -281,7 +286,7 @@ public partial class Actor {
 	}
 
 	public CollideData? sweepTest(Point offset) {
-		Point inc = offset.clone();
+		Point inc = offset;
 		var collideData = Global.level.checkTerrainCollisionOnce(this, inc.x, inc.y);
 		if (collideData != null) {
 			return collideData;
@@ -299,7 +304,7 @@ public partial class Actor {
 		move(dir.times(speed));
 	}
 
-	public bool tryMoveExact(Point amount, out CollideData hit) {
+	public bool tryMoveExact(Point amount, out CollideData? hit) {
 		hit = Global.level.checkTerrainCollisionOnce(this, amount.x, amount.y);
 		if (hit != null) {
 			return false;
@@ -308,7 +313,7 @@ public partial class Actor {
 		return true;
 	}
 
-	public bool tryMove(Point amount, out CollideData hit) {
+	public bool tryMove(Point amount, out CollideData? hit) {
 		hit = Global.level.checkTerrainCollisionOnce(this, amount.x * Global.spf * 2, amount.y * Global.spf * 2);
 		if (hit != null) {
 			return false;
@@ -330,82 +335,109 @@ public partial class Actor {
 		}
 	}
 
-	public void move(
-		Point amount, bool useDeltaTime = true, bool pushIncline = true,
-		bool useIce = true, MoveClampMode clampMode = MoveClampMode.None
+	public void moveXY(
+		float x, float y, bool useDelta = true,
+		bool pushIncline = true, bool useIce = true
+	) {
+		if (x == 0 && y == 0) {
+			return;
+		}
+		Point amount = new Point(x, y);
+		amount *= useDelta ? speedMul : Global.gameSpeed;
+
+		moveSub(amount, pushIncline, useIce);
+	}
+
+	public void movePoint(
+		Point amount, bool useDeltaTime = true,
+		bool pushIncline = true, bool useIce = true
 	) {
 		if (amount == Point.zero) {
 			return;
 		}
-		var times = useDeltaTime ? Global.spf : 1;
+		amount *= useDeltaTime ? speedMul : Global.gameSpeed;
 
-		if (grounded && groundedIce && useIce && (
-			this is Character || this is Maverick || this is RideArmor
-		)) {
+		moveSub(amount, pushIncline, useIce);
+	}
+
+	public void move(
+		Point amount, bool useDeltaTime = true,
+		bool pushIncline = true, bool useIce = true
+	) {
+		if (amount == Point.zero) {
+			return;
+		}
+		amount *= useDeltaTime ? Global.spf : Global.gameSpeed;
+
+		moveSub(amount, pushIncline, useIce);
+	}
+
+	public void moveSub(Point amount, bool pushIncline = true, bool useIce = true) {
+		if (amount == Point.zero) {
+			return;
+		}
+		if (amount.y < 0) {
+			movedUpOnFrame = true;
+		}
+		// Add to Move Delta.
+		moveDelta += amount;
+		// Ice physics shenanigans.
+		if (grounded && groundedIce && useIce && slideOnIce) {
 			if (amount.x > 0) {
 				if (xIceVel < amount.x) {
-					xIceVel += amount.x * Global.spf * 5;
+					xIceVel += amount.x / 12f;
 				}
 			} else {
 				if (xIceVel > amount.x) {
-					xIceVel += amount.x * Global.spf * 5;
+					xIceVel += amount.x / 12f;
 				}
 			}
 			return;
 		}
-
-		Point moveAmount = amount.times(times);
-
 		//No collider: just move
 		if (physicsCollider == null) {
-			incPos(moveAmount);
+			incPos(amount);
 		}
 		// Regular collider: need to detect collision incrementally
 		// and stop moving past a collider if that's the case
 		else {
-			freeFromCollision();
-
-			var inc = amount.clone();
-			var incAmount = inc.multiply(times);
-
-			// Hack to make it not get stuck sometimes
-			if (this is RideChaser) {
-				incPos(incAmount);
-				freeFromCollision();
-				return;
-			}
-
-			var mtv = Global.level.getMtvDir(this, incAmount.x, incAmount.y, incAmount, pushIncline);
+			Point? mtv = Global.level.getMtvDir(this, amount.x, amount.y, amount, pushIncline);
 			if (mtv != null && mtv?.magnitude > 10) {
-				mtv = Global.level.getMtvDir(this, incAmount.x, incAmount.y, null, false);
+				mtv = Global.level.getMtvDir(this, amount.x, amount.y, null, false);
 			}
-			incPos(incAmount);
+			incPos(amount);
 			if (mtv != null) {
 				incPos(mtv.Value.unitInc(0.01f));
 			}
-
-			//This shouldn't be needed, but sometimes getMtvDir doesn't free properly or isn't returned
 			freeFromCollision();
 		}
 	}
 
 	public void freeFromCollision() {
-		//Already were colliding in first place: free with path of least resistance
-		var currentCollideDatas = Global.level.checkTerrainCollision(this, 0, 0, null);
+		// Already were colliding in first place: free with path of least resistance
+		List<CollideData> currentCollideDatas = Global.level.checkTerrainCollision(this, 0, 0, null);
+
+		Collider? terrainCollider = getTerrainCollider() ?? physicsCollider ?? collider;
+		if (terrainCollider == null) {
+			return;
+		}
  
-		foreach (var collideData in currentCollideDatas) {
+		foreach (CollideData collideData in currentCollideDatas) {
 			if (this is Character chara && collideData.gameObject is Character otherChara) {
 				chara.insideCharacter = true;
 				otherChara.insideCharacter = true;
 				continue;
 			}
-			Point? freeVec = null;
-			if (this is RideChaser rc && physicsCollider != null) {
-				// Hack to make ride chasers not get stuck on inclines
-				freeVec = physicsCollider.shape.getMinTransVectorDir(collideData.otherCollider.shape, new Point(0, -1));
+			if (collideData.otherCollider == null) {
+				continue;
 			}
-			if ((freeVec == null || freeVec.Value.magnitude > 20) && physicsCollider != null) {
-				freeVec = physicsCollider.shape.getMinTransVector(collideData.otherCollider.shape);
+			Point? freeVec = null;
+			if (this is RideChaser rc) {
+				// Hack to make ride chasers not get stuck on inclines
+				freeVec = terrainCollider.shape.getMinTransVectorDir(collideData.otherCollider.shape, new Point(0, -1));
+			}
+			if ((freeVec == null || freeVec.Value.magnitude > 20)) {
+				freeVec = terrainCollider.shape.getMinTransVector(collideData.otherCollider.shape);
 			}
 			if (freeVec == null) {
 				return;
@@ -434,7 +466,7 @@ public partial class Actor {
 		}
 	}
 
-	public CollideData checkCollision(float incX, float incY) {
+	public CollideData? checkCollision(float incX, float incY) {
 		return Global.level.checkTerrainCollisionOnce(this, incX, incY, autoVel: true);
 	}
 }

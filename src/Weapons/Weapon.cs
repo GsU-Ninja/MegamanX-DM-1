@@ -5,14 +5,13 @@ namespace MMXOnline;
 
 public class Weapon {
 	public static Weapon baseNetWeapon = new();
-	public string[] shootSounds = { "", "", "", "" };
+	public string[] shootSounds = ["", "", "", ""];
 	public float ammo;
 	public float maxAmmo;
 	public float fireRate;
 	public float shootCooldown;
 	public float altShotCooldown;
-	public float? switchCooldown;
-	public float? switchCooldownFrames;
+	public float switchCooldown = float.MaxValue;
 	public float soundTime = 0;
 	public bool isStream = false;
 	public string displayName = "";
@@ -38,7 +37,6 @@ public class Weapon {
 	public bool allowSmallBar = true;
 	public bool forceSmallBar = false;
 	public float ammoDisplayScale = 1;
-	public float ammoDisplayScaleSmall = 2;
 
 	// Ammo recharge vars.
 	public float weaponHealAmount = 0;
@@ -56,11 +54,17 @@ public class Weapon {
 	public bool drawRoundedDown = false;
 	public bool drawGrayOnLowAmmo = false;
 	public string damage = "";
-	public string hitcooldown= "";
+	public string hitcooldown = "";
 	public double ammousage;
 	public string effect = "";
-	public string Flinch = "";
-	public string FlinchCD = "";
+	public string flinch = "";
+	public string flinchCD = "";
+	public bool hasCustomChargeAnim;
+	// Axl Custom Setting Reload
+	public float rechargeAmmoCustomSettingAxl;
+	public float rechargeAmmoCustomSettingAxl2;
+	public float rechargeAmmoCooldown;
+	public float altRechargeAmmoCooldown;
 	public bool shootSpecial = false;
 
 	public Weapon() {
@@ -70,8 +74,8 @@ public class Weapon {
 		effect = "";
 		damage = "0";
 		hitcooldown = "0";
-		Flinch = "0";
-		FlinchCD = "0";
+		flinch = "0";
+		flinchCD = "0";
 		ammousage = getAmmoUsage(0);
 	}
 
@@ -89,7 +93,7 @@ public class Weapon {
 		var weaponList = new List<Weapon>() {
 			new GigaCrush(),
 			new HyperCharge(),
-			new NovaStrike(null),
+			new HyperNovaStrike(),
 			new DoubleBullet(),
 			new DNACore(),
 			new VileMissile(VileMissileType.ElectricShock),
@@ -102,44 +106,47 @@ public class Weapon {
 		return weaponList;
 	}
 
-	public static List<Weapon> getAllSigmaWeapons(Player? player, int? sigmaForm = null) {
-		var weapons = new List<Weapon>()
-		{
-				new SigmaMenuWeapon(),
-			};
+	public static List<Weapon> getAllSigmaWeapons(Player? player, int? sigmaForm = null, int commandMode = 0) {
+		List<Weapon> weapons = [new SigmaMenuWeapon()];
 
 		if (sigmaForm == null || sigmaForm == 0) {
-			weapons.Add(new ChillPenguinWeapon(player));
-			weapons.Add(new SparkMandrillWeapon(player));
-			weapons.Add(new ArmoredArmadilloWeapon(player));
-			weapons.Add(new LaunchOctopusWeapon(player));
-			weapons.Add(new BoomerangKuwangerWeapon(player));
-			weapons.Add(new StingChameleonWeapon(player));
-			weapons.Add(new StormEagleWeapon(player));
-			weapons.Add(new FlameMammothWeapon(player));
-			weapons.Add(new VelguarderWeapon(player));
+			weapons.AddRange([
+				new LaunchOctopusWeapon(player, commandMode),
+				new StingChameleonWeapon(player, commandMode),
+				new ArmoredArmadilloWeapon(player, commandMode),
+				new FlameMammothWeapon(player, commandMode),
+				new StormEagleWeapon(player, commandMode),
+				new SparkMandrillWeapon(player, commandMode),
+				new BoomerangKuwangerWeapon(player, commandMode),
+				new ChillPenguinWeapon(player, commandMode),
+				new VelguarderWeapon(player, commandMode),
+			]);
 		}
 		if (sigmaForm == null || sigmaForm == 1) {
-			weapons.Add(new WireSpongeWeapon(player));
-			weapons.Add(new WheelGatorWeapon(player));
-			weapons.Add(new BubbleCrabWeapon(player));
-			weapons.Add(new FlameStagWeapon(player));
-			weapons.Add(new MorphMothWeapon(player));
-			weapons.Add(new MagnaCentipedeWeapon(player));
-			weapons.Add(new CrystalSnailWeapon(player));
-			weapons.Add(new OverdriveOstrichWeapon(player));
-			weapons.Add(new FakeZeroWeapon(player));
+			weapons.AddRange([
+				new CrystalSnailWeapon(player, commandMode),
+				new BubbleCrabWeapon(player, commandMode),
+				new MorphMothWeapon(player, commandMode),
+				new WheelGatorWeapon(player, commandMode),
+				new OverdriveOstrichWeapon(player, commandMode),
+				new WireSpongeWeapon(player, commandMode),
+				new MagnaCentipedeWeapon(player, commandMode),
+				new FlameStagWeapon(player, commandMode),
+				new FakeZeroWeapon(player, commandMode),
+			]);
 		}
 		if (sigmaForm == null || sigmaForm == 2) {
-			weapons.Add(new BlizzardBuffaloWeapon(player));
-			weapons.Add(new ToxicSeahorseWeapon(player));
-			weapons.Add(new TunnelRhinoWeapon(player));
-			weapons.Add(new VoltCatfishWeapon(player));
-			weapons.Add(new CrushCrawfishWeapon(player));
-			weapons.Add(new NeonTigerWeapon(player));
-			weapons.Add(new GravityBeetleWeapon(player));
-			weapons.Add(new BlastHornetWeapon(player));
-			weapons.Add(new DrDopplerWeapon(player));
+			weapons.AddRange([
+				new ToxicSeahorseWeapon(player, commandMode),
+				new BlastHornetWeapon(player, commandMode),
+				new VoltCatfishWeapon(player, commandMode),
+				new CrushCrawfishWeapon(player, commandMode),
+				new NeonTigerWeapon(player, commandMode),
+				new GravityBeetleWeapon(player, commandMode),
+				new BlizzardBuffaloWeapon(player, commandMode),
+				new TunnelRhinoWeapon(player, commandMode),
+				new DrDopplerWeapon(player, commandMode),
+			]);
 		}
 
 		return weapons;
@@ -164,7 +171,7 @@ public class Weapon {
 				new SonicSlicer(),
 				new StrikeChain(),
 				new MagnetMine(),
-				new SpeedBurner(null),
+				new SpeedBurner(),
 				new AcidBurst(),
 				new ParasiticBomb(),
 				new TriadThunder(),
@@ -281,18 +288,6 @@ public class Weapon {
 	}
 	public virtual void shoot(Character character, int[] args) {
 	}
-	public virtual void shootLight(Character character, int[] args) {
-		shoot(character, args);
-	}
-	public virtual void shootSecond(Character character, int[] args) {
-		shoot(character, args);
-	}
-	public virtual void shootMax(Character character, int[] args) {
-		shoot(character, args);
-	}
-	public virtual void shootHypercharge(Character character, int[] args) {
-		shoot(character, args);
-	}
 
 	// ToDo: Remove default values from this.
 	public virtual float getAmmoUsage(int chargeLevel) {
@@ -325,7 +320,7 @@ public class Weapon {
 	}
 
 	public void addAmmo(float amount, Player player) {
-		if (player.isX && player.hasChip(3) && amount < 0) amount *= 0.5f;
+		if (player.character is MegamanX mmx && mmx.hyperArmArmor == ArmorId.Max && amount < 0) amount *= 0.5f;
 		ammo += amount;
 		ammo = Helpers.clamp(ammo, 0, maxAmmo);
 	}
@@ -336,6 +331,14 @@ public class Weapon {
 
 	public virtual bool canShoot(int chargeLevel, Player player) {
 		return ammo > 0;
+	}
+
+	public virtual bool canShoot(int chargeLevel, Character character) {
+		return canShoot(chargeLevel, character.player);
+	}
+
+	public virtual bool canShoot(int chargeLevel, MegamanX mmx) {
+		return canShoot(chargeLevel, mmx as Character);
 	}
 
 	public virtual bool applyDamage(
@@ -350,16 +353,22 @@ public class Weapon {
 	}
 
 	public bool isCmWeapon() {
-		return type > 0 && (this is AxlBullet || this is DoubleBullet);
+		return type > 0 && (this is AxlBullet || this is DoubleBullet 
+		|| this is MettaurCrash || this is BeastKiller || this is MachineBullets
+		|| this is RevolverBarrel || this is AncientGun);
 	}
 	
 	public virtual void update() {
 		Helpers.decrementFrames(ref soundTime);
 		Helpers.decrementFrames(ref shootCooldown);
 		Helpers.decrementFrames(ref altShotCooldown);
-		if (timeSinceLastShoot != null) {
-			timeSinceLastShoot += Global.speedMul;
+		if (Global.level.server?.customMatchSettings?.axlCustomReload == true) {
+			Helpers.decrementFrames(ref rechargeAmmoCustomSettingAxl);
+			Helpers.decrementFrames(ref rechargeAmmoCustomSettingAxl2);
 		}
+		if (timeSinceLastShoot != null) {
+				timeSinceLastShoot += Global.speedMul;
+			}
 	}
 
 	public void charLinkedUpdate(Character character, bool isAlwaysOn) {
@@ -368,7 +377,7 @@ public class Weapon {
 			weaponHealTime = 0;
 			return;
 		}
-		weaponHealTime += 1;
+		weaponHealTime += Global.gameSpeed;
 		if (weaponHealTime >= 4) {
 			weaponHealCount += ammoDisplayScale;
 			weaponHealTime = 0;
@@ -376,12 +385,8 @@ public class Weapon {
 			ammo = Helpers.clampMax(ammo + ammoDisplayScale, maxAmmo);
 			if (weaponHealCount >= 1) {
 				weaponHealCount = 0;
-				if (isAlwaysOn || character.player.weapon == this) {
-					if (character.player.hasArmArmor(3)) {
-						character.playSound("healX3", forcePlay: true);
-					} else {
-						character.playSound("heal", forcePlay: true);
-					}
+				if (isAlwaysOn || character.currentWeapon == this) {
+					character.playAltSound("heal", altParams: "aarmor");
 				}
 			}
 		}
@@ -418,5 +423,9 @@ public class Weapon {
 				actor.playSound(normalSound);
 			}
 		}
+	}
+
+	public virtual float getFireRate(Character character, int chargeLevel, int[] args) {
+		return fireRate;
 	}
 }

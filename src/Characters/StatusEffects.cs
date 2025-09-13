@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 
 namespace MMXOnline;
@@ -30,7 +30,7 @@ public class Hurt : CharState {
 	}
 
 	public override bool canEnter(Character character) {
-		if (character.isCCImmune()) return false;
+		if (character.isStatusImmune()) return false;
 		if (character.vaccineTime > 0) return false;
 		if (character.rideArmorPlatform != null) return false;
 		return base.canEnter(character);
@@ -38,10 +38,14 @@ public class Hurt : CharState {
 
 	public override void onEnter(CharState oldState) {
 		base.onEnter(oldState);
-		if (player.isX && player.hasBodyArmor(1)) {
-			flinchTime = MathF.Floor(flinchTime * 0.75f);
-			sprite = "hurt2";
-			character.changeSpriteFromName("hurt2", true);
+		if (character is MegamanX mmx) {
+			if (mmx.chestArmor == ArmorId.Light) {
+				flinchTime = MathF.Floor(flinchTime * 0.75f);
+			}
+			if (mmx.chestArmor != ArmorId.None && hurtDir == -mmx.xDir) {
+				sprite = "hurt2";
+				character.changeSpriteFromName("hurt2", true);
+			}
 		}
 		if (player.isBusterZero && player.ArmorModeDefense) {
 			sprite = "hurt2";
@@ -51,12 +55,14 @@ public class Hurt : CharState {
 			sprite = "hurt";
 			character.changeSpriteFromName("hurt", true);
 		}
-		if (!spiked) {
-			character.vel.y = (-0.125f * (flinchTime - 1)) * 60f;
+		if (!spiked && character is not BaseSigma && !character.isToughGuyHyperMode()) {
+			float flichLimitusTime = flinchTime <= 30 ? flinchTime : 30;
+
+			character.vel.y = (-0.125f * (flichLimitusTime - 1)) * 60f;
 			if (isCombo && character.pos.y < flinchYPos) {
 				// Magic equation. Changing gravity from 0.25 probably super-break this.
 				// That said, we do not change base gravity.
-				character.vel.y *= (0.002f * flinchTime - 0.076f) * (flinchYPos - character.pos.y) + 1;
+				character.vel.y = (0.002f * flichLimitusTime - 0.076f) * (flinchYPos - character.pos.y) + 1;
 			}
 		}
 		if (!isCombo) {
@@ -71,12 +77,17 @@ public class Hurt : CharState {
 			character.vel.x = 0;
 		}
 		else if (hurtSpeed != 0) {
-			hurtSpeed = Helpers.toZero(hurtSpeed, 1.6f / flinchTime  * Global.speedMul, hurtDir);
-			character.move(new Point(hurtSpeed * 60f, 0));
+			hurtSpeed = Helpers.toZero(hurtSpeed, 1.6f / flinchTime * Global.speedMul, hurtDir);
+			if (character is not BaseSigma && !character.isToughGuyHyperMode()) //Tough guy
+				character.move(new Point(hurtSpeed * 60f, 0));
 		}
+		if (character is Axl axl) {
+			axl.stealthRevealTime = Axl.maxStealthRevealTime;
+		}
+
 		if (isMiniFlinch()) {
 			character.frameSpeed = 0;
-			if (Global.frameCount % 2 == 0) {
+			if (Global.floorFrameCount % 2 == 0) {
 				if (player.charNum == 0) character.frameIndex = 3;
 				if (player.charNum == 1) character.frameIndex = 3;
 				if (player.charNum == 2) character.frameIndex = 0;
@@ -89,21 +100,16 @@ public class Hurt : CharState {
 			}
 		}
 
-		if (player.character is MegamanX or Zero &&
-			player.character.canCharge() &&
-			player.character.chargeButtonHeld()
-		) {
-			player.character.increaseCharge();
-		}
-
 		if (stateFrames >= flinchTime) {
 			character.changeToLandingOrFall(false);
 		}
 	}
-
-	public override void onExit(CharState newState) {
+	public override void onExit(CharState? newState) {
 		base.onExit(newState);
-		if (character.dashedInAir > 0) character.dashedInAir--;
+		//Came back from the death as Custom Setting
+		if (Global.level.server?.customMatchSettings?.flinchairDashReset == true) {
+			character.dashedInAir = 0;
+		}
 	}
 }
 
@@ -142,6 +148,10 @@ public class GenericStun : CharState {
 			if (stunAnim == "idle") {
 				character.sprite.frameSpeed = 0;
 			}
+		}
+
+		if (character is Axl axl) {
+			axl.stealthRevealTime = Axl.maxStealthRevealTime;
 		}
 
 		if (character.frozenTime == 0 && character.crystalizedTime == 0 && character.paralyzedTime == 0) {
@@ -237,7 +247,7 @@ public class GenericStun : CharState {
 
 	public void activateFlinch(int flinchFrames, int xDir) {
 		hurtDir = xDir;
-		if (player.isX && player.hasBodyArmor(1)) {
+		if (character is MegamanX mmx && mmx.chestArmor == ArmorId.Light) {
 			flinchFrames = MathInt.Floor(flinchFrames * 0.75f);
 		}
 		if (flinchTime > flinchFrames) {
@@ -252,9 +262,9 @@ public class GenericStun : CharState {
 			flinchYPos = character.pos.y;
 		}
 		if (flinchFrames >= 2) {
-			character.vel.y = (-0.125f * (flinchFrames - 1)) * 60f;
+			character.vel.y = -0.125f * (flinchFrames - 1) * 60f;
 			if (isCombo && character.pos.y < flinchYPos) {
-				character.vel.y *= (0.002f * flinchTime - 0.076f) * (flinchYPos - character.pos.y) + 1;
+				character.vel.y = (0.002f * flinchTime - 0.076f) * (flinchYPos - character.pos.y) + 1;
 			}
 		}
 		flinchTime = flinchFrames;
@@ -263,7 +273,7 @@ public class GenericStun : CharState {
 
 	public override void onEnter(CharState oldState) {
 		base.onEnter(oldState);
-		character.stopMovingWeak();
+		character.stopMoving();
 		hurtDir = -character.xDir;
 		// To continue the flinch if was flinched before the stun.
 		if (oldState is Hurt hurtState) {
@@ -277,14 +287,16 @@ public class GenericStun : CharState {
 		}
 	}
 
-	public override void onExit(CharState newState) {
+	public override void onExit(CharState? newState) {
 		if (paralyzeAnim != null) {
 			paralyzeAnim.destroySelf();
 			paralyzeAnim = null;
 		}
 		if (character.crystalizedTime != 0 || character.isCrystalized) {
 			character.crystalizeEnd();
-			Global.serverClient?.rpc(RPC.playerToggle, (byte)character.player.id, (byte)RPCToggleType.StopCrystalize);
+			Global.serverClient?.rpc(
+				RPC.playerToggle, (byte)character.player.id, (byte)RPCToggleType.StopCrystalize
+			);
 		}
 		character.paralyzedTime = 0;
 		character.frozenTime = 0;
@@ -301,7 +313,7 @@ public class GenericStun : CharState {
 	}
 
 	public float getTimerFalloff() {
-		float healthPercent = 1 * (player.health / player.maxHealth);
+		float healthPercent = (float)(character.health / character.maxHealth);
 		return (Global.speedMul * (2 + healthPercent));
 	}
 }
@@ -317,8 +329,8 @@ public class KnockedDown : CharState {
 	}
 
 	public override bool canEnter(Character character) {
-		if (character.isCCImmune()) return false;
-		if (character.charState.superArmor || character.charState.invincible) return false;
+		if (character.isStatusImmune()) return false;
+		if (character.isFlinchImmune()) return false;
 		if (character.isInvulnerable()) return false;
 		if (character.vaccineTime > 0) return false;
 		return base.canEnter(character);
@@ -336,8 +348,12 @@ public class KnockedDown : CharState {
 			character.move(new Point(hurtSpeed, 0));
 		}
 
-		if (player.character.canCharge() && player.input.isHeld(Control.Shoot, player)) {
-			player.character.increaseCharge();
+		if (character.canCharge() && player.input.isHeld(Control.Shoot, player)) {
+			character.increaseCharge();
+		}
+
+		if (character is Axl axl) {
+			axl.stealthRevealTime = Axl.maxStealthRevealTime;
 		}
 
 		if (stateTime >= flinchTime) {
@@ -358,7 +374,7 @@ public class GoliathDragged : CharState {
 		character.vel.y = 0;
 	}
 
-	public override void onExit(CharState newState) {
+	public override void onExit(CharState? newState) {
 		base.onExit(newState);
 		character.useGravity = true;
 	}

@@ -14,14 +14,24 @@ public class Sprite {
 	public Collider[] hitboxes;
 	public Collider[][] frameHitboxes;
 
-	public static Texture[] xArmorBootsBitmap = new Texture[3];
-	public static Texture[] xArmorBodyBitmap = new Texture[3];
-	public static Texture[] xArmorHelmetBitmap = new Texture[3];
-	public static Texture[] xArmorArmBitmap = new Texture[3];
+	public static Texture[] xArmorBootsBitmap = new Texture[4];
+	public static Texture[] xArmorBodyBitmap = new Texture[4];
+	public static Texture[] xArmorHelmetBitmap = new Texture[4];
+	public static Texture[] xArmorArmBitmap = new Texture[4];
+	public static Texture[] xSaberBitmap = new Texture[2];
 	public static Texture axlArmBitmap = null!;
 
 	public float time;
 	public int frameIndex;
+	public int frameIndexSafe {
+		get => frameIndex;
+		set {
+			if (value >= totalFrameNum) {
+				throw new Exception("Error: Frameindex is longer than anim size.");
+			}
+			frameIndex = value;
+		}
+	}
 	public float frameSpeed = 1;
 	public int loopStartFrame;
 	public bool doesLoop;
@@ -47,6 +57,9 @@ public class Sprite {
 	public float tempOffX = 0;
 
 	public int totalFrameNum => (animData.frames.Length);
+	
+	public List<Trail> lastFiveTrailDraws = new List<Trail>();
+	public List<Trail> lastTwoBkTrailDraws = new List<Trail>();
 
 	public Sprite(string spritename) {
 		animData = Global.sprites[spritename];
@@ -72,8 +85,11 @@ public class Sprite {
 		frameTime += Global.speedMul * frameSpeed;
 		animTime += Global.speedMul * frameSpeed;
 		time += Global.spf;
-		var currentFrame = getCurrentFrame();
-		if (currentFrame != null && frameTime >= currentFrame.duration) {
+		Frame? currentFrame = getCurrentFrame();
+		if (currentFrame == null || frameSpeed == 0) {
+			return false;
+		}
+		if (frameTime >= currentFrame.duration) {
 			bool onceEnd = !animData.loop && frameIndex == animData.frames.Length - 1;
 			if (!onceEnd) {
 				frameTime = 0;
@@ -83,6 +99,19 @@ public class Sprite {
 					animTime = 0;
 					loopCount++;
 				}
+				return true;
+			}
+		}
+		if (frameSpeed < 0 && frameTime < 0) {
+			bool onceEnd = !animData.loop && frameIndex <= 0;
+			if (!onceEnd) {
+				frameIndex--;
+				if (frameIndex < animData.loopStartFrame) {
+					frameIndex = frameIndex = animData.frames.Length - 1;;
+					animTime = getAnimLength();
+					loopCount++;
+				}
+				frameTime = currentFrame.duration - 1;
 				return true;
 			}
 		}
@@ -125,7 +154,7 @@ public class Sprite {
 		cy = MathF.Floor(cy);
 
 		DrawWrappers.DrawTextureHUD(
-			animData.bitmap,
+			overrideTexture ?? animData.bitmap,
 			currentFrame.rect.x1, currentFrame.rect.y1,
 			currentFrame.rect.w(), currentFrame.rect.h(),
 			x - cx, y - cy,
@@ -133,8 +162,14 @@ public class Sprite {
 		);
 	}
 
-	public List<Trail> lastFiveTrailDraws = new List<Trail>();
-	public List<Trail> lastTwoBkTrailDraws = new List<Trail>();
+	public void drawSimple(Point pos, int xDir, long zIndex, float alpha = 1, Actor? actor = null) {
+		draw(
+			frameIndex, pos.x, pos.y, xDir, 1,
+			null, alpha, 1, 1, zIndex,
+			null, 0, actor: actor, useFrameOffsets: true
+		);
+	}
+
 	public void draw(
 		int frameIndex, float x, float y, int flipX, int flipY,
 		HashSet<RenderEffectType>? renderEffects, float alpha,
@@ -148,43 +183,35 @@ public class Sprite {
 		if (actor != null) {
 			if (!actor.shouldDraw()) return;
 		}
+		Texture bitmap = overrideTexture ?? animData.bitmap;
 
 		// Character-specific draw section
 		int[]? armors = null;
+		bool drawXSaber = false;
 		bool drawAxlArms = true;
 		bool hyperBusterReady = false;
 		bool isUPX = false;
 		bool isUltX = false;
-		Character? character = actor as Character;
-		if (character != null) {
-			// TODO: Fix this.
-			if (character is MegamanX { stingActive: true } &&
-				!Global.shaderWrappers.ContainsKey("invisible")
-			) {
-				alpha = 0.25f;
-			}
-			if (character.player.isX) {
-				armors = new int[] {
-					character.player.bootsArmorNum,
-					character.player.bodyArmorNum,
-					character.player.helmetArmorNum,
-					character.player.armArmorNum
-				};
+
+		if (actor is Character character) {
+			if (character is MegamanX mmx) {
+				armors = [
+					(int)mmx.legArmor,
+					(int)mmx.chestArmor,
+					(int)mmx.helmetArmor,
+					(int)mmx.armArmor
+				];
+				drawXSaber = !mmx.hasAnyArmor && mmx.specialButtonMode == 1 || mmx.hasFullHyperMaxArmor;
 			}
 			if (character.flattenedTime > 0) {
 				scaleY = 0.5f;
 			}
-			if (character.player.isAxl && character.player.axlWeapon != null) {
-				drawAxlArms = !character.player.axlWeapon.isTwoHanded(true);
+			if (character is Axl axl && axl.axlWeapon != null) {
+				drawAxlArms = !axl.axlWeapon.isTwoHanded(true);
 			}
-			isUPX = (
-				character is MegamanX { isHyperX: true } ||
-				character.sprite.name == "mmx_revive" && character.frameIndex > 3
-			);
+			isUPX = character is RagingChargeX;
 			isUltX = character is MegamanX { hasUltimateArmor: true };
 		}
-
-		if (name == "mmx_unpo_grab" || name == "mmx_unpo_grab2") zIndex = ZIndex.MainPlayer;
 
 		Frame currentFrame = getCurrentFrame(frameIndex);
 		if (currentFrame == null) return;
@@ -218,8 +245,9 @@ public class Sprite {
 			frameOffsetY = currentFrame.offset.y * flipY;
 		}
 
-		if (shaders == null) shaders = new List<ShaderWrapper>();
-
+		if (shaders == null) {
+			shaders = new List<ShaderWrapper>();
+		}
 		if (renderEffects != null) {
 			ShaderWrapper? shader = null;
 			if (renderEffects.Contains(RenderEffectType.Hit)) {
@@ -240,6 +268,8 @@ public class Sprite {
 				shader = Global.shaderWrappers.GetValueOrDefault("chargeYellow");
 			} else if (renderEffects.Contains(RenderEffectType.ChargeBlue)) {
 				shader = Global.shaderWrappers.GetValueOrDefault("chargeBlue");
+			} else if (renderEffects.Contains(RenderEffectType.ChargePurple)) {
+				shader = Global.shaderWrappers.GetValueOrDefault("chargePurple");
 			} else if (renderEffects.Contains(RenderEffectType.StealthModeBlue)) {
 				shader = Global.shaderWrappers.GetValueOrDefault("stealthmode_blue");
 			} else if (renderEffects.Contains(RenderEffectType.StealthModeRed)) {
@@ -258,30 +288,28 @@ public class Sprite {
 		float xDirArg = flipX * scaleX;
 		float yDirArg = flipY * scaleY;
 
-		Texture bitmap = animData.bitmap;
-
 		bool isCompositeSprite = false;
 		List<Texture> compositeBitmaps = new();
 		float extraY = 0;
 		float extraYOff = 0;
+		float extraXOff = 0;
 		float extraW = 0;
 		float flippedExtraW = 0;
-		float extraXOff = 0;
 
 		if (isUltX) {
-			bitmap = Global.textures["XUltimate"];
-			extraYOff = 3;
-			extraY = 3;
-			armors = null;
+			//extraYOff = 3;
+			//extraY = 3;
+			armors = [4, 4, 4, 4];
 		}
 
 		if (isUPX) {
 			bitmap = Global.textures["XUP"];
+			drawXSaber = true;
 		}
 
-		if (!isUltX && armors != null && animData.isXSprite) {
+		if (armors != null && animData.isXSprite && !Options.main.fastShaders && !Options.main.disableShaders) {
 			bool isShootSprite = needsX3BusterCorrection();
-
+			/*
 			if (isShootSprite) {
 				if (name.Contains("mmx_wall_slide_shoot")) {
 					flippedExtraW = 5;
@@ -290,12 +318,11 @@ public class Sprite {
 				} else {
 					extraW = 5;
 				}
-			}
+			} */
 			if (armors[2] == 2) {
-				extraYOff = 0;
-				extraY = 2;
+				//extraYOff = 0;
+				//extraY = 2;
 			}
-
 			var x3ArmShaders = new List<ShaderWrapper>(shaders);
 			if (hyperBusterReady) {
 				if (Global.isOnFrameCycle(5)) {
@@ -322,12 +349,73 @@ public class Sprite {
 				isCompositeSprite = true;
 			}
 		}
+		if (armors != null && drawXSaber && animData.isXSprite &&
+			!Options.main.fastShaders && !Options.main.disableShaders
+		) {
+			bool isShootSprite = needsX3BusterCorrection();
+			/*
+			if (isShootSprite) {
+				if (name.Contains("mmx_wall_slide_shoot")) {
+					flippedExtraW = 5;
+					extraW = flippedExtraW;
+					extraXOff = -flippedExtraW * flipX;
+				} else {
+					extraW = 5;
+				}
+			} */
+			if (armors[2] == 2 || drawXSaber) {
+				//extraYOff = 0;
+				//extraY = 2;
+			}
+			if (drawXSaber) {
+				flippedExtraW += 1;
+				extraXOff = 1 * flipX;
+			}
+			var x3ArmShaders = new List<ShaderWrapper>(shaders);
+			if (hyperBusterReady) {
+				if (Global.isOnFrameCycle(5)) {
+					if (Global.shaderWrappers.ContainsKey("hit")) {
+						x3ArmShaders.Add(Global.shaderWrappers["hit"]);
+					}
+				}
+			}
+			if (drawXSaber) {
+				compositeBitmaps.Add(xSaberBitmap[0]);
+			}
+			compositeBitmaps.Add(bitmap);
+			if (armors[2] > 0) {
+				compositeBitmaps.Add(xArmorHelmetBitmap[armors[2] - 1]);
+			}
+			if (armors[0] > 0) {
+				compositeBitmaps.Add(xArmorBootsBitmap[armors[0] - 1]);
+			}
+			if (armors[1] > 0) {
+				compositeBitmaps.Add(xArmorBodyBitmap[armors[1] - 1]);
+			}
+			if (armors[3] > 0) {
+				compositeBitmaps.Add(xArmorArmBitmap[armors[3] - 1]);
+			}
+			if (drawXSaber) {
+				compositeBitmaps.Add(xSaberBitmap[1]);
+			}
+			if (compositeBitmaps.Count > 1) {
+				isCompositeSprite = true;
+			}
+		}
 
-		if (renderEffects != null && !renderEffects.Contains(RenderEffectType.Invisible)) {
-			if (alpha >= 1 && (
+		if (!Options.main.disableShaders &&
+			!Options.main.fastShaders &&
+			renderEffects != null &&
+			!renderEffects.Contains(RenderEffectType.Invisible)
+		) {
+			if (!Options.main.fastShaders &&
+				alpha >= 1 && (
 				renderEffects.Contains(RenderEffectType.BlueShadow) ||
 				renderEffects.Contains(RenderEffectType.RedShadow) ||
-				renderEffects.Contains(RenderEffectType.GreenShadow)
+				renderEffects.Contains(RenderEffectType.GreenShadow) ||
+				renderEffects.Contains(RenderEffectType.PurpleShadow) ||
+				renderEffects.Contains(RenderEffectType.OrangeShadow) ||
+				renderEffects.Contains(RenderEffectType.YellowShadow)
 			)) {
 				ShaderWrapper? outlineShader = null;
 				if (renderEffects.Contains(RenderEffectType.BlueShadow)) {
@@ -336,6 +424,12 @@ public class Sprite {
 					outlineShader = Helpers.cloneShaderSafe("outline_red");
 				} else if (renderEffects.Contains(RenderEffectType.GreenShadow)) {
 					outlineShader = Helpers.cloneShaderSafe("outline_green");
+				} else if (renderEffects.Contains(RenderEffectType.OrangeShadow)) {
+					outlineShader = Helpers.cloneShaderSafe("outline_orange");
+				} else if (renderEffects.Contains(RenderEffectType.PurpleShadow)) {
+					outlineShader = Helpers.cloneShaderSafe("outline_purple");
+				} else if (renderEffects.Contains(RenderEffectType.YellowShadow)) {
+					outlineShader = Helpers.cloneShaderSafe("outline_yellow");
 				}
 				if (outlineShader != null) {
 					outlineShader.SetUniform(
@@ -346,10 +440,10 @@ public class Sprite {
 						bitmap,
 						currentFrame.rect.x1 - 1, currentFrame.rect.y1 - 1,
 						currentFrame.rect.w() + 2, currentFrame.rect.h() + 2,
-						x + frameOffsetX - (1 * xDirArg),
-						y + frameOffsetY - (1 * yDirArg),
-						zIndex,
-						cx, cy, xDirArg, yDirArg, angle, alpha,
+						x, y, zIndex - 10,
+						cx - (frameOffsetX - (1 * xDirArg)) * xDirArg,
+						cy - (frameOffsetY - (1 * yDirArg)) * yDirArg,
+						xDirArg, yDirArg, angle, alpha,
 						[outlineShader], true
 					);
 				}
@@ -383,27 +477,27 @@ public class Sprite {
 				if (lastTwoBkTrailDraws.Count > 10) {
 					lastTwoBkTrailDraws.PopFirst();
 				}
-				lastTwoBkTrailDraws.Add(new Trail() {
-					action = (float time) => {
+				lastTwoBkTrailDraws.Add(new Trail(
+					0.25f,
+					(float time) => {
 						DrawWrappers.DrawTexture(
 							bitmap,
 							animData.frames[1].rect.x1,
 							animData.frames[1].rect.y1,
 							animData.frames[1].rect.w(),
 							animData.frames[1].rect.h(),
-							x + frameOffsetX, y + frameOffsetY,
-							zIndex, cx, cy,
+							x, y, zIndex,
+							cx - frameOffsetX * xDirArg,
+							cy - frameOffsetY * yDirArg,
 							xDirArg, yDirArg,
 							angle, alpha,
 							shaderList, true
 						);
-					},
-					time = 0.25f
-				});
+					}
+				));
 			} else {
 				lastTwoBkTrailDraws.Clear();
 			}
-
 			if (renderEffects.Contains(RenderEffectType.Trail)) {
 				for (int i = lastFiveTrailDraws.Count - 1; i >= 0; i--) {
 					var trail = lastFiveTrailDraws[i];
@@ -415,61 +509,116 @@ public class Sprite {
 				if (Global.shaderWrappers.ContainsKey("trail")) shaderList.Add(Global.shaderWrappers["trail"]);
 
 				if (lastFiveTrailDraws.Count > 5) lastFiveTrailDraws.PopFirst();
-				lastFiveTrailDraws.Add(new Trail() {
-					action = (float time) => {
-						DrawWrappers.DrawTexture(bitmap, currentFrame.rect.x1, currentFrame.rect.y1, currentFrame.rect.w(), currentFrame.rect.h(), x + frameOffsetX, y + frameOffsetY, zIndex, cx, cy, xDirArg, yDirArg, angle, alpha, shaderList, true);
-					},
-					time = 0.25f
-				});
-			}
-			if (renderEffects.Contains(RenderEffectType.SpeedDevilTrail) && character != null && Global.shaderWrappers.ContainsKey("speedDevilTrail")) {
-				for (int i = character.lastFiveTrailDraws.Count - 1; i >= 0; i--) {
-					Trail trail = character.lastFiveTrailDraws[i];
-					if (character.isDashing) {
-						trail.action.Invoke(trail.time);
+				lastFiveTrailDraws.Add(new Trail(
+					0.25f,
+					(float time) => {
+						DrawWrappers.DrawTexture(
+							bitmap,
+							currentFrame.rect.x1, currentFrame.rect.y1,
+							currentFrame.rect.w(), currentFrame.rect.h(),
+							x, y, zIndex,
+							cx - frameOffsetX * xDirArg,
+							cy - frameOffsetY * yDirArg,
+							xDirArg, yDirArg, angle, alpha, shaderList, true
+						);
 					}
+				));
+			}
+			if (renderEffects.Contains(RenderEffectType.SpeedDevilTrail) &&
+				Global.shaderWrappers.ContainsKey("speedDevilTrail") &&
+				actor is Character chara
+			) {
+				for (int i = chara.lastFiveTrailDraws.Count - 1; i >= 0; i--) {
+					Trail trail = chara.lastFiveTrailDraws[i];
+					trail.action.Invoke(trail.time);
 					trail.time -= Global.spf;
-					if (trail.time <= 0) character.lastFiveTrailDraws.RemoveAt(i);
+					if (trail.time <= 0) chara.lastFiveTrailDraws.RemoveAt(i);
 				}
 
 				var shaderList = new List<ShaderWrapper>();
 
-				var speedDevilShader = character.player.speedDevilShader;
+				var speedDevilShader = chara.player.speedDevilShader;
 				shaderList.Add(speedDevilShader);
 
-				if (character.lastFiveTrailDraws.Count > 1) character.lastFiveTrailDraws.PopFirst();
-
-				character.lastFiveTrailDraws.Add(new Trail() {
-					action = (float time) => {
+				if (chara.lastFiveTrailDraws.Count > 1) {
+					chara.lastFiveTrailDraws.PopFirst();
+				}
+				chara.lastFiveTrailDraws.Add(new Trail(
+					0.125f,
+					(float time) => {
 						speedDevilShader?.SetUniform("alpha", time * 2);
-						DrawWrappers.DrawTexture(bitmap, currentFrame.rect.x1, currentFrame.rect.y1, currentFrame.rect.w(), currentFrame.rect.h(), x + frameOffsetX, y + frameOffsetY, zIndex, cx, cy, xDirArg, yDirArg, angle, alpha, shaderList, true);
-					},
-					time = 0.125f
-				});
+						DrawWrappers.DrawTexture(
+							bitmap,
+							currentFrame.rect.x1, currentFrame.rect.y1,
+							currentFrame.rect.w(), currentFrame.rect.h(),
+							x, y, zIndex,
+							cx - frameOffsetX * xDirArg,
+							cy - frameOffsetY * yDirArg,
+							xDirArg, yDirArg, angle, alpha, shaderList, true
+						);
+					}
+				));
 			}
 		}
-		DrawWrappers.DrawTexture(
-			bitmap,
-			currentFrame.rect.x1,
-			currentFrame.rect.y1 - extraYOff,
+		if (!isCompositeSprite) {
+			DrawWrappers.DrawTexture(
+				bitmap,
+				currentFrame.rect.x1,
+				currentFrame.rect.y1 - extraYOff,
 				currentFrame.rect.w(),
 				currentFrame.rect.h() + extraY,
-				x + frameOffsetX, y + frameOffsetY - extraYOff,
-				zIndex, cx, cy, xDirArg, yDirArg, angle, alpha, shaders, true
+				x, y, zIndex,
+				cx - frameOffsetX * xDirArg,
+				cy - (frameOffsetY - extraYOff) * yDirArg,
+				xDirArg, yDirArg,
+				angle, alpha, shaders, true
 			);
-
-		if (isUPX) {
+		} else {
+			DrawWrappers.DrawCompositeTexture(
+				compositeBitmaps.ToArray(),
+				currentFrame.rect.x1 - flippedExtraW,
+				currentFrame.rect.y1 - extraYOff,
+				currentFrame.rect.w() + extraW,
+				currentFrame.rect.h() + extraY,
+				x, y, zIndex,
+				cx - (frameOffsetX - extraXOff) * xDirArg,
+				cy - (frameOffsetY - extraYOff) * yDirArg,
+				xDirArg, yDirArg,
+				angle, alpha, shaders, true
+			);
+		}
+		// Old X armor draw for fast shaders.
+		if (armors != null && animData.isXSprite && (Options.main.fastShaders || Options.main.disableShaders)) {
+			// TODO: Add old armor code here.
+		}
+		if (!Options.main.fastShaders && !Options.main.disableShaders && isUPX) {
 			var upShaders = new List<ShaderWrapper>(shaders);
 			if (Global.isOnFrameCycle(5)) {
 				if (Global.shaderWrappers.ContainsKey("hit")) {
 					upShaders.Add(Global.shaderWrappers["hit"]);
 				}
 			}
-			DrawWrappers.DrawTexture(Global.textures["XUPGlow"], currentFrame.rect.x1, currentFrame.rect.y1, currentFrame.rect.w(), currentFrame.rect.h(), x + frameOffsetX, y + frameOffsetY, zIndex, cx, cy, xDirArg, yDirArg, angle, alpha, upShaders, true);
+			DrawWrappers.DrawTexture(
+				Global.textures["XUPGlow"],
+				currentFrame.rect.x1, currentFrame.rect.y1,
+				currentFrame.rect.w(), currentFrame.rect.h(),
+				x, y, zIndex,
+				cx - frameOffsetX * xDirArg,
+				cy - frameOffsetY * yDirArg,
+				xDirArg, yDirArg, angle, alpha, upShaders, true
+			);
 		}
-
 		if (animData.isAxlSprite && drawAxlArms) {
-			DrawWrappers.DrawTexture(axlArmBitmap, currentFrame.rect.x1, currentFrame.rect.y1, currentFrame.rect.w(), currentFrame.rect.h(), x + frameOffsetX, y + frameOffsetY, zIndex, cx, cy, xDirArg, yDirArg, 0, alpha, shaders, true);
+			DrawWrappers.DrawTexture(
+				axlArmBitmap,
+				currentFrame.rect.x1, currentFrame.rect.y1,
+				currentFrame.rect.w(),
+				currentFrame.rect.h(),
+				x, y, zIndex,
+				cx - frameOffsetX * xDirArg,
+				cy - frameOffsetY * yDirArg,
+				xDirArg, yDirArg, 0, alpha, shaders, true
+			);
 		}
 	}
 
@@ -597,8 +746,9 @@ public class Sprite {
 			bitmap,
 			drawRect.x1, drawRect.y1,
 			drawRect.w(), drawRect.h(),
-			x + frameOffsetX, y + frameOffsetY,
-			zIndex, cx, cy,
+			x, y, zIndex,
+			cx - frameOffsetX * xDirArg,
+			cy - frameOffsetY * yDirArg,
 			xDirArg, yDirArg,
 			0, alpha, null, true
 		);
@@ -608,6 +758,11 @@ public class Sprite {
 public class Trail {
 	public Action<float> action;
 	public float time;
+
+	public Trail(float time, Action<float> action) {
+		this.time = time;
+		this.action = action;
+	}
 }
 
 public class AnimData {
@@ -622,7 +777,8 @@ public class AnimData {
 	public float alignOffY;
 	public bool loop;
 	public Texture bitmap;
-
+	public string textureName;
+	// TODO: Search a better alternative to this mess.
 	public bool isXSprite;
 	public bool isAxlSprite;
 
@@ -670,6 +826,7 @@ public class AnimData {
 		if (textureName == "axl") {
 			isAxlSprite = true;
 		}
+		this.textureName = textureName;
 
 		JArray hitboxesJson = spriteJson["hitboxes"];
 		foreach (dynamic hitboxJson in hitboxesJson) {
@@ -736,22 +893,24 @@ public class AnimData {
 				new Point(offsetX, offsetY)
 			);
 
-			int encodeKey = (sprWidth * 397) ^ sprHeight;
-			if (Global.isLoading) {
-				if (!Global.renderTextureQueueKeys.Contains(encodeKey)) {
-					lock (Global.renderTextureQueueKeys) {
-						Global.renderTextureQueueKeys.Add(encodeKey);
+			// Rendertexture creation.
+			if (!Options.main.fastShaders && !Options.main.disableShaders) {
+				int encodeKey = (sprWidth * 397) ^ sprHeight;
+				if (Global.isLoading) {
+					if (!Global.renderTextureQueueKeys.Contains(encodeKey)) {
+						lock (Global.renderTextureQueueKeys) {
+							Global.renderTextureQueueKeys.Add(encodeKey);
+						}
+						lock (Global.renderTextureQueue) {
+							Global.renderTextureQueue.Add(((uint)sprWidth, (uint)sprHeight));
+						}
 					}
-					lock (Global.renderTextureQueue) {
-						Global.renderTextureQueue.Add(((uint)sprWidth, (uint)sprHeight));
-					}
+				} else if (!Global.renderTextures.ContainsKey(encodeKey)) {
+					Global.renderTextures[encodeKey] = (
+						new RenderTexture((uint)sprWidth, (uint)sprHeight),
+						new RenderTexture((uint)sprWidth, (uint)sprHeight)
+					);
 				}
-			}
-			else if (!Global.renderTextures.ContainsKey(encodeKey)) {
-				Global.renderTextures[encodeKey] = (
-					new RenderTexture((uint)sprWidth, (uint)sprHeight),
-					new RenderTexture((uint)sprWidth, (uint)sprHeight)
-				);
 			}
 			if (frameJson["POIs"] != null) {
 				List<Point> framePOIs = new();
@@ -820,7 +979,7 @@ public class AnimData {
 		bitmap = overrideAnim.bitmap;
 	}
 
-	public AnimData clone() {
+	public AnimData cloneAnimSlow() {
 		AnimData clonedSprite = (AnimData)MemberwiseClone();
 		clonedSprite.hitboxes = new Collider[hitboxes.Length];
 		for (int i = 0; i < hitboxes.Length; i++) {
@@ -869,13 +1028,14 @@ public class AnimData {
 			frameOffsetY = currentFrame.offset.y * flipY;
 		}
 
-		if (shaders == null) shaders = new List<ShaderWrapper>();
-
+		if (shaders == null) {
+			shaders = new List<ShaderWrapper>();
+		}
 		if (renderEffects != null) {
 			ShaderWrapper? shader = null;
 			if (renderEffects.Contains(RenderEffectType.Hit)) {
+				if (shaders.Count > 1) { shaders.Clear(); }
 				shader = Global.shaderWrappers.GetValueOrDefault("hit");
-				if (shaders.Count > 1) shaders.RemoveAt(1);
 			} else if (renderEffects.Contains(RenderEffectType.Flash)) {
 				shader = Global.shaderWrappers.GetValueOrDefault("flash");
 			} else if (renderEffects.Contains(RenderEffectType.InvisibleFlash) && alpha == 1) {
@@ -891,6 +1051,8 @@ public class AnimData {
 				shader = Global.shaderWrappers.GetValueOrDefault("chargeYellow");
 			} else if (renderEffects.Contains(RenderEffectType.ChargeBlue)) {
 				shader = Global.shaderWrappers.GetValueOrDefault("chargeBlue");
+			} else if (renderEffects.Contains(RenderEffectType.ChargePurple)) {
+				shader = Global.shaderWrappers.GetValueOrDefault("chargePurple");
 			} else if (renderEffects.Contains(RenderEffectType.StealthModeBlue)) {
 				shader = Global.shaderWrappers.GetValueOrDefault("stealthmode_blue");
 			} else if (renderEffects.Contains(RenderEffectType.StealthModeRed)) {
@@ -912,58 +1074,43 @@ public class AnimData {
 		Texture bitmap = this.bitmap;
 
 		if (renderEffects != null && !renderEffects.Contains(RenderEffectType.Invisible)) {
-			if (renderEffects.Contains(RenderEffectType.BlueShadow) && alpha >= 1) {
-				var blueShader = Helpers.cloneShaderSafe("outline_blue");
-				if (blueShader != null) {
-					blueShader.SetUniform(
-						"textureSize",
-						new SFML.Graphics.Glsl.Vec2(bitmap.Size.X, bitmap.Size.Y)
-					);
-					DrawWrappers.DrawTexture(
-						bitmap,
-						currentFrame.rect.x1 - 1, currentFrame.rect.y1 - 1,
-						currentFrame.rect.w() + 2, currentFrame.rect.h() + 2,
-						x + frameOffsetX - (1 * xDirArg),
-						y + frameOffsetY - (1 * yDirArg),
-						zIndex,
-						cx, cy, xDirArg, yDirArg, angle, alpha,
-						new List<ShaderWrapper>() { blueShader }, true
-					);
+			if (!Options.main.fastShaders &&
+				alpha >= 1 && (
+				renderEffects.Contains(RenderEffectType.BlueShadow) ||
+				renderEffects.Contains(RenderEffectType.RedShadow) ||
+				renderEffects.Contains(RenderEffectType.GreenShadow) ||
+				renderEffects.Contains(RenderEffectType.PurpleShadow) ||
+				renderEffects.Contains(RenderEffectType.OrangeShadow) ||
+				renderEffects.Contains(RenderEffectType.YellowShadow)
+			)) {
+				ShaderWrapper? outlineShader = null;
+				if (renderEffects.Contains(RenderEffectType.BlueShadow)) {
+					outlineShader = Helpers.cloneShaderSafe("outline_blue");
+				} else if (renderEffects.Contains(RenderEffectType.RedShadow)) {
+					outlineShader = Helpers.cloneShaderSafe("outline_red");
+				} else if (renderEffects.Contains(RenderEffectType.GreenShadow)) {
+					outlineShader = Helpers.cloneShaderSafe("outline_green");
+				} else if (renderEffects.Contains(RenderEffectType.OrangeShadow)) {
+					outlineShader = Helpers.cloneShaderSafe("outline_orange");
+				} else if (renderEffects.Contains(RenderEffectType.PurpleShadow)) {
+					outlineShader = Helpers.cloneShaderSafe("outline_purple");
+				} else if (renderEffects.Contains(RenderEffectType.YellowShadow)) {
+					outlineShader = Helpers.cloneShaderSafe("outline_yellow");
 				}
-			} else if (renderEffects.Contains(RenderEffectType.RedShadow) && alpha >= 1) {
-				var redShader = Helpers.cloneShaderSafe("outline_red");
-				if (redShader != null) {
-					redShader.SetUniform(
+				if (outlineShader != null) {
+					outlineShader.SetUniform(
 						"textureSize",
-						new SFML.Graphics.Glsl.Vec2(bitmap.Size.X, bitmap.Size.Y)
+						new SFML.Graphics.Glsl.Vec2(currentFrame.rect.w() + 2, currentFrame.rect.h() + 2)
 					);
 					DrawWrappers.DrawTexture(
 						bitmap,
 						currentFrame.rect.x1 - 1, currentFrame.rect.y1 - 1,
 						currentFrame.rect.w() + 2, currentFrame.rect.h() + 2,
-						x + frameOffsetX - (1 * xDirArg),
-						y + frameOffsetY - (1 * yDirArg),
-						zIndex - 10,
-						cx, cy, xDirArg, yDirArg, angle, alpha,
-						new List<ShaderWrapper>() { redShader }, true
-					);
-				}
-			} else if (renderEffects.Contains(RenderEffectType.GreenShadow) && alpha >= 1) {
-				var greenShader = Helpers.cloneShaderSafe("outline_green");
-				if (greenShader != null) {
-					greenShader.SetUniform(
-						"textureSize",
-						new SFML.Graphics.Glsl.Vec2(bitmap.Size.X, bitmap.Size.Y)
-					);
-					DrawWrappers.DrawTexture(
-						bitmap,
-						currentFrame.rect.x1 - 1, currentFrame.rect.y1 - 1,
-						currentFrame.rect.w() + 2, currentFrame.rect.h() + 2,
-						x + frameOffsetX - (1 * xDirArg),
-						y + frameOffsetY - (1 * yDirArg),
-						zIndex,
-						cx, cy, xDirArg, yDirArg, angle, alpha,
-						new List<ShaderWrapper>() { greenShader }, true
+						x, y, zIndex - 10,
+						cx - (frameOffsetX - (1 * xDirArg)) * xDirArg,
+						cy - (frameOffsetY - (1 * yDirArg)) * yDirArg,
+						xDirArg, yDirArg, angle, alpha,
+						[outlineShader], true
 					);
 				}
 			}
@@ -974,8 +1121,10 @@ public class AnimData {
 			bitmap, currentFrame.rect.x1,
 			currentFrame.rect.y1 - extraYOff,
 			currentFrame.rect.w(), currentFrame.rect.h() + extraYOff,
-			x + frameOffsetX, y + frameOffsetY - extraYOff,
-			zIndex, cx, cy, xDirArg, yDirArg, angle, alpha, shaders, true
+			x, y, zIndex,
+			cx - frameOffsetX * xDirArg,
+			cy - (frameOffsetY - extraYOff) * yDirArg,
+			xDirArg, yDirArg, angle, alpha, shaders, true
 		);
 	}
 

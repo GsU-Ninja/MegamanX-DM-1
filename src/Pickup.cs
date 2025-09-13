@@ -18,8 +18,10 @@ public class Pickup : Actor {
 	public Pickup(Player owner, Point pos, string sprite, ushort? netId, bool ownedByLocalPlayer, NetActorCreateId netActorCreateId, bool sendRpc = false) :
 		base(sprite, pos, netId, ownedByLocalPlayer, false) {
 		netOwner = owner;
-		collider.wallOnly = true;
-		collider.isTrigger = false;
+		if (collider != null) {
+			collider.wallOnly = true;
+			collider.isTrigger = false;
+		}
 
 		this.netActorCreateId = netActorCreateId;
 		if (sendRpc) {
@@ -37,13 +39,13 @@ public class Pickup : Actor {
 
 	public override void onCollision(CollideData other) {
 		base.onCollision(other);
-		if (other.otherCollider.flag == (int)HitboxFlag.Hitbox) return;
+		if (other.otherCollider?.flag == (int)HitboxFlag.Hitbox) return;
 
 		if (other.gameObject is Character chr) {
 			if (!chr.ownedByLocalPlayer) return;
 
 			if (pickupType == PickupType.Health) {
-				if (chr.player.health >= chr.player.maxHealth && !chr.player.hasSubtankCapacity()) return;
+				if (chr.health >= chr.maxHealth && !chr.player.hasSubtankCapacity()) return;
 				chr.addHealth(healAmount);
 				destroySelf(doRpcEvenIfNotOwned: true);
 			} else if (pickupType == PickupType.Ammo) {
@@ -59,7 +61,7 @@ public class Pickup : Actor {
 				if (pickupType == PickupType.Health) {
 					if (rideArmor.health >= rideArmor.maxHealth) {
 						if (rideArmor.character != null && (
-							rideArmor.character.player.health >= rideArmor.character.player.maxHealth
+							rideArmor.character.health >= rideArmor.character.maxHealth
 						)) {
 							return;
 						} else {
@@ -81,7 +83,7 @@ public class Pickup : Actor {
 				if (pickupType == PickupType.Health) {
 					if (rideChaser.health >= rideChaser.maxHealth) {
 						if (rideChaser.character != null &&
-							rideChaser.character.player.health >= rideChaser.character.player.maxHealth
+							rideChaser.character.health >= rideChaser.character.maxHealth
 						) {
 							return;
 						} else {
@@ -115,7 +117,7 @@ public class LargeHealthPickup : Pickup {
 		owner, pos, "pickup_health_large", netId, ownedByLocalPlayer,
 		NetActorCreateId.LargeHealth, sendRpc: sendRpc
 	) {
-		healAmount = 8;
+		healAmount = Global.level?.server?.customMatchSettings?.largeHealthPickup ?? 8;
 		pickupType = PickupType.Health;
 	}
 }
@@ -128,7 +130,7 @@ public class SmallHealthPickup : Pickup {
 		owner, pos, "pickup_health_small", netId, ownedByLocalPlayer,
 		NetActorCreateId.SmallHealth, sendRpc: sendRpc
 	) {
-		healAmount = 4;
+		healAmount = Global.level?.server?.customMatchSettings?.smallHealthPickup ?? 4;
 		pickupType = PickupType.Health;
 	}
 }
@@ -141,7 +143,7 @@ public class LargeAmmoPickup : Pickup {
 		owner, pos, "pickup_ammo_large", netId, ownedByLocalPlayer,
 		NetActorCreateId.LargeAmmo, sendRpc: sendRpc
 	) {
-		healAmount = 50;
+		healAmount = Global.level?.server?.customMatchSettings?.largeAmmoPickup ?? 50;
 		pickupType = PickupType.Ammo;
 	}
 }
@@ -154,7 +156,7 @@ public class SmallAmmoPickup : Pickup {
 		owner, pos, "pickup_ammo_small", netId, ownedByLocalPlayer,
 		NetActorCreateId.SmallAmmo, sendRpc: sendRpc
 	) {
-		healAmount = 25;
+		healAmount = Global.level?.server?.customMatchSettings?.smallAmmoPickup ?? 25;
 		pickupType = PickupType.Ammo;
 	}
 }

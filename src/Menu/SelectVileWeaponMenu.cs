@@ -9,7 +9,7 @@ public class SelectVileWeaponMenu : IMainMenu {
 	public List<WeaponCursor> cursors;
 	public int selCursorIndex;
 	public bool inGame;
-	public string error = "";
+	public string? error = "";
 
 	public static (string name, Weapon[] weapons)[] vileWeaponCategories = {
 			("Cannon", [
@@ -20,6 +20,8 @@ public class SelectVileWeaponMenu : IMainMenu {
 			]),
 			("Vulcan", [
 				new Vulcan(VulcanType.None),
+				new Vulcan(VulcanType.NoneCutter),
+				new Vulcan(VulcanType.NoneMissile),
 				new Vulcan(VulcanType.CherryBlast),
 				new Vulcan(VulcanType.DistanceNeedler),
 				new Vulcan(VulcanType.BuckshotDance)
@@ -34,9 +36,10 @@ public class SelectVileWeaponMenu : IMainMenu {
 				new RocketPunch(RocketPunchType.None),
 				new RocketPunch(RocketPunchType.GoGetterRight),
 				new RocketPunch(RocketPunchType.SpoiledBrat),
-				new RocketPunch(RocketPunchType.InfinityGig)
+				new RocketPunch(RocketPunchType.InfinityGig),
 			]),
 			("Napalm", [
+				new Napalm(NapalmType.None),
 				new Napalm(NapalmType.NoneBall),
 				new Napalm(NapalmType.RumblingBang),
 				new Napalm(NapalmType.FireGrenade),
@@ -44,6 +47,7 @@ public class SelectVileWeaponMenu : IMainMenu {
 				new Napalm(NapalmType.NoneFlamethrower)
 			]),
 			("Grenade", [
+				new VileBall(VileBallType.None),
 				new VileBall(VileBallType.NoneNapalm),
 				new VileBall(VileBallType.ExplosiveRound),
 				new VileBall(VileBallType.SpreadShot),
@@ -57,11 +61,15 @@ public class SelectVileWeaponMenu : IMainMenu {
 				new VileCutter(VileCutterType.MaroonedTomahawk)
 			]),
 			("Flamethrower", [
+				NoneFlamethrower.netWeapon,
 				WildHorseKick.netWeapon,
 				SeaDragonRage.netWeapon,
-				DragonsWrath.netWeapon
+				DragonsWrath.netWeapon,
+				NoneNapalmFlamethrower.netWeapon,
+
 			]),
 			("Laser", [
+				new VileLaser(VileLaserType.None),
 				new VileLaser(VileLaserType.RisingSpecter),
 				new VileLaser(VileLaserType.NecroBurst),
 				new VileLaser(VileLaserType.StraightNightmare)
@@ -98,9 +106,9 @@ public class SelectVileWeaponMenu : IMainMenu {
 		int maxCatCount = vileWeaponCategories[selCursorIndex].weapons.Length;
 
 		int minIndex = 0;
-		if (selCursorIndex == 0 || selCursorIndex == 1 || selCursorIndex == 2 || selCursorIndex == 3) {
+		/*if (selCursorIndex == 0 || selCursorIndex == 1 || selCursorIndex == 2 || selCursorIndex == 3) {
 			minIndex = 1;
-		}
+		} */
 
 		Helpers.menuLeftRightInc(ref cursors[selCursorIndex].index, minIndex, maxCatCount - 1, wrap: true, playSound: true);
 
@@ -114,10 +122,10 @@ public class SelectVileWeaponMenu : IMainMenu {
 				return;
 			}
 
-			if (vileWeaponCategories[0].weapons[cursors[0].index].type == -1 && vileWeaponCategories[1].weapons[cursors[1].index].type == -1) {
+			/*if (vileWeaponCategories[0].weapons[cursors[0].index].type == -1 && vileWeaponCategories[1].weapons[cursors[1].index].type == -1) {
 				error = "Must equip either a Vulcan or Cannon.";
 				return;
-			}
+			} */
 
 			int[] oldArray = { Options.main.vileLoadout.cannon, Options.main.vileLoadout.vulcan, Options.main.vileLoadout.missile, Options.main.vileLoadout.rocketPunch, Options.main.vileLoadout.napalm, Options.main.vileLoadout.ball, Options.main.vileLoadout.cutter, Options.main.vileLoadout.flamethrower, Options.main.vileLoadout.laser };
 			Options.main.vileLoadout.cannon = vileWeaponCategories[0].weapons[cursors[0].index].type;
@@ -184,7 +192,7 @@ public class SelectVileWeaponMenu : IMainMenu {
 		float wepPosX = 120;
 		float wepTextX = 132;
 
-		Global.sprites["cursor"].drawToHUD(0, startX, startY + (selCursorIndex * wepH) - 2);
+		Global.sprites["cursor"].drawToHUD(0, startX+4, startY + (selCursorIndex * wepH) - 3);
 		for (int i = 0; i < vileWeaponCategories.Length; i++) {
 			float yPos = startY - 6 + (i * wepH);
 			Fonts.drawText(
@@ -209,32 +217,69 @@ public class SelectVileWeaponMenu : IMainMenu {
 		var wep = vileWeaponCategories[selCursorIndex].weapons[cursors[selCursorIndex].index];
 
 		int wsy = 167;
-		DrawWrappers.DrawRect(25, wsy + 2, Global.screenW - 30, wsy + 28, true, new Color(0, 0, 0, 100), 0.5f, ZIndex.HUD, false, outlineColor: outlineColor);
-
-		string titleText = wep.displayName;
-
 		string inputText = "";
-		if (selCursorIndex == 0) inputText = "INPUT: Attack";
-		if (selCursorIndex == 1) inputText = "INPUT: Attack";
-		if (selCursorIndex == 2) inputText = "INPUT: Special(Ground)";
-		if (selCursorIndex == 3) inputText = "INPUT: Side Special(Ground)";
-		if (selCursorIndex == 4) inputText = "INPUT: Down Special (Ground)";
-		if (selCursorIndex == 5) inputText = "INPUT: Special(Air)";
-		if (selCursorIndex == 6) inputText = "INPUT: Up Special(Ground)";
-		if (selCursorIndex == 7) inputText = "INPUT: Down Special(Air)";
-		if (selCursorIndex == 8) inputText = "INPUT: Charge Special";
+		if (selCursorIndex == 0) inputText = "[SHOOT]";
+		if (selCursorIndex == 1) inputText = "[WeaponR]";
+		if (selCursorIndex == 2) inputText = "[SPC] + On Ground";
+		if (selCursorIndex == 3) inputText = "[MRIGHT] / [MLEFT] + [SPC]";
+		if (selCursorIndex == 4) inputText = "[MDOWN] + [SPC] + On Ground";
+		if (selCursorIndex == 5) inputText = "[SPC] + On Air";
+		if (selCursorIndex == 6) inputText = "[MUP] + [SPC] + On Ground";
+		if (selCursorIndex == 7) inputText = "[MDOWN] + [SPC] + On Air";
+		if (selCursorIndex == 8) inputText = "Hold [SPC]";
+		string damage = wep.damage;
+		string rateOfFire = wep.fireRate.ToString();
+		string ammousage = wep.ammousage.ToString();
+		string effect = wep.effect;
+		string hitcooldown = wep.hitcooldown;
+		string Flinch = wep.flinch;
+		string FlinchCD = wep.flinchCD;
 
+		DrawWrappers.DrawRect(25, wsy - 7, Global.screenW - 30, wsy + 28, true, new Color(0, 0, 0, 100), 
+		0.5f, ZIndex.HUD, false, outlineColor: outlineColor); // Big Rectangle
+
+		//Input Description Section
+		DrawWrappers.DrawRect(207, 184, 354, 160, true, new Color(0, 0, 0, 100), 
+		0.5f, ZIndex.HUD, false, outlineColor: outlineColor); //Input Rectangle
+		Fonts.drawTextEX(FontType.Purple, "INPUT", 281, wsy-4, Alignment.Center);
+		Fonts.drawTextEX(FontType.Grey, inputText, 281, wsy + 6, Alignment.Center);
+
+		// Damage, Flinch, Ammo Section
+		DrawWrappers.DrawRect(25, 172, 114, 160, true, new Color(0, 0, 0, 100), 
+		0.5f, ZIndex.HUD, false, outlineColor: outlineColor); //DMG Rectangle
+		DrawWrappers.DrawRect(25, 184, 114, 172, true, new Color(0, 0, 0, 100), 
+		0.5f, ZIndex.HUD, false, outlineColor: outlineColor); //Flinch Rectangle
+		DrawWrappers.DrawRect(25, 195, 114, 184, true, new Color(0, 0, 0, 100), 
+		0.5f, ZIndex.HUD, false, outlineColor: outlineColor); //Ammo Rectangle
+		DrawWrappers.DrawRect(114, 172, 206, 160, true, new Color(0, 0, 0, 100), 
+		0.5f, ZIndex.HUD, false, outlineColor: outlineColor); //Fire Rate Rectangle
+		DrawWrappers.DrawRect(114, 184, 206, 172, true, new Color(0, 0, 0, 100), 
+		0.5f, ZIndex.HUD, false, outlineColor: outlineColor); //Flinch CD Rectangle
+		DrawWrappers.DrawRect(114, 195, 206, 184, true, new Color(0, 0, 0, 100), 
+		0.5f, ZIndex.HUD, false, outlineColor: outlineColor); //Hit CD Rectangle
+		Fonts.drawTextEX(FontType.Purple, "Damage:", 48, wsy-4, Alignment.Center);
+		Fonts.drawTextEX(FontType.Purple, "Flinch:", 46, wsy+8, Alignment.Center);	
+		Fonts.drawTextEX(FontType.Purple, "Ammo Use:", 55, wsy+19, Alignment.Center);	
+		Fonts.drawTextEX(FontType.Purple, "Fire Rate:", 145, wsy-4, Alignment.Center);
+		Fonts.drawTextEX(FontType.Purple, "Flinch CD:", 147, wsy+8, Alignment.Center);
+		Fonts.drawTextEX(FontType.Purple, "Hit CD:", 138, wsy+19, Alignment.Center);
+		Fonts.drawTextEX(FontType.Purple, damage, 86, 163, Alignment.Center);
+		Fonts.drawTextEX(FontType.Purple, Flinch, 86, wsy+8, Alignment.Center);	
+		Fonts.drawTextEX(FontType.Purple, ammousage, 100, wsy+19, Alignment.Center);	
+		Fonts.drawTextEX(FontType.Purple, rateOfFire, 189, wsy-4, Alignment.Center);
+		Fonts.drawTextEX(FontType.Purple, FlinchCD, 189, wsy+8, Alignment.Center);
+		Fonts.drawTextEX(FontType.Purple, hitcooldown, 184, wsy+19, Alignment.Center);
+		Fonts.drawTextEX(FontType.Purple, effect, 281, wsy+19, Alignment.Center);
+
+
+
+
+
+		/*
 		int descLine1 = wsy + 8;
 		int descLine2 = wsy + 17;
 		descLine1 = wsy + 13;
 		descLine2 = wsy + 20;
-
-		Fonts.drawText(
-			FontType.Grey, titleText, 40, wsy + 6
-		);
-		Fonts.drawText(
-			FontType.Grey, inputText, Global.screenW - 40, wsy + 6
-		);
 
 		if (wep.description?.Length > 0) {
 			Fonts.drawText(
@@ -246,7 +291,7 @@ public class SelectVileWeaponMenu : IMainMenu {
 				FontType.Grey, wep.description[1], 40, descLine2, Alignment.Left
 			);
 		}
-
+		*/
 		//Helpers.drawTextStd(TCat.BotHelp, "Left/Right: Change Weapon", Global.screenW * 0.5f, 200 + botOffY, Alignment.Center, fontSize: 18);
 		//.drawTextStd(TCat.BotHelp, "Up/Down: Change Category", Global.screenW * 0.5f, 205 + botOffY, Alignment.Center, fontSize: 18);
 		//string helpText = "[BACK]: Back, [OK]: Confirm";

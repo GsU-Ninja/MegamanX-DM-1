@@ -9,10 +9,11 @@ public enum GroundSpecialType {
 	MegaPunch
 }
 
-public class Raijingeki : CharState {
+public class Raijingeki : ZeroState {
 	bool playedSoundYet;
 	bool isAlt;
-	public Raijingeki(bool isAlt) : base(isAlt ? "raijingeki2" : "raijingeki", "", "") {
+
+	public Raijingeki(bool isAlt) : base(isAlt ? "raijingeki2" : "raijingeki") {
 		this.isAlt = isAlt;
 	}
 
@@ -35,9 +36,10 @@ public class Raijingeki : CharState {
 	}
 }
 
-public class SuiretsusanState : CharState {
+public class SuiretsusanState : ZeroState {
 	public bool isAlt;
-	public SuiretsusanState(bool isAlt) : base("spear", "") {
+
+	public SuiretsusanState(bool isAlt) : base("spear") {
 		this.isAlt = isAlt;
 	}
 
@@ -53,8 +55,8 @@ public class SuiretsusanState : CharState {
 		if (pois != null && pois.Length > 0 && !once) {
 			once = true;
 			new SuiretsusenProj(
-				character.getFirstPOIOrDefault(),
-				character.xDir, player, player.getNextActorNetId(), sendRpc: true
+				character.getFirstPOIOrDefault(), character.xDir,
+				zero, player, player.getNextActorNetId(), rpc: true
 			);
 			character.playSound("spear", sendRpc: true);
 		}
@@ -67,22 +69,25 @@ public class SuiretsusanState : CharState {
 
 public class SuiretsusenProj : Projectile {
 	public SuiretsusenProj(
-		Point pos, int xDir, Player player, ushort netProjId, bool sendRpc = false
+		Point pos, int xDir, Actor owner, Player player, ushort? netId, bool rpc = false
 	) : base(
-		SuiretsusenWeapon.staticWeapon, pos, xDir, 200, 6, player, "spear_proj",
-		Global.defFlinch, 0.75f, netProjId, player.ownedByLocalPlayer
+		pos, xDir, owner, "spear_proj", netId, player
 	) {
+		weapon = SuiretsusenWeapon.staticWeapon;
+		damager.damage = 6;
+		damager.hitCooldown = 45;
+		damager.flinch = Global.defFlinch;
+		vel = new Point(200 * xDir, 0);
 		projId = (int)ProjIds.SuiretsusanProj;
 		destroyOnHit = false;
 		shouldVortexSuck = false;
 		shouldShieldBlock = false;
 		isMelee = true;
-		if (player?.character != null) {
-			owningActor = player.character;
+		if (rpc) {
+			rpcCreate(pos, owner, ownerPlayer, netId, xDir);
 		}
-
-		if (sendRpc) {
-			rpcCreate(pos, player, netProjId, xDir);
+		if (ownerPlayer?.character != null) {
+			owningActor = ownerPlayer.character;
 		}
 	}
 
@@ -92,29 +97,26 @@ public class SuiretsusenProj : Projectile {
 			destroySelf();
 		}
 	}
+	public static Projectile rpcInvoke(ProjParameters args) {
+		return new SuiretsusenProj(
+			args.pos, args.xDir, args.owner, args.player, args.netId
+		);
+	}
 }
 
-public class TBreakerState : CharState {
+public class TBreakerState : ZeroState {
 	public float dashTime = 0;
-	public Projectile fSplasherProj;
 	public bool isAlt;
-
 	public TBreakerState(bool isAlt) : base("tbreaker") {
 		this.isAlt = isAlt;
 	}
 
-	public override void onEnter(CharState oldState) {
-		base.onEnter(oldState);
-	}
-
 	public override void update() {
 		base.update();
-
 		if (isAlt) {
 			if (character.sprite.frameIndex % 2 == 0) character.sprite.frameSpeed = 2;
 			else character.sprite.frameSpeed = 1;
 		}
-
 		var pois = character.sprite.getCurrentFrame().POIs;
 		if (pois != null && pois.Length > 0 && !once) {
 			once = true;
@@ -124,12 +126,11 @@ public class TBreakerState : CharState {
 			var hit = Global.level.checkCollisionShape(shape, null);
 			if (hit != null && hit.gameObject is Wall) {
 				new TBreakerProj(
-					poi, character.xDir,
-					player, player.getNextActorNetId(), sendRpc: true
+					poi, character.xDir, zero,
+					player, player.getNextActorNetId(), rpc: true
 				);
 			}
 		}
-
 		if (character.isAnimOver()) {
 			character.changeToIdleOrFall();
 		}
@@ -138,26 +139,33 @@ public class TBreakerState : CharState {
 
 public class TBreakerProj : Projectile {
 	public TBreakerProj(
-		Point pos, int xDir,
-		Player player, ushort netProjId, bool sendRpc = false
+		Point pos, int xDir, Actor owner, Player player, ushort? netId, bool rpc = false
 	) : base(
-		TBreakerWeapon.staticWeapon, pos, xDir, 0, 0, player, "tbreaker_shockwave",
-		0, 0.15f, netProjId, player.ownedByLocalPlayer
+		pos, xDir, owner, "tbreaker_shockwave", netId, player
 	) {
+		weapon = TBreakerWeapon.staticWeapon;
+		damager.damage = 0;
+		damager.hitCooldown = 9;
+		vel = new Point(0 * xDir, 0);
 		projId = (int)ProjIds.TBreakerProj;
 		destroyOnHit = false;
 		shouldVortexSuck = false;
 		shouldShieldBlock = false;
 
-		if (sendRpc) {
-			rpcCreate(pos, player, netProjId, xDir);
+		if (rpc) {
+			rpcCreate(pos, owner, ownerPlayer, netId, xDir);
 		}
+	}
+	public static Projectile rpcInvoke(ProjParameters args) {
+		return new TBreakerProj(
+			args.pos, args.xDir, args.owner, args.player, args.netId
+		);
 	}
 
 	public override void onStart() {
 		base.onStart();
 		shakeCamera(sendRpc: true);
-		playSound("crash", sendRpc: true);
+		playSound("crashX3", sendRpc: true);
 	}
 
 	public override void update() {

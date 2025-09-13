@@ -63,10 +63,19 @@ public class Helpers {
 		if (val < min) return min;
 		return val;
 	}
+	
+	public static int clampMax(int val, int max) {
+		if (val >= max) { return max; }
+		return val;
+	}
 
 	public static float clampMax(float val, float max) {
-		if (val > max) return max;
+		if (val >= max) { return max; }
 		return val;
+	}
+
+	public static decimal clampMax(decimal val, decimal max) {
+		return  Math.Clamp(val, Decimal.MinValue, max);
 	}
 
 	public static string getTypedString(string str, int maxLength) {
@@ -318,8 +327,13 @@ public class Helpers {
 	}
 
 	public static float to360(float angle) {
-		if (angle < 0) angle += 360;
-		if (angle > 360) angle -= 360;
+		angle %= 360;
+		if (angle < 0) { angle += 360; }
+		return angle;
+	}
+	public static float to256(float angle) {
+		angle %= 256;
+		if (angle < 0) { angle += 256; }
 		return angle;
 	}
 
@@ -507,12 +521,34 @@ public class Helpers {
 			}
 		}
 	}
+	public static void menuLeftRightIncFloat(ref float val, float min, float max, bool wrap = false, bool playSound = false) {
+		if (min == max) return;
+		if (Global.input.isPressedMenu(Control.MenuLeft)) {
+			val -= 0.25f;
+			if (val < min) {
+				val = wrap ? max : min;
+				if (wrap && playSound) Global.playSound("menuX2");
+			} else {
+				if (playSound) Global.playSound("menuX2");
+			}
+		} else if (Global.input.isPressedMenu(Control.MenuRight)) {
+			val += 0.25f;
+			if (val > max) {
+				val = wrap ? min : max;
+				if (wrap && playSound) Global.playSound("menuX2");
+			} else {
+				if (playSound) Global.playSound("menuX2");
+			}
+		}
+	}
 
-	public static void menuLeftRightBool(ref bool val) {
+	public static void menuLeftRightBool(ref bool val, bool playSound = false) {
 		if (Global.input.isPressedMenu(Control.MenuLeft)) {
 			val = false;
+			if (playSound) Global.playSound("menuX2");
 		} else if (Global.input.isPressedMenu(Control.MenuRight)) {
 			val = true;
+			if (playSound) Global.playSound("menuX2");
 		}
 	}
 
@@ -759,12 +795,15 @@ public class Helpers {
 		return placeStr;
 	}
 
-	public static SoundBufferWrapper getRandomMatchingVoice(
+	public static SoundBufferWrapper? getRandomMatchingVoice(
 		Dictionary<string, SoundBufferWrapper> buffers, string soundKey, int charNum
 	) {
 		var voices = buffers.Values.ToList().FindAll(
 			v => v.soundKey.Split('.')[0] == soundKey && (v.charNum == null || v.charNum.Value == charNum)
 		);
+		if (voices.Count == 0) {
+			return null;
+		}
 		return voices.GetRandomItem();
 	}
 

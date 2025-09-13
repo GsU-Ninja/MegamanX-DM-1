@@ -18,7 +18,8 @@ public class RayGun : AxlWeapon {
 		weaponSlotIndex = 34;
 		killFeedIndex = 33;
 		fireRate = 6;
-
+		rechargeAmmoCooldown = 120;
+		altRechargeAmmoCooldown = 120;
 		if (altFire == 1) {
 			shootSounds[3] = "";
 		}
@@ -174,7 +175,7 @@ public class RayGunAltProj : Projectile {
 	) : base(
 		weapon, pos, xDir, 0, 1, player, "axl_raygun_laser", 0, 0.33f, netProjId, player.ownedByLocalPlayer
 	) {
-		projId = (int)ProjIds.RayGun2;
+		projId = (int)ProjIds.RayGunChargeBeam;
 		destroyOnHit = false;
 		shouldShieldBlock = false;
 		shouldVortexSuck = false;
@@ -187,7 +188,7 @@ public class RayGunAltProj : Projectile {
 		if (axl != null) {
 			if (axl.isWhiteAxl()) {
 				damager.damage = 4;
-				damager.hitCooldown = 0.125f;
+				damager.hitCooldown = 8;
 			}
 		}
 		if (!ownedByLocalPlayer && axl != null) {
@@ -287,15 +288,15 @@ public class RayGunAltProj : Projectile {
 
 		if (getChargeLevel() == 0) {
 			damager.damage = 1;
-			damager.hitCooldown = 0.33f;
+			damager.hitCooldown = 20;
 			angle = 0;
 		} else if (getChargeLevel() == 1) {
 			damager.damage = 2;
-			damager.hitCooldown = 0.15f;
+			damager.hitCooldown = 9;
 			angle = 90;
 		} else if (getChargeLevel() == 2) {
 			damager.damage = 4;
-			damager.hitCooldown = 0.125f;
+			damager.hitCooldown = 8;
 			angle = 180;
 		}
 

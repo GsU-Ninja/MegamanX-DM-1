@@ -1,9 +1,10 @@
 ﻿using System;
+using System.Collections.Generic;
 
 namespace MMXOnline;
 
 public class Velguarder : Maverick {
-	public VelGMeleeWeapon meleeWeapon;
+	public VelGMeleeWeapon meleeWeapon = new();
 
 	public Velguarder(
 		Player player, Point pos, Point destPos, int xDir,
@@ -11,8 +12,9 @@ public class Velguarder : Maverick {
 	) : base(
 		player, pos, destPos, xDir, netId, ownedByLocalPlayer
 	) {
-		stateCooldowns.Add(typeof(MShoot), new MaverickStateCooldown(false, true, 0.75f));
-		meleeWeapon = new VelGMeleeWeapon(player);
+		stateCooldowns = new() {
+			{ typeof(MShoot), new(45, true) }
+		};
 		canClimbWall = true;
 
 		awardWeaponId = WeaponIds.Buster;
@@ -28,6 +30,7 @@ public class Velguarder : Maverick {
 		}
 
 		armorClass = ArmorClass.Light;
+		height = 24;
 	}
 
 	public override void update() {
@@ -51,7 +54,7 @@ public class Velguarder : Maverick {
 	}
 
 	public override float getRunSpeed() {
-		return 135f;
+		return 135f * getRunDebuffs();
 	}
 
 	public MaverickState getShootState() {
@@ -62,35 +65,59 @@ public class Velguarder : Maverick {
 		return new VelGShootIceState();
 	}
 
+	public override MaverickState[] strikerStates() {
+		return [
+			new VelGShootFireState(),
+			new VelGShootIceState(),
+			new VelGPounceStartState(),
+		];
+	}
+
 	public override MaverickState[] aiAttackStates() {
-		return new MaverickState[]
-		{
-				new VelGShootFireState(),
-				new VelGShootIceState(),
-				new VelGPounceStartState(),
-		};
-	}
-
-	public override MaverickState getRandomAttackState() {
-		var attacks = new MaverickState[]
-		{
-				new VelGShootFireState(),
-				new VelGShootIceState(),
-				new VelGPounceStartState(),
-		};
-		return attacks.GetRandomItem();
-	}
-
-	public override Projectile? getProjFromHitbox(Collider hitbox, Point centerPoint) {
-		if (sprite.name.Contains("pounce")) {
-			return new GenericMeleeProj(meleeWeapon, centerPoint, ProjIds.VelGMelee, player);
+		float enemyDist = 300;
+		if (target != null) {
+			enemyDist = MathF.Abs(target.pos.x - pos.x);
 		}
-		return null;
+		if (enemyDist > 50) {
+			return [new VelGPounceStartState()];
+		}
+		return [
+			getShootState2(),
+			getShootState(),
+			new VelGPounceStartState()
+		];
 	}
+
+	// Melee IDs for attacks.
+	public enum MeleeIds {
+		None = -1,
+		Pounce,
+	}
+
+	// This can run on both owners and non-owners. So data used must be in sync.
+	public override int getHitboxMeleeId(Collider hitbox) {
+		return (int)(sprite.name switch {
+			"velg_pounce" => MeleeIds.Pounce,
+			_ => MeleeIds.None
+		});
+	}
+
+	// This can be called from a RPC, so make sure there is no character conditionals here.
+	public override Projectile? getMeleeProjById(int id, Point pos, bool addToLevel = true) {
+		return (MeleeIds)id switch {
+			MeleeIds.Pounce => new GenericMeleeProj(
+				meleeWeapon, pos, ProjIds.VelGMelee, player,
+				3, Global.defFlinch, addToLevel: addToLevel
+			),
+			_ => null
+		};
+	}
+
 }
 
 #region weapons
 public class VelGFireWeapon : Weapon {
+	public static VelGFireWeapon netWeapon = new();
 	public VelGFireWeapon() {
 		index = (int)WeaponIds.VelGFire;
 		killFeedIndex = 101;
@@ -98,6 +125,7 @@ public class VelGFireWeapon : Weapon {
 }
 
 public class VelGIceWeapon : Weapon {
+	public static VelGIceWeapon netWeapon = new();
 	public VelGIceWeapon() {
 		index = (int)WeaponIds.VelGIce;
 		killFeedIndex = 101;
@@ -105,10 +133,10 @@ public class VelGIceWeapon : Weapon {
 }
 
 public class VelGMeleeWeapon : Weapon {
-	public VelGMeleeWeapon(Player player) {
+	public static VelGMeleeWeapon netWeapon = new();
+	public VelGMeleeWeapon() {
 		index = (int)WeaponIds.VelGMelee;
 		killFeedIndex = 101;
-		damager = new Damager(player, 3, Global.defFlinch, 0.5f);
 	}
 }
 #endregion
@@ -116,19 +144,27 @@ public class VelGMeleeWeapon : Weapon {
 #region projectiles
 public class VelGFireProj : Projectile {
 	public VelGFireProj(
-		Weapon weapon, Point pos, int xDir,
-		Player player, ushort netProjId, bool rpc = false
+		Point pos, int xDir, Actor owner, Player player, ushort? netId, bool rpc = false
 	) : base(
-		weapon, pos, xDir, 125, 1, player, "velg_proj_fire",
-		0, 0.01f, netProjId, player.ownedByLocalPlayer
+		pos, xDir, owner, "velg_proj_fire", netId, player	
 	) {
+		weapon = VelGFireWeapon.netWeapon;
+		damager.damage = 1;
+		damager.hitCooldown = 1;
+		vel = new Point(125 * xDir, 0);
 		projId = (int)ProjIds.VelGFire;
 		maxTime = 1f;
 		vel.y = 200;
 
 		if (rpc) {
-			rpcCreate(pos, player, netProjId, xDir);
+			rpcCreate(pos, owner, ownerPlayer, netId, xDir);
 		}
+	}
+
+	public static Projectile rpcInvoke(ProjParameters args) {
+		return new VelGFireProj(
+			args.pos, args.xDir, args.owner, args.player, args.netId
+		);
 	}
 
 	public override void update() {
@@ -142,40 +178,59 @@ public class VelGFireProj : Projectile {
 }
 
 public class VelGIceProj : Projectile {
+	public int type = 0;
 	public VelGIceProj(
-		Weapon weapon, Point pos, int xDir, Point vel,
-		Player player, ushort netProjId, bool rpc = false
+		Point pos, int xDir, int type,
+		Actor owner, Player player, ushort? netId, bool rpc = false
 	) : base(
-		weapon, pos, xDir, 0, 2, player, "velg_proj_ice",
-		0, 0.01f, netProjId, player.ownedByLocalPlayer
+		pos, xDir, owner, "velg_proj_ice", netId, player	
 	) {
+		weapon = VelGIceWeapon.netWeapon;
+		damager.damage = 2;
+		damager.hitCooldown = 1;
+		this.type = type;
+		if (type == 0) vel = new Point(200 * xDir, -200);	
+		if (type == 1) vel = new Point(150 * xDir, -200);
+		if (type == 2) vel = new Point(250 * xDir, -200);
 		projId = (int)ProjIds.VelGIce;
 		maxTime = 0.75f;
 		useGravity = true;
-		this.vel = vel;
-		canBeLocal = false;
-
 		if (rpc) {
-			rpcCreate(pos, player, netProjId, xDir);
+			rpcCreate(pos, owner, ownerPlayer, netId, xDir, (byte)type);
 		}
 	}
-
-	public override void update() {
-		base.update();
+	public static Projectile rpcInvoke(ProjParameters args) {
+		return new VelGIceProj(
+			args.pos, args.xDir, args.extraData[0], args.owner, args.player, args.netId
+		);
 	}
 }
 #endregion
 
 #region states
-public class VelGShootFireState : MaverickState {
+public class VelguarderMState : MaverickState {
+	public Velguarder Velguader = null!;
+	public VelguarderMState(
+		string sprite, string transitionSprite = ""
+	) : base(
+		sprite, transitionSprite
+	) {
+	}
+
+	public override void onEnter(MaverickState oldState) {
+		base.onEnter(oldState);
+		Velguader = maverick as Velguarder ?? throw new NullReferenceException();
+	}
+}
+public class VelGShootFireState : VelguarderMState {
 	float shootTime;
-	public VelGShootFireState() : base("shoot2", "") {
+	public VelGShootFireState() : base("shoot2") {
 
 	}
 
 	public override void update() {
 		base.update();
-		if (player == null) return;
+		if (Velguader == null) return;
 
 		if (maverick.frameIndex == 1) {
 			var poi = maverick.getFirstPOIOrDefault();
@@ -183,7 +238,10 @@ public class VelGShootFireState : MaverickState {
 			if (shootTime > 0.05f) {
 				shootTime = 0;
 				maverick.playSound("fireWave", sendRpc: true);
-				new VelGFireProj(new VelGFireWeapon(), poi, maverick.xDir, player, player.getNextActorNetId(), rpc: true);
+				new VelGFireProj(
+					poi, maverick.xDir, Velguader,
+					player, player.getNextActorNetId(), rpc: true
+				);
 			}
 		}
 
@@ -193,16 +251,14 @@ public class VelGShootFireState : MaverickState {
 	}
 }
 
-public class VelGShootIceState : MaverickState {
+public class VelGShootIceState : VelguarderMState {
 	bool shot;
 	int index = 0;
-	public VelGShootIceState() : base("shoot", "") {
-
+	public VelGShootIceState() : base("shoot") {
 	}
-
 	public override void update() {
 		base.update();
-		if (player == null) return;
+		if (Velguader == null) return;
 
 		maverick.turnToInput(input, player);
 
@@ -210,14 +266,12 @@ public class VelGShootIceState : MaverickState {
 			if (!shot) {
 				shot = true;
 				index++;
-				var poi = maverick.getFirstPOIOrDefault();
-				//float xSpeed = (index % 2 == 0 ? 150 : 200);
-				var inputDir = input.getInputDir(player);
-				float xSpeed = inputDir.x == maverick.xDir ? 200 : 150;
-				new VelGIceProj(
-					new VelGIceWeapon(), poi, maverick.xDir,
-					new Point(xSpeed * maverick.xDir, -200), player, player.getNextActorNetId(), rpc: true
-				);
+				if (player.input.isHeld(Control.Up, player))
+					Proj(0);
+				else if (player.input.isHeld(Control.Right, player) || player.input.isHeld(Control.Left, player)) 
+					Proj(2);
+				else
+				 	Proj(1);
 			}
 		} else {
 			shot = false;
@@ -226,6 +280,13 @@ public class VelGShootIceState : MaverickState {
 		if (maverick.isAnimOver()) {
 			maverick.changeState(new MIdle());
 		}
+	}
+	public void Proj(int type) {
+		var poi = Velguader.getFirstPOIOrDefault();
+		new VelGIceProj(
+			poi, maverick.xDir, type, Velguader, 
+			player, player.getNextActorNetId(), rpc: true
+		);
 	}
 }
 

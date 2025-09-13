@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 
 namespace MMXOnline;
@@ -9,16 +9,21 @@ public class Doppma : BaseSigma {
 	public float maxFireballCooldown = 0.39f;
 	public float shieldCooldown;
 	public float maxShieldCooldown = 1.125f;
+	public bool shootOnce;
 
 	public Doppma(
 		Player player, float x, float y, int xDir,
 		bool isVisible, ushort? netId,
-		bool ownedByLocalPlayer, bool isWarpIn = true
+		bool ownedByLocalPlayer, bool isWarpIn = true,
+		SigmaLoadout? loadout = null,
+		int? heartTanks = null, bool isATrans = false
 	) : base(
 		player, x, y, xDir, isVisible,
-		netId, ownedByLocalPlayer, isWarpIn
+		netId, ownedByLocalPlayer, isWarpIn,
+		loadout, heartTanks, isATrans
 	) {
 		sigmaSaberMaxCooldown = 0.5f;
+		altSoundId = AltSoundIds.X3;
 	}
 
 	public override void update() {
@@ -29,10 +34,14 @@ public class Doppma : BaseSigma {
 		fireballWeapon.update();
 		Helpers.decrementTime(ref fireballCooldown);
 		Helpers.decrementTime(ref shieldCooldown);
+		Helpers.decrementFrames(ref aiAttackCooldown);
+		if (sprite.name.EndsWith(charState.shootSpriteEx) == false) {
+			shootOnce = false;
+		}
 		// For ladder and slide shoot.
 		if (charState is WallSlide or LadderClimb &&
-			!string.IsNullOrEmpty(charState?.shootSprite) &&
-			sprite?.name?.EndsWith(charState.shootSprite) == true
+			charState.shootSpriteEx != "" &&
+			sprite.name.EndsWith(charState.shootSpriteEx) == true
 		) {
 			if (isAnimOver() && charState is not Sigma3Shoot) {
 				changeSpriteFromName(charState.sprite, true);
@@ -51,18 +60,21 @@ public class Doppma : BaseSigma {
 					if (ang != 0 && ang != 180) {
 						upDownDir = 0;
 					}
-					playSound("sigma3shoot", sendRpc: true);
-					new Sigma3FireProj(
-						shootPOI.Value, ang, upDownDir,
-						player, player.getNextActorNetId(), sendRpc: true
-					);
+					if (!shootOnce) {
+						playSound("sigma3shoot", sendRpc: true);
+						new Sigma3FireProj(
+							shootPOI.Value, ang, upDownDir,
+							player, player.getNextActorNetId(), sendRpc: true
+						);
+						shootOnce = true;
+					}
 				}
 			}
 		}
 	}
 
 	public override Collider getBlockCollider() {
-		Rect rect = Rect.createFromWH(0, 0, 23, 55);
+		Rect rect = Rect.createFromWH(0, 0, 18, 40);
 		return new Collider(rect.getPoints(), false, this, false, false, HitboxFlag.Hurtbox, new Point(0, 0));
 	}
 
@@ -71,13 +83,13 @@ public class Doppma : BaseSigma {
 			return false;
 		}
 		bool attackPressed = false;
-		if (player.weapon is not AssassinBullet) {
+		if (player.weapon is not AssassinBulletChar) {
 			if (player.input.isPressed(Control.Shoot, player)) {
 				attackPressed = true;
-				lastAttackFrame = Global.level.frameCount;
+				lastAttackFrame = Global.floorFrameCount;
 			}
 		}
-		framesSinceLastAttack = Global.level.frameCount - lastAttackFrame;
+		framesSinceLastAttack = Global.floorFrameCount - lastAttackFrame;
 		bool lenientAttackPressed = (attackPressed || framesSinceLastAttack < 5);
 
 		// Shoot button attacks.
@@ -114,15 +126,38 @@ public class Doppma : BaseSigma {
 		return "sigma3_" + spriteName;
 	}
 
+	// Melee IDs for attacks.
+	public enum MeleeIds {
+		None = -1,
+		Guard,
+		Shield,
+		ShieldGuard,
+	}
+
 	// This can run on both owners and non-owners. So data used must be in sync.
-	public override Projectile? getProjFromHitbox(Collider collider, Point centerPoint) {
-		if (collider.name == "shield") {
-			return new GenericMeleeProj(
-				new Weapon(), centerPoint, ProjIds.Sigma3ShieldBlock, player,
-				damage: 0, flinch: 0, hitCooldown: 1, isDeflectShield: true, isShield: true
-			);
+	public override int getHitboxMeleeId(Collider hitbox) {
+		if (sprite.name == "sigma3_block") {
+			return (int)MeleeIds.ShieldGuard;
 		}
-		return base.getProjFromHitbox(collider, centerPoint);
+		if (hitbox.name == "shield") {
+			return (int)MeleeIds.Shield;
+		}
+		return (int)MeleeIds.None;
+	}
+
+	public override Projectile? getMeleeProjById(int id, Point pos, bool addToLevel = true) {
+		return id switch {
+			(int)MeleeIds.Shield or (int)MeleeIds.ShieldGuard => new GenericMeleeProj(
+				new Weapon(), pos, ProjIds.Sigma3ShieldBlock, player,
+				damage: 0, flinch: 0, hitCooldown: 60,
+				isDeflectShield: true, isShield: true,
+				isReflectShield: id == (int)MeleeIds.ShieldGuard,
+				addToLevel: addToLevel
+			) {
+				highPiority = true
+			},
+			_ => null
+		};
 	}
 
 	public override List<ShaderWrapper> getShaders() {
@@ -141,5 +176,57 @@ public class Doppma : BaseSigma {
 		}
 		shaders.AddRange(baseShaders);
 		return shaders;
+	}
+	public float aiAttackCooldown;
+	public override void aiAttack(Actor? target) {
+		bool isTargetInAir = pos.y < target?.pos.y - 20;
+		bool isTargetClose = pos.x < target?.pos.x - 10;
+		bool isFacingTarget = (pos.x < target?.pos.x && xDir == 1) || (pos.x >= target?.pos.x && xDir == -1);
+		if (currentWeapon is MaverickWeapon mw &&
+			mw.maverick == null && canAffordMaverick(mw)
+		) {
+			buyMaverick(mw);
+			if (mw.maverick != null) {
+				changeState(new CallDownMaverick(mw.maverick, true, false), true);
+			}
+			mw.summon(player, pos.addxy(0, -112), pos, xDir);
+			player.changeToSigmaSlot();
+		}
+		if (charState is not LadderClimb) {
+			int DoppmaSigmaAttack = Helpers.randomRange(0, 4);
+			if (isTargetInAir) DoppmaSigmaAttack = 1;
+			if (charState?.isGrabbedState == false && !player.isDead && aiAttackCooldown <= 0 &&
+				!isInvulnerable() && !(charState is CallDownMaverick or SigmaThrowShieldState or Sigma3Shoot)) {
+				switch (DoppmaSigmaAttack) {
+					case 0 when isFacingTarget:
+						player.press(Control.Shoot);
+						break;
+					case 1 when isFacingTarget:
+						player.press(Control.Special1);
+						break;
+					case 2:
+						player.changeWeaponSlot(1);			
+						break;
+					case 3:
+						player.changeWeaponSlot(2);					
+						break;
+					case 4:
+						player.changeWeaponSlot(0);
+						break;
+				}
+				aiAttackCooldown = 20;
+			}
+		}
+		base.aiAttack(target);
+	}
+	public override void aiUpdate(Actor? target) {
+		if (charState is Die) {
+			foreach (Weapon weapon in weapons) {
+				if (weapon is MaverickWeapon mw && mw.maverick != null) {
+					mw.maverick.changeState(new MExit(mw.maverick.pos, true), true);
+				}
+			}
+		}
+		base.aiUpdate(target);
 	}
 }

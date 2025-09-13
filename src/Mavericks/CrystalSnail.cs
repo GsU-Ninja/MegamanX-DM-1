@@ -5,9 +5,9 @@ namespace MMXOnline;
 public class CrystalSnail : Maverick {
 	public static Weapon getWeapon() { return new Weapon(WeaponIds.CSnailGeneric, 148); }
 
-	public CrystalSnailShell shell;
+	public CrystalSnailShell? shell;
 	public bool noShell { get { return shell != null; } }
-	public CrystalHunterCharged chargedCrystalHunter;
+	public CrystalHunterCharged? chargedCrystalHunter;
 	float ammoTime;
 
 	public CrystalSnail(
@@ -16,7 +16,9 @@ public class CrystalSnail : Maverick {
 	) : base(
 		player, pos, destPos, xDir, netId, ownedByLocalPlayer
 	) {
-		stateCooldowns.Add(typeof(CSnailShootState), new MaverickStateCooldown(false, false, 0.75f));
+		stateCooldowns = new() {
+			{ typeof(CSnailShootState), new(45) }
+		};
 
 		spriteToCollider["shell"] = getShellCollider();
 		spriteToCollider["shell_spin"] = getShellCollider();
@@ -41,12 +43,14 @@ public class CrystalSnail : Maverick {
 		barIndexes = (54, 43);
 
 		armorClass = ArmorClass.Light;
+		gameMavs = GameMavs.X2;
+		height = 32;
 	}
 
 	public override void update() {
 		base.update();
 		if (!ownedByLocalPlayer) return;
-
+		subtractTargetDistance = 70;
 		if (chargedCrystalHunter != null) {
 			if (chargedCrystalHunter.destroyed) {
 				chargedCrystalHunter = null;
@@ -98,28 +102,29 @@ public class CrystalSnail : Maverick {
 	}
 
 	public override float getRunSpeed() {
-		return noShell ? 100 : 75;
+		return (noShell ? 100 : 75) * getRunDebuffs();
+	}
+
+	public override MaverickState[] strikerStates() {
+		return [
+			new CSnailShootState(),
+			new CSnailShellState(true),
+			new CSnailShellState(false),
+		];
 	}
 
 	public override MaverickState[] aiAttackStates() {
-		MaverickState[] attacks;
 		if (noShell) {
-			attacks = new MaverickState[]
-			{
-					new CSnailShootState(),
-			};
-		} else {
-			attacks = new MaverickState[]
-			{
-					new CSnailShootState(),
-					new CSnailShellState(true),
-			};
+			return [
+				new CSnailShootState(),
+			];
 		}
-		return attacks;
-	}
-
-	public override MaverickState getRandomAttackState() {
-		return aiAttackStates().GetRandomItem();
+		return [
+			new CSnailShootState(),
+			new CSnailShootState(),
+			new CSnailShellState(true),
+			new CSnailShellState(false),
+		];
 	}
 
 	public Collider getShellCollider() {
@@ -127,13 +132,29 @@ public class CrystalSnail : Maverick {
 		return new Collider(rect.getPoints(), false, this, false, false, HitboxFlag.Hurtbox, new Point(0, 0));
 	}
 
-	public override Projectile? getProjFromHitbox(Collider hitbox, Point centerPoint) {
-		Projectile? proj = null;
-		if (sprite.name.EndsWith("shell_dash")) {
-			proj = new GenericMeleeProj(weapon, centerPoint, ProjIds.CSnailMelee, player, 3, Global.defFlinch, 0.5f);
-		}
+	// Melee IDs for attacks.
+	public enum MeleeIds {
+		None = -1,
+		ShellDash,
+	}
 
-		return proj;
+	// This can run on both owners and non-owners. So data used must be in sync.
+	public override int getHitboxMeleeId(Collider hitbox) {
+		return (int)(sprite.name switch {
+			"csnail_shell_dash" => MeleeIds.ShellDash,
+			_ => MeleeIds.None
+		});
+	}
+
+	// This can be called from a RPC, so make sure there is no character conditionals here.
+	public override Projectile? getMeleeProjById(int id, Point pos, bool addToLevel = true) {
+		return (MeleeIds)id switch {
+			MeleeIds.ShellDash => new GenericMeleeProj(
+				weapon, pos, ProjIds.CSnailMelee, player,
+				3, Global.defFlinch, addToLevel: addToLevel
+			),
+			_ => null
+		};
 	}
 
 	public override void onCollision(CollideData other) {
@@ -149,8 +170,8 @@ public class CrystalSnail : Maverick {
 			character.isCrystalized && character.player.alliance != player.alliance
 		) {
 			Damager.applyDamage(
-				player, 3, 1f, Global.defFlinch, character,
-				false, (int)WeaponIds.CrystalHunter, 20, player.character, (int)ProjIds.CrystalHunterDash
+				player, 3, 60, Global.defFlinch, character,
+				false, (int)WeaponIds.CrystalHunter, 20, player.character!, (int)ProjIds.CrystalHunterDash
 			);
 		}
 	}
@@ -165,7 +186,7 @@ public class CrystalSnail : Maverick {
 
 	public void enterShell() {
 		if (!noShell) return;
-		shell.destroySelf();
+		shell?.destroySelf();
 		shell = null;
 		changeSpriteFromName(sprite.name.RemovePrefix(getMaverickPrefix() + "_noshell_"), false);
 	}
@@ -225,7 +246,7 @@ public class CrystalSnailShell : Actor {
 				return;
 			}
 			var actor = other.gameObject as Actor;
-			vel = actor.deltaPos.times(1 / Global.spf);
+			if (actor != null) vel = actor.deltaPos.times(1 / Global.spf);
 			if (vel.y >= -50) vel.y = -MathF.Abs(vel.x);
 			grounded = false;
 			playSound("csnailShellBounce", sendRpc: true);
@@ -253,21 +274,29 @@ public class CrystalSnailShell : Actor {
 }
 
 public class CSnailCrystalHunterProj : Projectile {
+	public int type = 0;
 	public CSnailCrystalHunterProj(
-		Weapon weapon, Point pos, int xDir, Point velDir,
-		Player player, ushort netProjId, bool rpc = false
+		Point pos, int xDir, int type, Actor owner,
+		Player player, ushort? netId, bool rpc = false
 	) : base(
-		weapon, pos, xDir, 0, 0, player, "csnail_projectile",
-		0, 0, netProjId, player.ownedByLocalPlayer
+		pos, xDir, owner, "csnail_projectile", netId, player
 	) {
+		weapon = CrystalSnail.getWeapon();
 		projId = (int)ProjIds.CSnailCrystalHunter;
 		maxTime = 1.25f;
-		vel = velDir.normalize().times(200);
+		this.type = type;
 		destroyOnHit = true;
-
+		if (type == 0) vel = new Point(175 * xDir, -145);	
+		if (type == 1) vel = new Point(185 * xDir, -90);
+		if (type == 2) vel = new Point(200 * xDir, 0);
 		if (rpc) {
-			rpcCreate(pos, player, netProjId, xDir, (byte)(velDir.y * 2 + 128));
+			rpcCreate(pos, owner, ownerPlayer, netId, xDir, (byte)type);
 		}
+	}
+	public static Projectile rpcInvoke(ProjParameters args) {
+		return new CSnailCrystalHunterProj(
+			args.pos, args.xDir, args.extraData[0], args.owner, args.player, args.netId
+		);
 	}
 
 	public override void update() {
@@ -296,34 +325,44 @@ public class CSnailCrystalHunterProj : Projectile {
 		}
 	}
 }
+public class SnailMState : MaverickState {
+	public CrystalSnail CristarMymine = null!;
+	public SnailMState(
+		string sprite, string transitionSprite = ""
+	) : base(
+		sprite, transitionSprite
+	) {
+	}
 
-public class CSnailShootState : MaverickState {
+	public override void onEnter(MaverickState oldState) {
+		base.onEnter(oldState);
+		CristarMymine = maverick as CrystalSnail ?? throw new NullReferenceException();
+	}
+}
+public class CSnailShootState : SnailMState {
 	bool shotOnce;
-	public CSnailShootState() : base("spit", "") {
+	public CSnailShootState() : base("spit") {
 	}
 
 	public override void update() {
 		base.update();
-		if (player == null) return;
+		if (CristarMymine == null) return;
 
 		Point? shootPos = maverick.getFirstPOI();
 		if (!shotOnce && shootPos != null) {
 			shotOnce = true;
 			maverick.playSound("csnailShoot", sendRpc: true);
 			new CSnailCrystalHunterProj(
-				maverick.weapon, shootPos.Value, maverick.xDir,
-				new Point(maverick.xDir, -1),
+				shootPos.Value, maverick.xDir, 0, CristarMymine,
 				player, player.getNextActorNetId(), rpc: true
 			);
 			new CSnailCrystalHunterProj(
-				maverick.weapon, shootPos.Value, maverick.xDir,
-				new Point(maverick.xDir, -0.5f),
+				shootPos.Value, maverick.xDir, 1, CristarMymine,
 				player, player.getNextActorNetId(), rpc: true
 			);
 			new CSnailCrystalHunterProj(
-				maverick.weapon, shootPos.Value, maverick.xDir,
-				new Point(maverick.xDir, 0), player,
-				player.getNextActorNetId(), rpc: true
+				shootPos.Value, maverick.xDir, 2, CristarMymine,
+				player, player.getNextActorNetId(), rpc: true
 			);
 		}
 
@@ -333,7 +372,7 @@ public class CSnailShootState : MaverickState {
 	}
 }
 
-public class CSnailShellState : MaverickState {
+public class CSnailShellState : SnailMState {
 	float jumpDist;
 	float maxJumpDist = 112;
 	float exhaustTime;
@@ -342,13 +381,14 @@ public class CSnailShellState : MaverickState {
 	int aiChoice;
 	public CSnailShellState(bool isFirstTime) : base("shell", isFirstTime ? "shell_enter" : "") {
 		this.isFirstTime = isFirstTime;
+		attackCtrl = true;
+		aiAttackCtrl = true;
 	}
 
 	public override void update() {
 		base.update();
 		if (player == null) return;
 		if (inTransition()) return;
-
 		maverick.useGravity = true;
 		maverick.turnToInput(input, player);
 
@@ -425,25 +465,26 @@ public class CSnailShellState : MaverickState {
 	}
 }
 
-public class CSnailShellSpinDashState : MaverickState {
+public class CSnailShellSpinDashState : SnailMState {
 	float spinDist;
 	float angleSpeed = 360;
 	float chargeDist;
 	float maxChargeDist = 150;
-	Anim shell;
+	Anim? shell;
 	int state;
 	float exhaustTime;
-	public CSnailShellSpinDashState() : base("shell", "") {
+	public CSnailShellSpinDashState() : base("shell") {
 	}
 
 	public override void update() {
 		base.update();
 		if (player == null) return;
-
-		shell.incPos(maverick.deltaPos);
-		shell.xDir = maverick.xDir;
+		if (shell != null) {
+			shell.incPos(maverick.deltaPos);
+			shell.xDir = maverick.xDir;
+		}
 		if (state == 0) {
-			shell.angle += angleSpeed * Global.spf * maverick.xDir;
+			shell!.angle += angleSpeed * Global.spf * maverick.xDir;
 			spinDist += angleSpeed * Global.spf;
 			if ((!input.isHeld(Control.Shoot, player) && spinDist >= 90) || stateTime > 2) {
 				if (MathF.Abs(spinDist - 90) <= angleSpeed * Global.spf) {
@@ -455,7 +496,7 @@ public class CSnailShellSpinDashState : MaverickState {
 				maverick.deductAmmo(8);
 			}
 		} else if (state == 1) {
-			Point chargeDir = Point.createFromAngle(shell.angle.Value - 90);
+			Point chargeDir = Point.createFromAngle(shell.angle - 90);
 			float chargeSpeed = 350;
 
 			Point chargeDirReversed = chargeDir.times(-1);
@@ -492,7 +533,7 @@ public class CSnailShellSpinDashState : MaverickState {
 		}
 
 		/*
-		if (!input.isHeld(Control.Dash, player))// && MathF.Abs(shell.angle.Value) < angleSpeed * Global.spf * 2)
+		if (!input.isHeld(Control.Dash, player))// && MathF.Abs(shell.angle) < angleSpeed * Global.spf * 2)
 		{
 			maverick.changeToIdleOrFall("shell_exit");
 		}
@@ -518,14 +559,14 @@ public class CSnailShellSpinDashState : MaverickState {
 	}
 }
 
-public class CSnailShellSpinSlowState : MaverickState {
+public class CSnailShellSpinSlowState : SnailMState {
 	float spinDist;
 	float angleSpeed = 720;
-	Anim shell;
+	Anim? shell;
 	int state;
 	float soundTime;
 	float ammoTime;
-	public CSnailShellSpinSlowState() : base("shell", "") {
+	public CSnailShellSpinSlowState() : base("shell") {
 	}
 
 	public override void update() {
@@ -543,24 +584,27 @@ public class CSnailShellSpinSlowState : MaverickState {
 			maverick.playSound("csnailSlowSpin", sendRpc: true);
 			soundTime = 0.22f;
 		}
-
-		shell.incPos(maverick.deltaPos);
-		shell.xDir = maverick.xDir;
-		if (state == 0) {
-			shell.angle += angleSpeed * Global.spf;
-			spinDist += angleSpeed * Global.spf;
-			if (isAI) {
-				if (spinDist > 360 * 2) {
+		if (shell != null) {
+			shell.incPos(maverick.deltaPos);
+			shell.xDir = maverick.xDir;
+		}
+		if (shell != null) {
+			if (state == 0) {
+				shell.angle += angleSpeed * Global.spf;
+				spinDist += angleSpeed * Global.spf;
+				if (isAI) {
+					if (spinDist > 360 * 2) {
+						state = 1;
+					}
+				} else if (!input.isHeld(Control.Special1, player) || spinDist > 360 * 4 || maverick.ammo <= 0) {
 					state = 1;
 				}
-			} else if (!input.isHeld(Control.Special1, player) || spinDist > 360 * 4 || maverick.ammo <= 0) {
-				state = 1;
-			}
-		} else if (state == 1) {
-			shell.angle += angleSpeed * Global.spf;
-			spinDist += angleSpeed * Global.spf;
-			if (MathF.Abs(shell.angle.Value) < angleSpeed * Global.spf * 2) {
-				maverick.changeState(new CSnailTimeStopState(spinDist / 360f));
+			} else if (state == 1) {
+				shell.angle += angleSpeed * Global.spf;
+				spinDist += angleSpeed * Global.spf;
+				if (MathF.Abs(shell.angle) < angleSpeed * Global.spf * 2) {
+					maverick.changeState(new CSnailTimeStopState(spinDist / 360f));
+				}
 			}
 		}
 	}
@@ -586,7 +630,7 @@ public class CSnailShellSpinSlowState : MaverickState {
 	}
 }
 
-public class CSnailTimeStopState : MaverickState {
+public class CSnailTimeStopState : SnailMState {
 	bool shotOnce;
 	float spinCycles;
 	bool soundOnce;
@@ -596,7 +640,7 @@ public class CSnailTimeStopState : MaverickState {
 
 	public override void update() {
 		base.update();
-		if (player == null) return;
+		if (CristarMymine == null) return;
 		if (inTransition()) return;
 
 		if (!soundOnce) {
@@ -604,16 +648,15 @@ public class CSnailTimeStopState : MaverickState {
 			maverick.playSound("csnailSpecial", sendRpc: true);
 		}
 
-		var cs = maverick as CrystalSnail;
 		Point? shootPos = maverick.getFirstPOI();
 		if (!shotOnce && shootPos != null) {
 			shotOnce = true;
 			float overrideTime = spinCycles * 2;
-			if (cs.chargedCrystalHunter != null) {
-				cs.chargedCrystalHunter.destroySelf();
+			if (CristarMymine.chargedCrystalHunter != null) {
+				CristarMymine.chargedCrystalHunter.destroySelf();
 			}
 
-			cs.chargedCrystalHunter = new CrystalHunterCharged(
+			CristarMymine.chargedCrystalHunter = new CrystalHunterCharged(
 				shootPos.Value, player, player.getNextActorNetId(),
 				player.ownedByLocalPlayer, overrideTime: overrideTime, sendRpc: true
 			);
@@ -637,10 +680,14 @@ public class CSnailTimeStopState : MaverickState {
 	}
 }
 
-public class CSnailWeaknessState : MaverickState {
+public class CSnailWeaknessState : SnailMState {
 	float hurtSpeed;
 	float soundTime;
-	public CSnailWeaknessState(bool wasMagnetMine) : base(wasMagnetMine ? "weakness" : "hurt", "") {
+	public bool wasMagnetMine;
+	public CSnailWeaknessState(bool wasMagnetMine) : base(wasMagnetMine ? "weakness" : "hurt") {
+		aiAttackCtrl = true;
+		canBeCanceled = false;
+		this.wasMagnetMine = wasMagnetMine;
 		if (!wasMagnetMine) {
 			once = true;
 			stateTime = 1;
@@ -649,7 +696,7 @@ public class CSnailWeaknessState : MaverickState {
 
 	public override void update() {
 		base.update();
-		if (player == null) return;
+		if (CristarMymine == null) return;
 		if (inTransition()) return;
 
 		maverick.removeRenderEffect(RenderEffectType.Flash);
@@ -672,9 +719,8 @@ public class CSnailWeaknessState : MaverickState {
 			return;
 		}
 
-		var cs = maverick as CrystalSnail;
-		if (!cs.noShell) {
-			cs.removeShell();
+		if (!CristarMymine.noShell) {
+			CristarMymine.removeShell();
 		}
 
 		hurtSpeed = Helpers.toZero(hurtSpeed, 600 * Global.spf, 1);
@@ -699,21 +745,22 @@ public class CSnailWeaknessState : MaverickState {
 	}
 }
 
-public class CSnailDashState : MaverickState {
-	public CSnailDashState() : base("dash", "") {
+public class CSnailDashState : SnailMState {
+	public CSnailDashState() : base("dash") {
+		aiAttackCtrl = true;
+		canBeCanceled = false;
 	}
+
 
 	public override void update() {
 		base.update();
-		if (player == null) return;
+		if (CristarMymine == null) return;
 		if (inTransition()) return;
 
-		var cs = maverick as CrystalSnail;
-		if (!cs.noShell) {
+		if (!CristarMymine.noShell) {
 			maverick.changeToIdleOrFall();
 			return;
 		}
-
 		var move = new Point(200 * maverick.xDir, 0);
 
 		var hitGround = Global.level.checkTerrainCollisionOnce(maverick, move.x * Global.spf * 5, 20);

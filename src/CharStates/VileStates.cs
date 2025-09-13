@@ -3,10 +3,25 @@ using SFML.Graphics;
 
 namespace MMXOnline;
 
-public class CallDownMech : CharState {
-	Vile vile = null!;
-	RideArmor rideArmor;
-	bool isNew;
+public class VileState : CharState {
+	public Vile vile = null!;
+
+	public VileState(
+		string sprite, string shootSprite = "", string attackSprite = "",
+		string transitionSprite = "", string transShootSprite = ""
+	) : base(
+		sprite, shootSprite, attackSprite, transitionSprite, transShootSprite
+	) {
+	}
+	
+	public override void onEnter(CharState oldState) {
+		vile = character as Vile ?? throw new NullReferenceException();
+	}
+}
+
+public class CallDownMech : VileState {
+	public RideArmor rideArmor;
+	public bool isNew;
 
 	public CallDownMech(RideArmor rideArmor, bool isNew, string transitionSprite = "") : base("call_down_mech", "", "", transitionSprite) {
 		this.rideArmor = rideArmor;
@@ -45,18 +60,17 @@ public class CallDownMech : CharState {
 		base.onEnter(oldState);
 		rideArmor.changeState(new RACalldown(character.pos, isNew), true);
 		rideArmor.xDir = character.xDir;
-		vile = character as Vile ?? throw new NullReferenceException();
 	}
 }
 
-public class VileRevive : CharState {
+public class VileRevive : VileState {
 	public float radius = 200;
-	Anim drDopplerAnim;
-	bool isMK5;
-	Vile vile;
+	public Anim? drDopplerAnim;
+	public bool isMK5;
 
 	public VileRevive(bool isMK5) : base(isMK5 ? "revive_to5" : "revive") {
 		invincible = true;
+		statusEffectImmune = true;
 		this.isMK5 = isMK5;
 	}
 
@@ -66,7 +80,7 @@ public class VileRevive : CharState {
 			radius -= Global.spf * 150;
 		}
 		if (character.frameIndex < 2) {
-			if (Global.frameCount % 4 < 2) {
+			if (Global.flFrameCount % 4 < 2) {
 				character.addRenderEffect(RenderEffectType.Flash);
 			} else {
 				character.removeRenderEffect(RenderEffectType.Flash);
@@ -76,19 +90,19 @@ public class VileRevive : CharState {
 		}
 		if (character.frameIndex == 7 && !once) {
 			character.playSound("ching");
-			player.health = 1;
-			character.addHealth(player.maxHealth);
+			character.health = 1;
+			character.addHealth(character.maxHealth);
 			once = true;
 		}
 		if (character.ownedByLocalPlayer) {
 			if (character.isAnimOver()) {
 				setFlags();
-				character.changeState(new Fall(), true);
+				character.changeState(character.getFallState(), true);
 			}
 		} else if (character?.sprite?.name != null) {
 			if (!character.sprite.name.EndsWith("_revive") && !character.sprite.name.EndsWith("_revive_to5") && radius <= 0) {
 				setFlags();
-				character.changeState(new Fall(), true);
+				character.changeState(character.getFallState(), true);
 			}
 		}
 	}
@@ -103,21 +117,24 @@ public class VileRevive : CharState {
 
 	public override void onEnter(CharState oldState) {
 		base.onEnter(oldState);
-		vile = character as Vile ?? throw new NullReferenceException();
 		//character.setzIndex(ZIndex.Foreground);
+		character.clenaseAllDebuffs();
+		character.alive = true;
 		character.playSound("revive");
 		character.addMusicSource("demo_X3", character.getCenterPos(), false, loop: false);
 		if (!isMK5) {
 			drDopplerAnim = new Anim(character.pos.addxy(30 * character.xDir, -15), "drdoppler", -character.xDir, null, false);
 			drDopplerAnim.blink = true;
 		} else {
-			if (vile.startRideArmor != null) {
-				vile.startRideArmor.ownedByMK5 = true;
+			drDopplerAnim = new Anim(character.pos.addxy(30 * character.xDir, -15), "vilemk5_lumine", character.xDir, null, false);
+			drDopplerAnim.blink = true;
+			if (vile.linkedRideArmor != null) {
+				vile.linkedRideArmor.ownedByMK5 = true;
 			}
 		}
 	}
 
-	public override void onExit(CharState newState) {
+	public override void onExit(CharState? newState) {
 		base.onExit(newState);
 		character.useGravity = true;
 		setFlags();
@@ -140,15 +157,14 @@ public class VileRevive : CharState {
 	}
 }
 
-public class VileHover : CharState {
-	public SoundWrapper sound;
+public class VileHover : VileState {
+	public SoundWrapper? soundh;
 	public Point flyVel;
 	float flyVelAcc = 500;
 	float flyVelMaxSpeed = 200;
 	public float fallY;
-	Vile vile = null!;
 
-	public VileHover(string transitionSprite = "") : base("hover", "hover_shoot", "", transitionSprite) {
+	public VileHover(string transitionSprite = "") : base("hover", "hover_shoot", transitionSprite) {
 		exitOnLanding = true;
 		attackCtrl = true;
 		normalCtrl = true;
@@ -198,7 +214,7 @@ public class VileHover : CharState {
 		}
 		if (base.player.input.isHeld("jump", base.player) && !once) {
 			once = true;
-			sound = character.playSound("vileHover", forcePlay: false, sendRpc: true);
+			soundh = character.playSound("vileHover", forcePlay: false, sendRpc: false);
 		}
 	}
 
@@ -246,18 +262,15 @@ public class VileHover : CharState {
 
 	public override void onEnter(CharState oldState) {
 		base.onEnter(oldState);
-		vile = character as Vile ?? throw new NullReferenceException();
 		character.useGravity = false;
-		if (player.speedDevil) {
+		if (vile.hasSpeedDevil) {
 			flyVelMaxSpeed *= 1.1f;
 			flyVelAcc *= 1.1f;
 		}
 
 		float flyVelX = 0;
-		if (character.isDashing && character.deltaPos.x != 0) {
-			flyVelX = character.xDir * character.getDashSpeed() * 0.5f;
-		} else if (character.deltaPos.x != 0) {
-			flyVelX = character.xDir * character.getRunSpeed() * 0.5f;
+		if (character.deltaPos.x != 0) {
+			flyVelX = character.xDir * character.getDashOrRunSpeed() * 0.5f * 60;
 		}
 
 		float flyVelY = 0;
@@ -276,13 +289,14 @@ public class VileHover : CharState {
 		character.stopMoving();
 	}
 
-	public override void onExit(CharState newState) {
+	public override void onExit(CharState? newState) {
 		base.onExit(newState);
 		character.useGravity = true;
 		character.sprite.restart();
 		character.stopMoving();
-		if (sound != null && !sound.deleted) {
-			sound.sound?.Stop();
+		if (soundh != null && !soundh.deleted) {
+			soundh.sound?.Stop();
+			soundh = null;
 		}
 		RPC.stopSound.sendRpc("vileHover", character.netId);
 

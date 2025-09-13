@@ -16,48 +16,56 @@ public class ItemTracer : Weapon {
 		killFeedIndex = 20 + (index - 9);
 	}
 
-	public override void getProjectile(Point pos, int xDir, Player player, float chargeLevel, ushort netProjId) {
-		if (player?.character is not MegamanX mmx || !player.character.ownedByLocalPlayer) return;
+	public override void shoot(Character character, int[] args) {
+		int chargeLevel = args[0];
+		Point pos = character.getShootPos();
+		int xDir = character.getShootXDir();
+		Player player = character.player;
+		MegamanX mmx = character as MegamanX ?? throw new NullReferenceException();
 
-		mmx.scannerCooldown = 60;
 		Character? target = null;
-		mmx.playSound("itemTracer", sendRpc: true);
-		CollideData hit = Global.level.raycast(pos, pos.addxy(150 * xDir, 0), new List<Type>() { typeof(Actor) });
+		character.playSound("itemTracer", sendRpc: true);
+		CollideData hit = Global.level.raycast(
+			character.pos, character.pos.addxy(150 * character.xDir, 0), new List<Type>() { typeof(Actor) }
+		);
 		if (hit?.gameObject is Character chr && chr.player.alliance != player.alliance && !chr.player.scanned) {
 			target = chr;
 		}
-		new ItemTracerProj(this, pos, xDir, player, target, netProjId, rpc: true);
+		new ItemTracerProj(
+			character.getHeadPos() ?? pos, xDir, mmx,
+			player, target, player.getNextActorNetId(), rpc: true
+		);
 	}
 }
 
 public class ItemTracerProj : Projectile {
-	public Character target;
+	public Character? target;
 	public Character? scannedChar;
 	public ItemTracerProj(
-		Weapon weapon, Point pos, int xDir, Player player, 
-		Character target, ushort netProjId, bool rpc = false
+		Point pos, int xDir, Actor owner, Player player, Character? target, ushort? netId, bool rpc = false
 	) : base(
-		weapon, pos, xDir, 300, 0, player, "itemscan_proj", 
-		0, 0.5f, netProjId, player.ownedByLocalPlayer
+		pos, xDir, owner, "itemscan_proj", netId, player	
 	) {
+		weapon = ItemTracer.netWeapon;
+		damager.hitCooldown = 30;
+		vel = new Point(300 * xDir, 0);
 		maxTime = 1f;
 		destroyOnHit = false;
 		shouldShieldBlock = false;
 		frameSpeed = 0;
 		projId = (int)ProjIds.ItemTracer;
 		this.target = target;
-
+		setIndestructableProperties();
 		if (rpc) {
-			rpcCreate(pos, player, netProjId, xDir);
+			rpcCreate(pos, owner, ownerPlayer, netId, xDir);
 		}
 
 		canBeLocal = false;
 	}
 
-	public static Projectile rpcInvoke(ProjParameters arg) {
+	public static Projectile rpcInvoke(ProjParameters args) {
 		return new ItemTracerProj(
-			ItemTracer.netWeapon, arg.pos, arg.xDir,
-			arg.player, null!, arg.netId
+			args.pos, args.xDir, args.owner, args.player, null, args.netId
 		);
 	}
 
@@ -68,7 +76,7 @@ public class ItemTracerProj : Projectile {
 			changePos(scannedChar.getCenterPos());
 		}
 		if (target != null) {
-			vel = pos.directionTo(target.getCenterPos()).normalize().times(speed);
+			vel = pos.directionTo(target.getCenterPos()).normalize().times(300);
 		}
 		if (isAnimOver()) {
 			destroySelf();

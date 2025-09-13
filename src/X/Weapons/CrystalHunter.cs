@@ -9,20 +9,20 @@ public class CrystalHunter : Weapon {
 	public static CrystalHunter netWeapon = new();
 
 	public CrystalHunter() : base() {
+		displayName = "Crystal Hunter";
 		shootSounds = new string[] { "crystalHunter", "crystalHunter", "crystalHunter", "crystalHunterCharged" };
 		fireRate = 75;
+		switchCooldown = 45;
 		index = (int)WeaponIds.CrystalHunter;
 		weaponBarBaseIndex = 9;
 		weaponBarIndex = weaponBarBaseIndex;
 		weaponSlotIndex = 9;
 		killFeedIndex = 20;
 		weaknessIndex = (int)WeaponIds.MagnetMine;
-		//switchCooldown = 0.5f;
-		switchCooldownFrames = 30;
 		damage = "0-3/0";
-		effect = "Crystalize enemies. C: Slows down the area.";
+		effect = "U:Crystalize enemies on contact.\nC:Slows down the area by 25%.";
 		hitcooldown = "0-1/0";
-		Flinch = "0-26/0";
+		flinch = "0-26/0";
 		maxAmmo = 16;
 		ammo = maxAmmo;
 	}
@@ -33,39 +33,34 @@ public class CrystalHunter : Weapon {
 	}
 
 	public override void shoot(Character character, int[] args) {
+		MegamanX mmx = character as MegamanX ?? throw new NullReferenceException();
+
 		int chargeLevel = args[0];
 		Point pos = character.getShootPos();
 		int xDir = character.getShootXDir();
 		Player player = character.player;
 
 		if (chargeLevel < 3) {
-			new CrystalHunterProj(this, pos, xDir, player, player.getNextActorNetId(), rpc: true);
+			new CrystalHunterProj(pos, xDir, mmx, player, player.getNextActorNetId(), rpc: true);
 		} else {
-			int amount = Global.level.chargedCrystalHunters.Count(c => c.owner == player);
-			if (amount >= 1) {
-				for (int i = Global.level.chargedCrystalHunters.Count - 1; i >= 0; i--) {
-					var cch = Global.level.chargedCrystalHunters[i];
-					if (cch.owner == player) {
-						cch.destroySelf();
-						amount--;
-						if (amount < 2) break;
-					}
-				}
-			}
-
-			new CrystalHunterCharged(pos, player, player.getNextActorNetId(), player.ownedByLocalPlayer, sendRpc: true);
+			new CrystalHunterCharged(
+				pos, player, player.getNextActorNetId(), player.ownedByLocalPlayer, sendRpc: true
+			);
 		}
 	}
 }
 
 public class CrystalHunterProj : Projectile {
 	public CrystalHunterProj(
-		Weapon weapon, Point pos, int xDir, 
-		Player player, ushort netProjId,  bool rpc = false
+		Point pos, int xDir, Actor owner, Player player, ushort? netId, bool rpc = false
 	) : base(
-		weapon, pos, xDir, 250, 0, player, "crystalhunter_proj", 
-		0, 0, netProjId, player.ownedByLocalPlayer
+		pos, xDir, owner, "crystalhunter_proj", netId, player	
 	) {
+		weapon = CrystalHunter.netWeapon;
+		damager.damage = 0;
+		damager.hitCooldown = 0;
+		damager.flinch = 0;
+		vel = new Point(250 * xDir, 0);
 		maxTime = 0.6f;
 		useGravity = true;
 		destroyOnHit = true;
@@ -74,14 +69,13 @@ public class CrystalHunterProj : Projectile {
 		projId = (int)ProjIds.CrystalHunter;
 
 		if (rpc) {
-			rpcCreate(pos, player, netProjId, xDir);
+			rpcCreate(pos, owner, ownerPlayer, netId, xDir);
 		}
 	}
 
-	public static Projectile rpcInvoke(ProjParameters arg) {
+	public static Projectile rpcInvoke(ProjParameters args) {
 		return new CrystalHunterProj(
-			CrystalHunter.netWeapon, arg.pos, 
-			arg.xDir, arg.player, arg.netId
+			args.pos, args.xDir, args.owner, args.player, args.netId
 		);
 	}
 }
@@ -94,8 +88,10 @@ public class CrystalHunterCharged : Actor {
 	public float drawRadius = 120;
 	public float drawAlpha = 64;
 	public bool isSnails;
-	float maxTime = 4;
-	float soundTime;
+	public float maxTime = 4;
+	public float soundTime;
+	public Actor? rootProj;
+
 	public CrystalHunterCharged(
 		Point pos, Player owner, ushort? netId, bool ownedByLocalPlayer, 
 		float? overrideTime = null, bool sendRpc = false
@@ -122,12 +118,11 @@ public class CrystalHunterCharged : Actor {
 			createActorRpc(owner.id);
 		}
 
-		canBeLocal = true;
+		canBeLocal = false;
 	}
 
 	public override void update() {
 		base.update();
-
 		var screenCoords = new Point(pos.x - Global.level.camX, pos.y - Global.level.camY);
 		var normalizedCoords = new Point(screenCoords.x / Global.viewScreenW, 1 - screenCoords.y / Global.viewScreenH);
 
@@ -143,8 +138,7 @@ public class CrystalHunterCharged : Actor {
 			timeSlowShader.SetUniform("x", normalizedCoords.x);
 			timeSlowShader.SetUniform("y", normalizedCoords.y);
 			timeSlowShader.SetUniform("t", Global.time);
-			if (Global.viewSize == 2) timeSlowShader.SetUniform("r", 0.25f);
-			else timeSlowShader.SetUniform("r", 0.5f);
+			timeSlowShader.SetUniform("r", 0.5f * (drawRadius / (120f / Global.viewSize)));
 		}
 
 		if (timeSlowShader == null) {
@@ -155,6 +149,9 @@ public class CrystalHunterCharged : Actor {
 		if (time > maxTime) {
 			destroySelf(disableRpc: true);
 		}
+		if (ownedByLocalPlayer && rootProj != null) {
+			changePos(rootProj.pos);
+		}
 	}
 
 	public override void onDestroy() {
@@ -164,23 +161,31 @@ public class CrystalHunterCharged : Actor {
 
 	public override void render(float x, float y) {
 		base.render(x, y);
-		if (timeSlowShader == null) {
-			var fillColor = new Color(96, 80, 240, Helpers.toByte(drawAlpha));
-			var lineColor = new Color(208, 200, 240, Helpers.toByte(drawAlpha));
-			if (owner.alliance == GameMode.redAlliance && Global.level?.gameMode?.isTeamMode == true) {
-				fillColor = new Color(240, 80, 96, Helpers.toByte(drawAlpha));
-			}
 
-			//if (Global.isOnFrameCycle(20))
-			{
-				DrawWrappers.DrawCircle(pos.x, pos.y, drawRadius, true, fillColor, 0, ZIndex.Character - 1, pointCount: 50u);
-				//DrawWrappers.DrawCircle(pos.x, pos.y, drawRadius, false, new Color(208, 200, 240, Helpers.toByte(drawAlpha)), 1f, ZIndex.Character - 1, pointCount: 50u);
+		Color fillColor = new Color(99, 82, 247, 32);
+		Color outlineColor = new Color(66, 49, 247, 32);
+		Color lineColor = new Color(208, 200, 240, 128);
+		if (owner.alliance != Global.level.mainPlayer.alliance) {
+			Level level = Global.level;
+			if (level != null && level.gameMode?.isTeamMode == true) {
+				fillColor = new Color(247, 82, 99, 32);
+				outlineColor = new Color(247, 49, 66, 32);
 			}
-
-			float randY = Helpers.randomRange(-1f, 1f);
-			float xLen = MathF.Sqrt(1 - MathF.Pow(randY, 2)) * drawRadius;
-			float randThickness = Helpers.randomRange(0.5f, 2f);
-			DrawWrappers.DrawLine(pos.x - xLen, pos.y + randY * drawRadius, pos.x + xLen, pos.y + randY * drawRadius, lineColor, randThickness, ZIndex.Character - 1);
 		}
+		float lineRadius = drawRadius - 8;
+		Color color = fillColor;
+		long depth = ZIndex.Foreground + 10;
+		uint? pointCount = 25;
+		DrawWrappers.DrawCircle(
+			 pos.x + x, pos.y + y, lineRadius - 4, filled: true,
+			 color, 4, depth, isWorldPos: true, outlineColor, pointCount
+		);
+		float randY = Helpers.randomRange(-1f, 1f);
+		float xLen = MathF.Sqrt(1f - MathF.Pow(randY, 2)) * lineRadius;
+		float randThickness = Helpers.randomRange(0.5f, 2f);
+		DrawWrappers.DrawLine(
+			pos.x - xLen, pos.y + randY * lineRadius, pos.x + xLen, pos.y + randY * lineRadius,
+			lineColor, randThickness, -2000001L
+		);
 	}
 }
