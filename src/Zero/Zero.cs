@@ -76,10 +76,6 @@ public class Zero : Character {
 	public float aiAttackCooldown;
 	public float jumpTimeAI;
 
-	// AI stuff.
-	public bool isWildDance;
-	public float aiAttackCooldown;
-	public float jumpTimeAI;
 
 	//Zero Menu
 	public const int WinceCost = 10;

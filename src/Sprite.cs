@@ -450,7 +450,7 @@ public class Sprite {
 			}
 		
 			if ((name is "boomerk_dash" or "boomerk_bald_dash" or "mdragoon_shungoku" && (animTime > 0 || frameIndex > 0)) || 
-				(character != null && character is Sakuya sakuya && sakuya.chargedCrystalHunter != null && (animTime > 0 || frameIndex > 0))
+				(actor is Character character1 && character1 is Sakuya sakuya && sakuya.chargedCrystalHunter != null && (animTime > 0 || frameIndex > 0))
 				) 
 			{
 				if (Global.isOnFrameCycle(4)) {

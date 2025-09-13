@@ -22,9 +22,10 @@ public class Sans : Character {
 	
 	public Sans(
 		Player player, float x, float y, int xDir,
-		bool isVisible, ushort? netId, bool ownedByLocalPlayer, bool isWarpIn = true
+		bool isVisible, ushort? netId, bool ownedByLocalPlayer,
+		bool isWarpIn = true, int? heartTanks = null, bool isATrans = false
 	) : base(
-		player, x, y, xDir, isVisible, netId, ownedByLocalPlayer, isWarpIn
+		player, x, y, xDir, isVisible, netId, ownedByLocalPlayer, isWarpIn, heartTanks, isATrans
 	) {
 		charId = CharIds.Sans;
 	}
@@ -464,12 +465,12 @@ public class SansDodge : CharState {
 
 		if (!isInvisible && stateFrames >= 16 && stateFrames < 22) {
 			isInvisible = true;
-			character.specialState = (int)SpecialStateIds.XTeleport;
+			specialId = SpecialStateIds.XTeleport;
 			character.useGravity = false;
 		}
 		if (isInvisible && stateFrames >= 22) {
 			isInvisible = false;
-			character.specialState = (int)SpecialStateIds.None;
+			specialId = SpecialStateIds.None;
 			character.useGravity = true;
 			if (cloneG != null && canChangePos(cloneG)) {
 				Point prevCamPos = player.character.getCamCenterPos();
@@ -591,7 +592,7 @@ public class SansDodge : CharState {
 		if (cloneG != null) {
 			cloneG.destroySelf();
 		}
-		character.specialState = (int)SpecialStateIds.None;
+		specialId = SpecialStateIds.None;
 	}
 	public bool canChangePos(Actor actor) {
 		if (Global.level.checkTerrainCollisionOnce(actor, 0, 2) == null) {

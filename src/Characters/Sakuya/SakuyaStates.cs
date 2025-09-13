@@ -4,7 +4,21 @@ using SFML.Graphics;
 using System.Linq;
 using MMXOnline;
 namespace MMXOnline;
-public class SakuyaWalk : CharState {
+public class SakuyaStates : CharState {
+	public Sakuya sakuya = null!;
+	public SakuyaStates(
+		string sprite, string transitionSprite = ""
+	) : base(
+		sprite, transitionSprite
+	) {
+	}
+
+	public override void onEnter(CharState oldState) {
+		base.onEnter(oldState);
+		sakuya = character as Sakuya ?? throw new NullReferenceException();
+	}
+}
+public class SakuyaWalk : SakuyaStates {
 	public bool skip;
 	public SakuyaWalk(string transitionSprite = "", bool skip = false) : base("walk", transitionSprite: skip ? "walk" : "walk_start") {
 		exitOnAirborne = true;
@@ -12,22 +26,25 @@ public class SakuyaWalk : CharState {
 		normalCtrl = true;
 	}
 
+
 	public override void update() {
 		base.update();
-		
-		var move = new Point(0, 0);
-		float runSpeed = character.getRunSpeed();
 		bool pressed = player.input.isPressed(Control.Left, player) || player.input.isPressed(Control.Right, player);
+		Point move = new Point(0, 0);
+		float runSpeed = sakuya.getRunSpeed();
 		if (stateFrames <= 4) {
-			runSpeed = 60 * character.getRunDebuffs();
+			//runSpeed = 1 * sakuya.getRunDebuffs();
 		}
 		if (player.input.isHeld(Control.Left, player)) {
 			character.xDir = -1;
-			if (player.character.canMove()) move.x = -runSpeed;
+			if (character.canMove()) move.x = -runSpeed;
 		} else if (player.input.isHeld(Control.Right, player)) {
 			character.xDir = 1;
-			if (player.character.canMove()) move.x = runSpeed;
+			if (character.canMove()) move.x = runSpeed;
 		}
+		if (move.magnitude > 0) {
+			character.movePoint(move);
+		} 
 		if (pressed && move.magnitude > 0) {
 			character.changeState(new SakuyaWalkBack());
 		}
@@ -38,7 +55,7 @@ public class SakuyaWalk : CharState {
 		}
 	}
 }
-public class SakuyaWalkBack : CharState {
+public class SakuyaWalkBack : SakuyaStates {
 	public SakuyaWalkBack() : base("walk_back") {
 		accuracy = 5;
 		exitOnAirborne = true;
@@ -48,17 +65,22 @@ public class SakuyaWalkBack : CharState {
 
 	public override void update() {
 		base.update();
-		var move = new Point(0, 0);
-		float runSpeed = character.getRunSpeed();
+		Point move = new Point(0, 0);
+		float runSpeed = sakuya.getRunSpeed();
 		if (stateFrames <= 4) {
-			runSpeed = 60 * character.getRunDebuffs();
+			runSpeed = 1 * sakuya.getRunDebuffs();
 		}
 		if (player.input.isHeld(Control.Left, player)) {
 			character.xDir = -1;
-			if (player.character.canMove()) move.x = -runSpeed;
+			if (character.canMove()) move.x = -runSpeed;
 		} else if (player.input.isHeld(Control.Right, player)) {
 			character.xDir = 1;
-			if (player.character.canMove()) move.x = runSpeed;
+			if (character.canMove()) move.x = runSpeed;
+		}
+		if (move.magnitude > 0) {
+			character.movePoint(move);
+		} else {
+			character.changeToIdleOrFall();
 		}
 		if (move.magnitude > 0) {
 			character.move(move);
@@ -123,7 +145,7 @@ public class SakuyaTransition : CharState {
 			
 		} else if (player.input.isHeld(Control.Right, player)) {
 			character.changeState(new SakuyaWalk(skip: false));					
-		}
+		}	
 		if (character.isAnimOver()) {
 			character.changeState(new Idle());		
 		}
@@ -154,7 +176,7 @@ public class SakuyaHurt : CharState {
 	}
 
 	public override bool canEnter(Character character) {
-		if (character.isCCImmune()) return false;
+		if (character.isFlinchImmune()) return false;
 		if (character.vaccineTime > 0) return false;
 		if (character.rideArmorPlatform != null) return false;
 		return base.canEnter(character);
@@ -190,7 +212,7 @@ public class SakuyaHurt2 : CharState {
 	public SakuyaHurt2() : base("hurt2") {	
 	}
 	public override bool canEnter(Character character) {
-		if (character.isCCImmune()) return false;
+		if (character.isFlinchImmune()) return false;
 		if (character.vaccineTime > 0) return false;
 		return base.canEnter(character);
 	}

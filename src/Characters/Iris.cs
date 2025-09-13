@@ -6,6 +6,7 @@ namespace MMXOnline;
 public class Iris : Character {
 	public bool isHyperIris;
 	public float hyperModeTimer = 5;
+	public int lastShootPressed;
 	public int shootPressTime;
 	public int specialPressTime;
 	public bool shootPressed => (shootPressTime > 0);
@@ -28,9 +29,9 @@ public class Iris : Character {
 	public Iris(
 		Player player, float x, float y, int xDir,
 		bool isVisible, ushort? netId, bool ownedByLocalPlayer,
-		bool isWarpIn = true
+		bool isWarpIn = true, int? heartTanks = null, bool isATrans = false
 	) : base(
-		player, x, y, xDir, isVisible, netId, ownedByLocalPlayer, isWarpIn, false, false
+		player, x, y, xDir, isVisible, netId, ownedByLocalPlayer, isWarpIn, heartTanks, isATrans
 	) {
 		charId = CharIds.Iris;
 		altCtrlsLength = 2;

@@ -27,14 +27,15 @@ public SakuyaMeleeW meleeWeapon = new();
 public Sakuya(
 		Player player, float x, float y, int xDir,
 		bool isVisible, ushort? netId, bool ownedByLocalPlayer,
-		bool isWarpIn = true
+		bool isWarpIn = true, int? heartTanks = null, bool isATrans = false
 	) : base(
-		player, x, y, xDir, isVisible, netId, ownedByLocalPlayer, isWarpIn, false, false
+		player, x, y, xDir, isVisible, netId, ownedByLocalPlayer, isWarpIn, heartTanks, isATrans
 	) {
 		charId = CharIds.Sakuya;	
-		yScale = 0.70f;
-		xScale = 0.70f;
+		yScale = 1f;
+		xScale = 1f;
 	}
+	public override CharState getRunState(bool skipInto = false) => new SakuyaWalk("walk", skipInto);
 	public override void update() {
 		base.update();
 		if (!ownedByLocalPlayer) {
@@ -160,19 +161,16 @@ public Sakuya(
 		if (useSound) {
 			playSound("sakuyaland", sendRpc: true);
 		}
+		CharState idleState = getIdleState();
 		dashedInAir = 0;
-		changeState(new Idle("land"), true);
+		changeState(idleState, true);
 	}
 	public override bool canAirJump() {
 		return dashedInAir == 0;
 	}
 	public override float getRunSpeed() {
-		float runSpeed = 2.25f * 60f;
+		float runSpeed = 2.25f;
 		return runSpeed * getRunDebuffs();
-	}
-	public override float getJumpPower() {
-		float jp = 5.5f * 60f;
-		return jp * getJumpModifier();
 	}
 	public override void addAmmo(float amount) {
 		weaponHealAmount += amount;
@@ -182,9 +180,6 @@ public Sakuya(
 	}
 	public override bool canAddAmmo() {
 		return player.SakuyaAmmo < player.SakuyaMaxAmmo;
-	}
-	public override bool isAttacking() {
-		return sprite.name.Contains("attack");
 	}
 	public override Collider getGlobalCollider() {
 		Rect rect = new Rect(0, 0, 18, 27);

@@ -148,11 +148,11 @@ public class BusterZeroDrillCrush : BusterZeroGenericMeleeState {
 		character.changeSpriteFromName(sprite, true);
 		if (player.BZDrillCrushSpark) {
 			new ElectricSparkProj(
-				ZeroBuster.netWeapon, character.pos, character.xDir,
+				character.pos, character.xDir, character,
 				player, 1, player.getNextActorNetId(),
 				rpc: true);
 			new ElectricSparkProj(
-				ZeroBuster.netWeapon, character.pos, character.xDir *-1,
+				character.pos, character.xDir *-1, character,
 				player, 1, player.getNextActorNetId(),
 				rpc: true);
 		}
@@ -701,7 +701,7 @@ public class BZHadangekiProj : Projectile {
 
 	public static Projectile rpcInvoke(ProjParameters args) {
 		return new DZHadangekiProj(
-			args.pos, args.xDir, args.extraData[0] == 1, args.player, args.netId
+			args.pos, args.xDir, args.extraData[0] == 1, args.owner, args.player, args.netId
 		);
 	}
 }
@@ -1048,6 +1048,9 @@ public class BZFrostShield : Projectile, IDamagable {
 	public override void onDestroy() {
 		base.onDestroy();
 		breakFreeze(owner);
+	}
+	public bool isPlayableDamagable() {
+		return false;
 	}
 }
 public class BZBurningShot : Projectile {
@@ -1479,6 +1482,9 @@ public class YammarkOption : Projectile, IDamagable {
 	public bool isInvincible(Player attacker, int? projId) {
 		return false;
 	}
+	public bool isPlayableDamagable() {
+		return false;
+	}
 
 }
 public class BZDrone : Projectile, IDamagable {
@@ -1567,6 +1573,9 @@ public class BZDrone : Projectile, IDamagable {
 	public bool isInvincible(Player attacker, int? projId) {
 		return false;
 	}
+	public bool isPlayableDamagable() {
+		return false;
+	}
 }
 public class BZBeeCursorAnim : Anim {
 	public int state = 0;
@@ -1645,10 +1654,10 @@ public class BZParasiticBombProjCharged : Projectile, IDamagable {
 	public Point lastMoveAmount;
 	const float maxSpeed = 150;
 	public BZParasiticBombProjCharged(
-		Weapon weapon, Point pos, int xDir, Player player, 
+		Weapon weapon, Point pos, int xDir, Player player,
 		ushort netProjId, Actor host, bool rpc = false
 	) : base(
-		weapon, pos, xDir, 0, 1, player, "parasitebomb_bee", 
+		weapon, pos, xDir, 0, 1, player, "parasitebomb_bee",
 		0, 0.25f, netProjId, player.ownedByLocalPlayer
 	) {
 		this.weapon = weapon;
@@ -1704,6 +1713,9 @@ public class BZParasiticBombProjCharged : Projectile, IDamagable {
 	}
 
 	public void heal(Player healer, float healAmount, bool allowStacking = true, bool drawHealText = false) {
+	}
+	public bool isPlayableDamagable() {
+		return false;
 	}
 }
 public class BZParasiteBombClass {

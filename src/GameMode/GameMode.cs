@@ -872,13 +872,14 @@ public class GameMode {
 			}
 		}
 
-		if (drawPlayer != null && drawPlayer.isSakuya) {			
+		if (drawPlayer != null && drawPlayer.isSakuya) {	
 			SakuyarenderClockHP(drawPlayer);
 			SakuyarenderClockAmmo(drawPlayer);
 			Global.sprites["sakuya_clock_hud"].drawToHUD(1, Global.halfScreenW-70, Global.halfScreenH-70);	
 			Fonts.drawText(FontType.DarkPurple, drawPlayer.SakuyaAmmo.ToString("N0"), 56, 32, Alignment.Left);	
 			Fonts.drawText(FontType.DarkPurple, drawPlayer.health.ToString("N0"), 56, 20, Alignment.Left);		
-			if (drawPlayer.character is Sakuya sakuya) {	
+			if (drawPlayer.character is Sakuya sakuya) {
+				Fonts.drawText(FontType.Blue, " walk speed " + sakuya.moveDelta.ToString(), 56, 110, Alignment.Left);				
 				SakuyaLoadoutRender(sakuya);		
 				Point SakuyaPos = sakuya.getCenterPos();
 				DrawWrappers.DrawCircle(Global.halfScreenW , Global.halfScreenH, 4, false, new Color(128, 128, 152), 1, ZIndex.HUD, false);	
@@ -1465,7 +1466,6 @@ public class GameMode {
 		string spriteName = "sakuya_health_hud";
 		float health = player.health*2;
 		float maxHealth = player.health*2;
-		float asd = (player.heartTanks * player.getHeartTankModifier());
 		float baseX = 71;
 		float baseY = 23;
 		
@@ -1485,9 +1485,6 @@ public class GameMode {
 		string spriteName = "sakuya_health_hud";
 		float health = player.health;
 		float maxHealth = player.maxHealth;
-		float asd1 = maxHealth - (player.heartTanks * player.getHeartTankModifier());
-		float asd = health - (player.heartTanks * player.getHeartTankModifier());
-		float asd3 = (player.heartTanks * player.getHeartTankModifier());
 		float baseX = 71;
 		float baseY = 23;
 		if (player.health > 32) {
@@ -1857,7 +1854,6 @@ public class GameMode {
 		}
 
 		// This runs once per character.
-		Weapon weapon = player.lastHudWeapon;
 		if (player.character != null) {
 			weapon = player.weapon;
 			if (player.character is Zero zero) {
@@ -1889,7 +1885,7 @@ public class GameMode {
 					int spriteIndex = weapon.weaponBarIndex;
 					if (weapon.drawGrayOnLowAmmo && weapon.ammo < weapon.getAmmoUsage(0) ||
 						(weapon is GigaCrush && !weapon.canShoot(0, player)) ||
-						(weapon is NovaStrike && !weapon.canShoot(0, player)) ||
+						(weapon is HyperNovaStrike && !weapon.canShoot(0, player)) ||
 						(weapon is HyperCharge hb && !hb.canShootIncludeCooldown(level.mainPlayer))) {
 						spriteIndex = grayAmmoIndex;
 					}

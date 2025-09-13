@@ -1268,23 +1268,23 @@ public partial class Player {
 				false, charNetId, ownedByLocalPlayer,
 				isWarpIn: isWarpIn, heartTanks: htCount
 			);
-		} else if (charNum == (int)CharIds.Iris) {
-			character = new Iris(
+		} else if (spawnCharNum == (int)CharIds.Iris) {
+			newChar = new Iris(
 				this, pos.x, pos.y, xDir,
 				false, charNetId, ownedByLocalPlayer
 			);
-		} else if (charNum == (int)CharIds.MagmaDragoon) {
-			character = new MagmaDragoon(
+		} else if (spawnCharNum == (int)CharIds.MagmaDragoon) {
+			newChar = new MagmaDragoon(
 				this, pos.x, pos.y, xDir,
 				false, charNetId, ownedByLocalPlayer
 			);
-		} else if (charNum == (int)CharIds.Sakuya) {
-			character = new Sakuya(
+		} else if (spawnCharNum == (int)CharIds.Sakuya) {
+			newChar = new Sakuya(
 				this, pos.x, pos.y, xDir,
 				false, charNetId, ownedByLocalPlayer
 			);
-		} else if (charNum == (int)CharIds.Sans) {
-			character = new Sans(
+		} else if (spawnCharNum == (int)CharIds.Sans) {
+			newChar = new Sans(
 				this, pos.x, pos.y, xDir,
 				false, charNetId, ownedByLocalPlayer
 			);

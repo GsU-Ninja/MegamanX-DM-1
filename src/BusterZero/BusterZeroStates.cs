@@ -269,11 +269,6 @@ public class BusterZeroHadangekiWall : BusterZeroState {
 					character.pos.addxy(30 * -wallDir, -20), -wallDir,
 					zero.isBlackZero, player, player.getNextActorNetId(), rpc: true
 				); 
-			else
-				new DZHadangekiProj(
-					character.pos.addxy(30 * -wallDir, -20), -wallDir,
-					zero.isBlackZero, player, player.getNextActorNetId(), rpc: true
-				);
 		}
 		if (character.isAnimOver()) {
 			character.changeState(new WallSlide(wallDir, wallCollider) { enterSound = "" });

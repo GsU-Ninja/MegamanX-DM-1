@@ -60,7 +60,7 @@ public class ZeroBuster2 : Weapon {
 		string sound = "";
 
 		if (chargeLevel == 0) {
-			zeroLemonsOnField.Add(new DZBusterProj(shootPos, xDir, player, player.getNextActorNetId(), rpc: true));
+			zeroLemonsOnField.Add(new DZBusterProj(shootPos, xDir, bz, player, player.getNextActorNetId(), rpc: true));
 			sound = "busterX3";
 			bz.shootCooldown = 11;
 		} else if (chargeLevel == 1) {
@@ -82,7 +82,7 @@ public class ZeroBuster2 : Weapon {
 				return;
 			} else {
 				bz.shootAnimTime = 0;
-				bz.changeState(new BusterZeroDoubleBuster(false, true), true);
+				bz.changeState(new BusterZeroDoubleBuster(false, bz.stockedBusterLv), true);
 			}
 		} else if (chargeLevel >= 4) {
 			if (bz.charState is WallSlide) {
@@ -93,7 +93,7 @@ public class ZeroBuster2 : Weapon {
 				return;
 			} else {
 				bz.shootAnimTime = 0;
-				bz.changeState(new BusterZeroDoubleBuster(false, false), true);
+				bz.changeState(new BusterZeroDoubleBuster(false, bz.stockedBusterLv), true);
 			}
 		}
 		if (chargeLevel >= 1) {
@@ -107,14 +107,14 @@ public class ZeroBuster2 : Weapon {
 		int xDir = character.getShootXDir();
 		Player player = character.player;
 		character.playSound("buster3X3");
-		new DZBuster3Proj(dmg, type, shootPos, xDir, player, player.getNextActorNetId(), rpc: true);
+		new DZBuster3Proj(dmg, type, shootPos, xDir, character, player, player.getNextActorNetId(), rpc: true);
 	}
 	public void Buster2Proj(Character character) {
 		Point shootPos = character.getShootPos();
 		int xDir = character.getShootXDir();
 		Player player = character.player;
 		character.playSound("buster2X3");
-		new DZBuster2Proj(2, shootPos, xDir, player, player.getNextActorNetId(), 0, rpc: true);
+		new DZBuster2Proj(2, shootPos, xDir, character, player, player.getNextActorNetId(), 0, rpc: true);
 	}
 	public override bool canShoot(int chargeLevel, Player player) {
 		if (!base.canShoot(chargeLevel, player)) return false;

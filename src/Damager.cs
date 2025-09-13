@@ -612,7 +612,7 @@ public class Damager {
 					weakness = true;
 				}
 			}
-			if ((owner?.character as Zero)?.player.WinceBought == true && GenericMeleeProj.isZSaberClang(projId)) {
+			if ((owner?.character as Zero)?.player.WinceBought == true && damagingActor is Projectile proj1 && proj1.isZSaberClang) {
 				character.vel = Point.lerp(character.vel, Point.zero, Global.spf * 15);
 				character.slowdownTime += 0.4f;
 			}
@@ -1034,7 +1034,7 @@ public class Damager {
 							!zero.hypermodeActive()
 						) {
 							//What in the..
-							if (damagingActor is Projectile proj1 && proj1.isZSaberClang(projId) || GenericMeleeProj.isSaberIrisClang) {
+							if (damagingActor is Projectile proj1 && proj1.isZSaberClang) {
 								owner.character.changeState(new ZeroClang(-owner.character.xDir));
 							}
 						}

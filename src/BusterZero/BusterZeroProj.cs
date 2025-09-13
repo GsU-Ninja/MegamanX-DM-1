@@ -160,8 +160,8 @@ public class DZBuster2Proj : Projectile {
 		}
 		if (mainPlayer.BZTripleShot && !once && type == 0) {
 			once = true;
-			new DZBuster2Proj(mainPlayer.ArmorModeUltimate ? 2 : 1, pos, xDir, mainPlayer, mainPlayer.getNextActorNetId(), 2, rpc: true);
-			new DZBuster2Proj(mainPlayer.ArmorModeUltimate ? 2 : 1, pos, xDir, mainPlayer, mainPlayer.getNextActorNetId(), 3, rpc: true);
+			new DZBuster2Proj(mainPlayer.ArmorModeUltimate ? 2 : 1, pos, xDir, this, mainPlayer, mainPlayer.getNextActorNetId(), 2, rpc: true);
+			new DZBuster2Proj(mainPlayer.ArmorModeUltimate ? 2 : 1, pos, xDir, this, mainPlayer, mainPlayer.getNextActorNetId(), 3, rpc: true);
 
 		}
 	}

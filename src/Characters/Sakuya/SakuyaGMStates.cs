@@ -48,21 +48,8 @@ public abstract class SakuyaGenericMeleeState : CharState {
 			character.playSound("knife", sendRpc: true);
 	}
     public void RunLogic() {
-        var move = new Point(0, 0);
-		float runSpeed = character.getRunSpeed();
-		if (player.input.isHeld(Control.Left, player)) {
-			character.xDir = -1;
-			if (player.character.canMove()) move.x = -runSpeed;
-		} else if (player.input.isHeld(Control.Right, player)) {
-			character.xDir = 1;
-			if (player.character.canMove()) move.x = runSpeed;
-		}
-		if (move.magnitude > 0) {
-			character.move(move);
-		}
-		if (move.magnitude <= 0) {
-              character.changeState(new SakuyaTransition(), true);
-    	}
+		float runSpeed = 2.25f;
+        character.moveXY(sakuya.xDir * runSpeed, 0);
     }
 }
 public class SakuyaAttack : SakuyaGenericMeleeState {

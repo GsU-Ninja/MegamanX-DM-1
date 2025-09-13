@@ -1411,7 +1411,7 @@ public partial class Level {
 
 		// Collision shenanigans.
 		collidedGObjs.Clear();
-		(int x, int y)[] arrayGrid = populatedGrids.Order().ToArray();
+		(int x, int y)[] arrayGrid = populatedGrids.ToArray();
 		foreach ((int x, int y)gridData in arrayGrid) {
 			// Initalize data.
 			List<GameObject> currentGrid = new(grid[gridData.x, gridData.y]);
@@ -1872,8 +1872,8 @@ public partial class Level {
 				var chr = go as Character;
 				var proj = go as Projectile;
 				var mech = go as RideArmor;
-				if (chr != null && chr.isCCImmune()) continue;
-				if (proj != null && proj.damager?.owner?.character?.isCCImmune() == true) continue;
+				if (chr != null && chr.isTimeImmune()) continue;
+				if (proj != null && proj.damager?.owner?.character?.isTimeImmune() == true) continue;
 				if (cchs.pos.distanceTo(actor.getCenterPos()) < Global.viewScreenW) {
 					if (chr != null && (chr.player.alliance == cchs.owner.alliance)) {
 						if (proj != null && proj.damager?.owner.alliance == cchs.owner.alliance) {
@@ -1911,8 +1911,8 @@ public partial class Level {
 				var chr = go as Character;
 				var proj = go as Projectile;
 				var mech = go as RideArmor;
-				if (chr != null && chr.isCCImmune()) continue;
-				if (proj != null && proj.damager?.owner?.character?.isCCImmune() == true) continue;
+				if (chr != null && chr.isTimeImmune()) continue;
+				if (proj != null && proj.damager?.owner?.character?.isTimeImmune() == true) continue;
 				if (cchs.pos.distanceTo(actor.getCenterPos()) < Global.viewScreenW) {
 					if (chr != null && (chr.player.alliance == cchs.owner.alliance)) {
 						if (proj != null && proj.damager?.owner.alliance == cchs.owner.alliance) {

@@ -30,9 +30,9 @@ public MagmaDragoonMeleeW meleeWeapon = new();
 public MagmaDragoon(
 		Player player, float x, float y, int xDir,
 		bool isVisible, ushort? netId, bool ownedByLocalPlayer,
-		bool isWarpIn = true
+		bool isWarpIn = true, int? heartTanks = null, bool isATrans = false
 	) : base(
-		player, x, y, xDir, isVisible, netId, ownedByLocalPlayer, isWarpIn, false, false
+		player, x, y, xDir, isVisible, netId, ownedByLocalPlayer, isWarpIn, heartTanks, isATrans
 	) {
 		charId = CharIds.MagmaDragoon;	
 	}
@@ -916,7 +916,7 @@ public class MagmaDragoonDash : MagmaDragoonGenericMeleeState {
 	public override void update() {
 		base.update();
 		if (character.grounded && stateTime > 0.05f) {
-			landingCode();
+			exitOnLanding = true;
 			return;
 		}
 		if (Global.level.checkTerrainCollisionOnce(character, 0, -1) != null && character.vel.y < 0) {
@@ -948,7 +948,7 @@ public class MagmaDragoonDashAir : MagmaDragoonGenericMeleeState {
 	public override void update() {
 		base.update();
 		if (character.grounded && stateTime > 0.05f) {
-			landingCode();
+			exitOnLanding = true;
 			return;
 		}
 		if (Global.level.checkTerrainCollisionOnce(character, 0, -1) != null && character.vel.y < 0) {

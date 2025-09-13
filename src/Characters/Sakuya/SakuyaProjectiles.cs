@@ -34,7 +34,7 @@ public class SakuyaKnifeProj : Projectile {
 	}
 	public override void onHitDamagable(IDamagable damagable) {
 		if (damagable is not FrostShieldProjGround or FrostShieldProjAir or FrostShieldProjCharged
-			or FrostShieldProj or FrostShieldProjPlatform or FrostShieldProjChargedGround 
+			or FrostShieldProj or FrostShieldProjPlatform or FrostShieldProjChargedGround
 			or GaeaShieldProj or ChillPIceProj) {
 			base.onHitDamagable(damagable);
 		}

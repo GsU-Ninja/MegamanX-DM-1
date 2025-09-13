@@ -133,7 +133,7 @@ public class ZeroUpgradeMenu : IMainMenu {
 	public void render() {
 		var mainPlayer = Global.level.mainPlayer;
 		DrawWrappers.DrawTextureHUD(Global.textures["pausemenu"], 0, 0);
-		if (mainPlayer.isZero) Global.sprites["menu_x3zero"].drawToHUD(0, 294, 107);
+		if (mainPlayer.character is Zero) Global.sprites["menu_x3zero"].drawToHUD(0, 294, 107);
 		if (mainPlayer.isblack) Global.sprites["menu_x3zero"].drawToHUD(1, 294, 107);
 		if (mainPlayer.isviral) Global.sprites["menu_x3zero"].drawToHUD(2, 294, 107);
 		if (mainPlayer.isaz) Global.sprites["menu_x3zero"].drawToHUD(3, 294, 107);
@@ -203,7 +203,7 @@ public class ZeroUpgradeMenu : IMainMenu {
 
 }
 
-public class Skill {
+public class SkillZB {
     public string Name = "";
     public Func<Player, bool> IsUnlocked;
     public Func<Player, bool> CanUnlock;
@@ -223,7 +223,7 @@ public class Skill {
     }
 }
 
-public interface IMenuHandler {
+public interface IMenuHandlerr {
     void HandleInput(Player p, int ud, int lr);
     void RenderCursor(int slot, int ud, int lr, AnimData cursor, uint GHW, uint GHH);
     void RenderDescription(Player p, int ud, int lr, uint GHW, uint GHH);
@@ -231,11 +231,11 @@ public interface IMenuHandler {
     void RenderWIcons(int frame, AnimData icon, uint GHW, uint GHH, float opacity);
 }
 
-public class SaberMenuHandler : IMenuHandler {
-    private Dictionary<(int ud, int lr), Skill> saberSkills = new();
+public class SaberMenuHandler : IMenuHandlerr {
+    private Dictionary<(int ud, int lr), SkillZB> saberSkills = new();
 
     public SaberMenuHandler() {
-        saberSkills[(0, 0)] = new Skill {
+        saberSkills[(0, 0)] = new SkillZB {
             Name = "Z-Saber",
             IsUnlocked = p => p.BZZSaber,
             CanUnlock = p => !p.BZZSaber,
@@ -247,7 +247,7 @@ public class SaberMenuHandler : IMenuHandler {
             description = "The start of your\nZ-Saber expansion.",
             Price = "1",
         };
-        saberSkills[(0, 1)] = new Skill {
+        saberSkills[(0, 1)] = new SkillZB {
             Name = "Tenshouzan",
             IsUnlocked = p => p.BZTenshouzan,
             CanUnlock = p => !p.BZTenshouzan,
@@ -261,7 +261,7 @@ public class SaberMenuHandler : IMenuHandler {
             description2 = "Input: [MUP] + [SHOOT]",
             Price = "1",
         };
-        saberSkills[(0, -1)] = new Skill {
+        saberSkills[(0, -1)] = new SkillZB {
             Name = "Drill Crush",
             IsUnlocked = p => p.BZDrillCrush,
             CanUnlock = p => !p.BZDrillCrush,
@@ -275,7 +275,7 @@ public class SaberMenuHandler : IMenuHandler {
             description = "Do a downwards thrust while falling.",
             description2 = "Input: [MDOWN] + [SHOOT]"
         };
-        saberSkills[(1, 0)] = new Skill {
+        saberSkills[(1, 0)] = new SkillZB {
             Name = "Shield B.",
             IsUnlocked = p => p.BZShieldBoomerang,
             CanUnlock = p => !p.BZShieldBoomerang,
@@ -289,7 +289,7 @@ public class SaberMenuHandler : IMenuHandler {
             description = "Spin",
             description2 = "Input: [WeaponR] + [UP] + Full Charge"
         };
-        saberSkills[(1, 1)] = new Skill {
+        saberSkills[(1, 1)] = new SkillZB {
             Name = "Fish Fang",
             IsUnlocked = p => p.BZFishFang,
             CanUnlock = p => !p.BZFishFang,
@@ -303,7 +303,7 @@ public class SaberMenuHandler : IMenuHandler {
             description = "Creates two torpedos on slash.",
             description2 = "Input: [SPC] + On Air"
         };
-        saberSkills[(1, -1)] = new Skill {
+        saberSkills[(1, -1)] = new SkillZB {
             Name = "Saber C.",
             IsUnlocked = p => p.BZSaberSlam,
             CanUnlock = p => !p.BZSaberSlam,
@@ -317,7 +317,7 @@ public class SaberMenuHandler : IMenuHandler {
             description = "A projectile is created on Ground.",
             description2 = "Requires Full Charge"
         };
-        saberSkills[(-1, 0)] = new Skill {
+        saberSkills[(-1, 0)] = new SkillZB {
             Name = "ZS. Extend",
             IsUnlocked = p => p.BZZSaberExtend,
             CanUnlock = p => !p.BZZSaberExtend,
@@ -331,7 +331,7 @@ public class SaberMenuHandler : IMenuHandler {
             description2 = "Input: [MUP] + [SHOOT]",
             Price = "1",
         };
-        saberSkills[(-1, 1)] = new Skill {
+        saberSkills[(-1, 1)] = new SkillZB {
             Name = "BS. Option",
             IsUnlocked = p => p.BZBubblesplash,
             CanUnlock = p => !p.BZBubblesplash,
@@ -346,7 +346,7 @@ public class SaberMenuHandler : IMenuHandler {
             description2 = "Input: [MUP] + [SHOOT]",
             Price = "1",
         };
-        saberSkills[(-1, -2)] = new Skill {
+        saberSkills[(-1, -2)] = new SkillZB {
             Name = "FS. Option",
             IsUnlocked = p => p.BZFrostShield,
             CanUnlock = p => !p.BZFrostShield,
@@ -360,7 +360,7 @@ public class SaberMenuHandler : IMenuHandler {
             description = "Hyouretsuzan on DC, Block has 4 HP.",
             description2 = "Input: [WeaponR] + [MDOWN]",
         };
-        saberSkills[(-1, -1)] = new Skill {
+        saberSkills[(-1, -1)] = new SkillZB {
             Name = "ES. Option",
             IsUnlocked = p => p.BZDrillCrushSpark,
             CanUnlock = p => !p.BZDrillCrushSpark,
@@ -375,7 +375,7 @@ public class SaberMenuHandler : IMenuHandler {
             description2 = "",
             Price = "1",
         };
-        saberSkills[(-1, 2)] = new Skill {
+        saberSkills[(-1, 2)] = new SkillZB {
             Name = "FW. Option",
             IsUnlocked = p => p.BZFirewave,
             CanUnlock = p => !p.BZFirewave,
@@ -493,11 +493,11 @@ public class SaberMenuHandler : IMenuHandler {
     }
 }
 
-public class SaberMenuHandler2 : IMenuHandler {
-    private Dictionary<(int ud, int lr), Skill> saberSkills = new();
+public class SaberMenuHandler2 : IMenuHandlerr {
+    private Dictionary<(int ud, int lr), SkillZB> saberSkills = new();
 
     public SaberMenuHandler2() {
-        saberSkills[(0, 0)] = new Skill {
+        saberSkills[(0, 0)] = new SkillZB {
             Name = "Saber Dash",
             IsUnlocked = p => p.BZDash,
             CanUnlock = p => !p.BZDash,
@@ -509,7 +509,7 @@ public class SaberMenuHandler2 : IMenuHandler {
             description2 = "Input: [DASH] + [SPC]",
             Requirements = new List<Func<Player, bool>> { p => p.BZZSaber },
         };
-        saberSkills[(0, 1)] = new Skill {
+        saberSkills[(0, 1)] = new SkillZB {
             Name = "BZDash2",
             IsUnlocked = p => p.BZDash2,
             CanUnlock = p => !p.BZDash2,
@@ -569,11 +569,11 @@ public class SaberMenuHandler2 : IMenuHandler {
     }
 }
 
-public class BusterMenuHandler : IMenuHandler {
-    private Dictionary<(int ud, int lr), Skill> busterSkills = new();
+public class BusterMenuHandler : IMenuHandlerr {
+    private Dictionary<(int ud, int lr), SkillZB> busterSkills = new();
 
     public BusterMenuHandler() {
-        busterSkills[(0, 0)] = new Skill {
+        busterSkills[(0, 0)] = new SkillZB {
             Name = "Z-Buster",
             IsUnlocked = p => p.BZBuster,
             CanUnlock = p => !p.BZBuster,
@@ -586,7 +586,7 @@ public class BusterMenuHandler : IMenuHandler {
             description = "The start of your\nZ-Buster expansion.",
             Price = "1",
         };
-        busterSkills[(0, 1)] = new Skill {
+        busterSkills[(0, 1)] = new SkillZB {
             Name = "Speed Shoot",
             IsUnlocked = p => p.BZVulcan,
             CanUnlock = p => !p.BZVulcan,
@@ -598,7 +598,7 @@ public class BusterMenuHandler : IMenuHandler {
             description2 = "",
             Price = "1",
         };
-        busterSkills[(0, 2)] = new Skill {
+        busterSkills[(0, 2)] = new SkillZB {
             Name = "Reflect Laser",
             IsUnlocked = p => p.BZReflectLaser,
             CanUnlock = p => !p.BZReflectLaser,
@@ -610,7 +610,7 @@ public class BusterMenuHandler : IMenuHandler {
             description2 = "",
             Price = "1",
         };
-        busterSkills[(0, 3)] = new Skill {
+        busterSkills[(0, 3)] = new SkillZB {
             Name = "Burning Shot",
             IsUnlocked = p => p.BZBurningShot,
             CanUnlock = p => !p.BZBurningShot,
@@ -622,7 +622,7 @@ public class BusterMenuHandler : IMenuHandler {
             description2 = "",
             Price = "1",
         };
-        busterSkills[(0, -1)] = new Skill {
+        busterSkills[(0, -1)] = new SkillZB {
             Name = "Laser Shot",
             IsUnlocked = p => p.BZLaserShot,
             CanUnlock = p => !p.BZLaserShot,
@@ -634,7 +634,7 @@ public class BusterMenuHandler : IMenuHandler {
             description2 = "",
             Price = "1",
         };
-        busterSkills[(0, -2)] = new Skill {
+        busterSkills[(0, -2)] = new SkillZB {
             Name = "Ice Javelin",
             IsUnlocked = p => p.BZIceJavelin,
             CanUnlock = p => !p.BZIceJavelin,
@@ -646,7 +646,7 @@ public class BusterMenuHandler : IMenuHandler {
             description2 = "",
             Price = "1",
         };
-        busterSkills[(0, -3)] = new Skill {
+        busterSkills[(0, -3)] = new SkillZB {
             Name = "Triple Shot",
             IsUnlocked = p => p.BZTripleShot,
             CanUnlock = p => !p.BZTripleShot,
@@ -658,7 +658,7 @@ public class BusterMenuHandler : IMenuHandler {
             description2 = "",
             Price = "1",
         };
-        busterSkills[(1, 0)] = new Skill {
+        busterSkills[(1, 0)] = new SkillZB {
             Name = "Yammark O.",
             IsUnlocked = p => p.BZYammarkOption,
             CanUnlock = p => !p.BZYammarkOption,
@@ -670,7 +670,7 @@ public class BusterMenuHandler : IMenuHandler {
             description2 = "",
             Price = "2",
         };
-        busterSkills[(1, 1)] = new Skill {
+        busterSkills[(1, 1)] = new SkillZB {
             Name = "Parasite B.",
             IsUnlocked = p => p.BZParasiteBomb,
             CanUnlock = p => !p.BZParasiteBomb,
@@ -682,7 +682,7 @@ public class BusterMenuHandler : IMenuHandler {
             description2 = "",
             Price = "1",
         };
-        busterSkills[(1, -1)] = new Skill {
+        busterSkills[(1, -1)] = new SkillZB {
             Name = "Z-Drone",
             IsUnlocked = p => p.BZZDrones,
             CanUnlock = p => !p.BZZDrones,
@@ -694,7 +694,7 @@ public class BusterMenuHandler : IMenuHandler {
             description2 = "",
             Price = "1",
         };
-        busterSkills[(-1, 0)] = new Skill {
+        busterSkills[(-1, 0)] = new SkillZB {
             Name = "Buster Plus",
             IsUnlocked = p => p.BZBuster2,
             CanUnlock = p => !p.BZBuster2,
@@ -706,7 +706,7 @@ public class BusterMenuHandler : IMenuHandler {
             description2 = "",
             Price = "1",
         };
-        busterSkills[(-1, 1)] = new Skill {
+        busterSkills[(-1, 1)] = new SkillZB {
             Name = "Blast Shot",
             IsUnlocked = p => p.BZBlastShot,
             CanUnlock = p => !p.BZBlastShot,
@@ -718,7 +718,7 @@ public class BusterMenuHandler : IMenuHandler {
             description2 = "",
             Price = "2",
         };
-        busterSkills[(-1, 2)] = new Skill {
+        busterSkills[(-1, 2)] = new SkillZB {
             Name = "V-Shot",
             IsUnlocked = p => p.BZVShot,
             CanUnlock = p => !p.BZVShot,
@@ -730,7 +730,7 @@ public class BusterMenuHandler : IMenuHandler {
             description2 = "",
             Price = "2",
         };
-        busterSkills[(-1, -1)] = new Skill {
+        busterSkills[(-1, -1)] = new SkillZB {
             Name = "Spark Shot",
             IsUnlocked = p => p.BZSparkShot,
             CanUnlock = p => !p.BZSparkShot,
@@ -742,7 +742,7 @@ public class BusterMenuHandler : IMenuHandler {
             description2 = "",
             Price = "2",
         };
-        busterSkills[(-1, -2)] = new Skill {
+        busterSkills[(-1, -2)] = new SkillZB {
             Name = "Blizzard A.",
             IsUnlocked = p => p.BZBlizzardArrow,
             CanUnlock = p => !p.BZBlizzardArrow,
@@ -865,11 +865,11 @@ public class BusterMenuHandler : IMenuHandler {
         return false;
     }
 }
-public class BusterMenuHandler2 : IMenuHandler {
-    private Dictionary<(int ud, int lr), Skill> busterSkills = new();
+public class BusterMenuHandler2 : IMenuHandlerr {
+    private Dictionary<(int ud, int lr), SkillZB> busterSkills = new();
 
     public BusterMenuHandler2() {
-        busterSkills[(0, 3)] = new Skill {
+        busterSkills[(0, 3)] = new SkillZB {
             Name = "Tri-Thunder",
             IsUnlocked = p => p.BZTriThunder,
             CanUnlock = p => !p.BZTriThunder && p.EXPCurrency >= 2,
@@ -881,7 +881,7 @@ public class BusterMenuHandler2 : IMenuHandler {
             description2 = "",
             Price = "2",
         };
-        busterSkills[(0, 1)] = new Skill {
+        busterSkills[(0, 1)] = new SkillZB {
             Name = "Time S.",
             IsUnlocked = p => p.BZTimeStopper,
             CanUnlock = p => !p.BZTimeStopper && p.EXPCurrency >= 2,
@@ -893,7 +893,7 @@ public class BusterMenuHandler2 : IMenuHandler {
             description2 = "",
             Price = "2",
         };
-        busterSkills[(0, 2)] = new Skill {
+        busterSkills[(0, 2)] = new SkillZB {
             Name = "Tractor S.",
             IsUnlocked = p => p.BZTractorShot,
             CanUnlock = p => !p.BZTractorShot && p.EXPCurrency >= 2,
@@ -905,7 +905,7 @@ public class BusterMenuHandler2 : IMenuHandler {
             description2 = "",
             Price = "2",
         };
-        busterSkills[(0, 0)] = new Skill {
+        busterSkills[(0, 0)] = new SkillZB {
             Name = "Lighting",
             IsUnlocked = p => p.BZZLighting,
             CanUnlock = p => !p.BZZLighting && p.EXPCurrency >= 2,
@@ -963,11 +963,11 @@ public class BusterMenuHandler2 : IMenuHandler {
     }
 }
 
-public class ArmorMenuHandler : IMenuHandler {
-    private Dictionary<(int ud, int lr), Skill> armorSkills = new();
+public class ArmorMenuHandler : IMenuHandlerr {
+    private Dictionary<(int ud, int lr), SkillZB> armorSkills = new();
 
     public ArmorMenuHandler() {
-        armorSkills[(0, 0)] = new Skill {
+        armorSkills[(0, 0)] = new SkillZB {
             Name = "ArmorZ",
             IsUnlocked = p => p.ArmorZ,
             CanUnlock = p => !p.ArmorZ && p.EXPCurrency >= 1,
@@ -977,7 +977,7 @@ public class ArmorMenuHandler : IMenuHandler {
             Unlock = new List<Action<Player>> { p => p.ArmorZ = true, p => p.EXPCurrency = p.EXPCurrency - 1 },
             Lock = new List<Action<Player>> { p => p.ArmorZ = false, p => p.EXPCurrency = p.EXPCurrency + 1  },
         };
-        armorSkills[(0, 1)] = new Skill {
+        armorSkills[(0, 1)] = new SkillZB {
             Name = "ArmorModeX",
             IsUnlocked = p => p.ArmorModeX,
             CanUnlock = p => !p.ArmorModeX && p.EXPCurrency >= 1,
@@ -988,7 +988,7 @@ public class ArmorMenuHandler : IMenuHandler {
                 p => p.ArmorZ
             }
         };
-        armorSkills[(0, -1)] = new Skill {
+        armorSkills[(0, -1)] = new SkillZB {
             Name = "ArmorModeRise",
             IsUnlocked = p => p.ArmorModeRise,
             CanUnlock = p => !p.ArmorModeRise && p.EXPCurrency >= 1,
@@ -999,7 +999,7 @@ public class ArmorMenuHandler : IMenuHandler {
                 p => p.ArmorZ
             }
         };
-        armorSkills[(1, 0)] = new Skill {
+        armorSkills[(1, 0)] = new SkillZB {
             Name = "ArmorModeActive",
             IsUnlocked = p => p.ArmorModeActive,
             CanUnlock = p => !p.ArmorModeActive && p.EXPCurrency >= 1,
@@ -1007,7 +1007,7 @@ public class ArmorMenuHandler : IMenuHandler {
             Unlock = new List<Action<Player>> { p => p.ArmorModeActive = true, p => p.EXPCurrency = p.EXPCurrency - 1  },
             Lock = new List<Action<Player>> { p => p.ArmorModeActive = false, p => p.EXPCurrency = p.EXPCurrency + 1  },
         };
-        armorSkills[(1, 1)] = new Skill {
+        armorSkills[(1, 1)] = new SkillZB {
             Name = "ArmorModeEnergy",
             IsUnlocked = p => p.ArmorModeEnergy,
             CanUnlock = p => !p.ArmorModeEnergy && p.EXPCurrency >= 2,
@@ -1021,7 +1021,7 @@ public class ArmorMenuHandler : IMenuHandler {
                 
             }
         };
-        armorSkills[(1, -1)] = new Skill {
+        armorSkills[(1, -1)] = new SkillZB {
             Name = "ArmorModePower",
             IsUnlocked = p => p.ArmorModePower,
             CanUnlock = p => !p.ArmorModePower && p.EXPCurrency >= 2,
@@ -1034,7 +1034,7 @@ public class ArmorMenuHandler : IMenuHandler {
                 p => p.ArmorModeRise,
             }
         };
-        armorSkills[(-1, 0)] = new Skill {
+        armorSkills[(-1, 0)] = new SkillZB {
             Name = "ArmorModeProto",
             IsUnlocked = p => p.ArmorModeProto,
             CanUnlock = p => !p.ArmorModeProto && p.EXPCurrency >= 1,
@@ -1045,7 +1045,7 @@ public class ArmorMenuHandler : IMenuHandler {
                 p => p.ArmorZ,
             }
         };
-        armorSkills[(-1, 1)] = new Skill {
+        armorSkills[(-1, 1)] = new SkillZB {
             Name = "ArmorModeErase",
             IsUnlocked = p => p.ArmorModeErase,
             CanUnlock = p => !p.ArmorModeErase && p.EXPCurrency >= 2,
@@ -1058,7 +1058,7 @@ public class ArmorMenuHandler : IMenuHandler {
                 p => p.ArmorModeProto
             }
         };
-        armorSkills[(-1, -1)] = new Skill {
+        armorSkills[(-1, -1)] = new SkillZB {
             Name = "ArmorModeDefense",
             IsUnlocked = p => p.ArmorModeDefense,
             CanUnlock = p => !p.ArmorModeDefense && p.EXPCurrency >= 2,
@@ -1071,7 +1071,7 @@ public class ArmorMenuHandler : IMenuHandler {
                 p => p.ArmorModeProto
             }
         };
-        armorSkills[(-2, 0)] = new Skill {
+        armorSkills[(-2, 0)] = new SkillZB {
             Name = "ArmorZUpgrade",
             IsUnlocked = p => p.ArmorZUpgrade,
             CanUnlock = p => !p.ArmorZUpgrade && p.EXPCurrency >= 1,
@@ -1168,11 +1168,11 @@ public class ArmorMenuHandler : IMenuHandler {
         return false;
     }
 }
-public class HelmetMenuHandler : IMenuHandler {
-    private Dictionary<(int ud, int lr), Skill> helmetSkills = new();
+public class HelmetMenuHandler : IMenuHandlerr {
+    private Dictionary<(int ud, int lr), SkillZB> helmetSkills = new();
 
     public HelmetMenuHandler() {
-        helmetSkills[(0, 0)] = new Skill {
+        helmetSkills[(0, 0)] = new SkillZB {
             Name = "HelmetZ",
             IsUnlocked = p => p.HelmetZ,
             CanUnlock = p => !p.HelmetZ,
@@ -1183,7 +1183,7 @@ public class HelmetMenuHandler : IMenuHandler {
                 
             }
         };
-        helmetSkills[(-1, 0)] = new Skill {
+        helmetSkills[(-1, 0)] = new SkillZB {
             Name = "HelmetAutoRecover",
             IsUnlocked = p => p.HelmetAutoRecover,
             CanUnlock = p => !p.HelmetAutoRecover,
@@ -1194,7 +1194,7 @@ public class HelmetMenuHandler : IMenuHandler {
                 p => p.HelmetZ
             }
         };
-        helmetSkills[(-1, 1)] = new Skill {
+        helmetSkills[(-1, 1)] = new SkillZB {
             Name = "HelmetAutoCharge",
             IsUnlocked = p => p.HelmetAutoCharge,
             CanUnlock = p => !p.HelmetAutoCharge,
@@ -1205,7 +1205,7 @@ public class HelmetMenuHandler : IMenuHandler {
                 p => p.HelmetZ
             }
         };
-        helmetSkills[(-1, -1)] = new Skill {
+        helmetSkills[(-1, -1)] = new SkillZB {
             Name = "HelmetQuickCharge",
             IsUnlocked = p => p.HelmetQuickCharge,
             CanUnlock = p => !p.HelmetQuickCharge,
@@ -1265,10 +1265,10 @@ public class HelmetMenuHandler : IMenuHandler {
     }
 }
 
-public class BootsMenuHandler : IMenuHandler {
-    private Dictionary<(int ud, int lr), Skill> bootsSkills = new();
+public class BootsMenuHandler : IMenuHandlerr {
+    private Dictionary<(int ud, int lr), SkillZB> bootsSkills = new();
     public BootsMenuHandler() {
-        bootsSkills[(0, 0)] = new Skill {
+        bootsSkills[(0, 0)] = new SkillZB {
             Name = "BootsZ",
             IsUnlocked = p => p.BootsZ,
             CanUnlock = p => !p.BootsZ,
@@ -1276,7 +1276,7 @@ public class BootsMenuHandler : IMenuHandler {
             Unlock = new List<Action<Player>> { p => p.BootsZ = true },
             Lock = new List<Action<Player>> { p => p.BootsZ = false },
         };
-        bootsSkills[(0, -1)] = new Skill {
+        bootsSkills[(0, -1)] = new SkillZB {
             Name = "BootsFastRun",
             IsUnlocked = p => p.BootsFastRun,
             CanUnlock = p => !p.BootsFastRun,
@@ -1287,7 +1287,7 @@ public class BootsMenuHandler : IMenuHandler {
                 p => p.BootsZ
             }
         };
-        bootsSkills[(0, 1)] = new Skill {
+        bootsSkills[(0, 1)] = new SkillZB {
             Name = "BootsJump",
             IsUnlocked = p => p.BootsJump,
             CanUnlock = p => !p.BootsJump,
@@ -1298,7 +1298,7 @@ public class BootsMenuHandler : IMenuHandler {
                 p => p.BootsZ
             }
         };
-        bootsSkills[(1, 0)] = new Skill {
+        bootsSkills[(1, 0)] = new SkillZB {
             Name = "BootsFrog",
             IsUnlocked = p => p.BootsFrog,
             CanUnlock = p => !p.BootsFrog,
@@ -1309,7 +1309,7 @@ public class BootsMenuHandler : IMenuHandler {
                 p => p.BootsZ
             }
         };
-        bootsSkills[(-1, 0)] = new Skill {
+        bootsSkills[(-1, 0)] = new SkillZB {
             Name = "BootsDash",
             IsUnlocked = p => p.BootsDash,
             CanUnlock = p => !p.BootsDash,
@@ -1317,7 +1317,7 @@ public class BootsMenuHandler : IMenuHandler {
             Unlock = new List<Action<Player>> { p => p.BootsDash = true },
             Lock = new List<Action<Player>> { p => p.BootsDash = false },
         };
-        bootsSkills[(-1, -1)] = new Skill {
+        bootsSkills[(-1, -1)] = new SkillZB {
             Name = "BootsSpark",
             IsUnlocked = p => p.BootsSpark,
             CanUnlock = p => !p.BootsSpark,
@@ -1329,7 +1329,7 @@ public class BootsMenuHandler : IMenuHandler {
                 p => p.BootsDash
             }
         };
-        bootsSkills[(-1, 1)] = new Skill {
+        bootsSkills[(-1, 1)] = new SkillZB {
             Name = "BootsHighJump",
             IsUnlocked = p => p.BootsHighJump,
             CanUnlock = p => !p.BootsHighJump,

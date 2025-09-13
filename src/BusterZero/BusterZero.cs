@@ -340,7 +340,7 @@ public class BusterZero : Character {
 		if (!charState.BZBugFix) {
 			if (chargeLevel == 0) {
 				var lemon = new DZBusterProj(
-					shootPos, xDir, player, player.getNextActorNetId(), rpc: true
+					shootPos, xDir, this, player, player.getNextActorNetId(), rpc: true
 				);
 				zeroLemonsOnField.Add(lemon);
 				sound = "busterX3";
@@ -364,7 +364,7 @@ public class BusterZero : Character {
 					return;
 				} else {
 					shootAnimTime = 0;
-					changeState(new BusterZeroDoubleBuster(false, true), true);
+					changeState(new BusterZeroDoubleBuster(false, stockedBusterLv), true);
 				}
 			} else if (chargeLevel >= 4) {
 				if (charState is WallSlide) {
@@ -375,7 +375,7 @@ public class BusterZero : Character {
 					return;
 				} else {
 					shootAnimTime = 0;
-					changeState(new BusterZeroDoubleBuster(false, false), true);
+					changeState(new BusterZeroDoubleBuster(false, stockedBusterLv), true);
 				}
 			}
 			if (chargeLevel >= 1) {
@@ -397,14 +397,14 @@ public class BusterZero : Character {
 		int xDir = character.getShootXDir();
 		Player player = character.player;
 		character.playSound("buster3X3");
-		new DZBuster3Proj(player.ArmorModeUltimate ? dmg + 1 : dmg, type, shootPos, xDir, player, player.getNextActorNetId(), rpc: true);
+		new DZBuster3Proj(player.ArmorModeUltimate ? dmg + 1 : dmg, type, shootPos, xDir, this, player, player.getNextActorNetId(), rpc: true);
 	}
 	public void Buster2Proj(Character character) {
 		Point shootPos = character.getShootPos();
 		int xDir = character.getShootXDir();
 		Player player = character.player;
 		character.playSound("buster2X3");
-		new DZBuster2Proj(player.ArmorModeUltimate ? 3 : 2, shootPos, xDir, player, player.getNextActorNetId(), 0, rpc: true);
+		new DZBuster2Proj(player.ArmorModeUltimate ? 3 : 2, shootPos, xDir, this, player, player.getNextActorNetId(), 0, rpc: true);
 	}
 	public override bool canShoot() {
 		if (isInvulnerableAttack()) return false;

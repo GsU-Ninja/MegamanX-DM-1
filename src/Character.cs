@@ -463,13 +463,13 @@ public partial class Character : Actor, IDamagable {
 	}
 
 	public bool isCStingInvisible() {
-		return this is MegamanX { stingActive: true };
+		return this is MegamanX { stingActiveTime : > 0 };
 	}
 
 	public bool isCStingInvisibleGraphics() {
 		return this is MegamanX {
 			hasUltimateArmor: false,
-			stingActive: true,
+			stingActiveTime : > 0,
 		};
 	}
 
@@ -572,6 +572,9 @@ public partial class Character : Actor, IDamagable {
 		}
 		if (RootTime > 0) return false;
 		return true;
+	}
+	public virtual bool isAttacking() {
+		return sprite.name.Contains("attack");
 	}
 
 	public virtual bool canDash() {
@@ -770,7 +773,7 @@ public partial class Character : Actor, IDamagable {
 		if (igFreezeProgress == 1) jp *= 0.75f;
 		if (igFreezeProgress == 2) jp *= 0.5f;
 		if (igFreezeProgress == 3) jp *= 0.25f;
-		if (player.JumperBought && player.isZero) jp *= 1.10f;
+		if (player.JumperBought && this is Zero) jp *= 1.10f;
 		if (player.isBusterZero) {
 			if (player.BootsHighJump && (charState is Crouch || charState is WallSlide)) {
 				jp = highjumpjp;		

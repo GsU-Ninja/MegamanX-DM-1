@@ -653,8 +653,7 @@ public class Idle : CharState {
 			if (!character.isSoftLocked() && character.canTurn()) {
 				if (player.input.isHeld(Control.Left, player)) character.xDir = -1;
 				if (player.input.isHeld(Control.Right, player)) character.xDir = 1;
-				if (character.canMove() && !player.isSakuya) character.changeState(character.getRunState());
-				if (player.character.canMove() && player.isSakuya) character.changeState(new SakuyaWalk(skip: false));
+				if (character.canMove()) character.changeState(character.getRunState());
 			}
 		}
 
@@ -721,15 +720,6 @@ public class Run : CharState {
 		}
 	}
 
-	public override void onEnter(CharState oldState) {
-		base.onEnter(oldState);
-		if (skipIntro) {
-			if (character is CmdSigma) {
-				character.frameIndex = 1;
-			}
-			stateFrames = 5;
-		}
-	}
 }
 
 public class Crouch : CharState {
