@@ -103,6 +103,39 @@ public class Projectile : Actor {
 		this.ownerPlayer = player;
 		canBeLocal = true;
 	}
+	public Projectile(
+		Point pos, int xDir, Actor owner, string sprite,
+		ushort? netId, Player? player = null, bool? ownedByLocalPlayer = null, bool addToLevel = true
+	) : base(
+		sprite, pos, netId,
+		ownedByLocalPlayer ?? player?.ownedByLocalPlayer ?? owner?.ownedByLocalPlayer ??
+		(netId != null ? Global.level.getPlayerById(netId.Value).ownedByLocalPlayer : true),
+		!addToLevel
+	) {
+		weapon = Weapon.baseNetWeapon;
+		useGravity = false;
+		ownerPlayer = player ?? owner?.netOwner ?? Global.level.getPlayerById(netId!.Value);
+		damager = new Damager(ownerPlayer, 0, 0, 0);
+		owningActor = owner;
+		this.xDir = xDir;
+		if ((Global.level.gameMode.isTeamMode && Global.level.mainPlayer != ownerPlayer) &&
+			this is not NapalmPartProj or FlameBurnerProj
+		) {
+			RenderEffectType? allianceEffect = ownerPlayer.alliance switch {
+				0 => RenderEffectType.BlueShadow,
+				1 => RenderEffectType.RedShadow,
+				2 => RenderEffectType.GreenShadow,
+				3 => RenderEffectType.PurpleShadow,
+				4 => RenderEffectType.YellowShadow,
+				5 => RenderEffectType.OrangeShadow,
+				_ => null
+			};
+			if (allianceEffect != null) {
+				addRenderEffect(allianceEffect.Value);
+			}
+		}
+		canBeLocal = true;
+	}
 
 	public void setIndestructableProperties() {
 		destroyOnHit = false;
@@ -341,7 +374,8 @@ public class Projectile : Actor {
 		if (!defender.sprite.name.Contains("attack") && !defender.sprite.name.Contains("block")) return false;
 		if (defender.sprite.name.Contains("sigma2")) return false;
 		if ((attacker as Zero)?.hypermodeActive() == true) return false;
-
+		if ((defender as BusterZero)?.player.UnlockTree == true && (defender as BusterZero)?.isBlackZero == false) return false;
+		if ((attacker as Iris)?.hypermodeActive() == true) return false;
 		// Not facing each other
 		if (attacker.pos.x >= defender.pos.x && (attacker.xDir != -1 || defender.xDir != 1)) return false;
 		if (attacker.pos.x < defender.pos.x && (attacker.xDir != 1 || defender.xDir != -1)) return false;

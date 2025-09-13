@@ -1717,6 +1717,7 @@ public enum CommandGrabScenario {
 	BeetleLiftGrab,
 	CrushCGrab,
 	BBuffaloGrab,
+	MagmaDragoonGrab,
 	Release,
 }
 
@@ -1798,6 +1799,19 @@ public class RPCCommandGrabPlayer : RPC {
 			} else {
 				if (grabberChar.ownedByLocalPlayer) {
 					grabberChar.changeState(new XUPGrabState(victimChar));
+				}
+			}
+		} else if (hookScenario == CommandGrabScenario.MagmaDragoonGrab) {
+			if (grabberChar == null || victimChar == null) return;
+			if (!victimChar.canBeGrabbed()) return;
+
+			if (!isDefenderFavored) {
+				if (victim.ownedByLocalPlayer && victimChar.charState is not MagmaDragoonGrabbed) {
+					victimChar.changeState(new MagmaDragoonGrabbed(grabberChar), true);
+				}
+			} else {
+				if (grabberChar.ownedByLocalPlayer) {
+					grabberChar.changeState(new MagmaDragoonGrabState(victimChar));
 				}
 			}
 		} else if (hookScenario == CommandGrabScenario.Release) {

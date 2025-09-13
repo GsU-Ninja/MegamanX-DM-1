@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace MMXOnline;
 
@@ -60,6 +61,7 @@ public class Damager {
 		{ (int)ProjIds.Rekkoha, 1f },
 		{ (int)ProjIds.HexaInvolute, 1f },
 		{ (int)ProjIds.ZSaber3, 1f },
+		{ (int)ProjIds.IrisSaber3, 2f }
 	};
 
 	public Damager(Player owner, float damage, int flinch, float hitCooldown, float knockback = 0) {
@@ -79,13 +81,21 @@ public class Damager {
 		if (weapon == null) return false;
 		if (weapon is ItemTracer) return false;
 		if (projId == (int)ProjIds.GravityWellCharged) return false;
-
 		var newDamage = (overrideDamage != null ? (float)overrideDamage : damage);
 		var newFlinch = (overrideFlinch != null ? (int)overrideFlinch : flinch);
 
 		var chr = victim as Character;
 
 		if (chr != null) {
+			if (chr.isSakuyaTimeStopped && owner.character.isSakuyaTimeStopped) {
+				damage = newDamage;
+				flinch = newFlinch;
+				chr.SakuyaTimeStopDMG += damage/2;
+			} else if (!chr.isSakuyaTimeStopped && owner.character.isSakuyaTimeStopped ||
+						chr.isSakuyaTimeStopped && !owner.character.isSakuyaTimeStopped) {
+				chr.SakuyaTimeStopDMG += damage;
+				newDamage = 0;
+			}
 			if (chr.isCCImmune()) {
 				newFlinch = 0;
 				weakness = false;
@@ -101,6 +111,23 @@ public class Damager {
 				else {
 					newFlinch = Global.superFlinch;
 				}
+			}
+			if (chr is Iris iris && iris.isHyperIris && newFlinch > 0) {
+				if (newFlinch < 12) {
+					newFlinch = 0;
+				} else if (newFlinch < 26) {
+					newFlinch = 13;
+				} 
+			}
+			if (chr.player.isBusterZero && newFlinch > 0 && chr.player.ArmorModeDefense) {
+				if (newFlinch < 13) {
+					newFlinch = 6;
+				} else {
+					newFlinch = 13;
+				}
+			}
+			if (chr.charState is BusterZeroRollingSlash) {
+				newFlinch = 26;
 			}
 		}
 
@@ -277,6 +304,7 @@ public class Damager {
 				case (int)ProjIds.ElectricShock:
 				case (int)ProjIds.MK2StunShot:
 				case (int)ProjIds.MorphMPowder:
+				case (int)ProjIds.SakuyaKnifeStunProj:
 					character?.paralize();
 					break;
 			}
@@ -289,6 +317,8 @@ public class Damager {
 				flinch = 0;
 				victim?.playSound("weakness");
 			}
+			/*
+			*/
 			if (projId == (int)ProjIds.CSnailMelee && character != null && character.isCrystalized) {
 				damage *= 2;
 			}
@@ -334,7 +364,12 @@ public class Damager {
 			if ((owner?.character as PunchyZero)?.isViral == true) {
 				character.addInfectedTime(owner, damage);
 			}
-
+			if ((owner?.character as BusterZero)?.player.BZIceJavelin == true && projId == (int)ProjIds.DZBuster2) {
+				character.addIgFreezeProgress(1.5f);
+			}
+			if ((owner?.character as BusterZero)?.player.BZBlizzardArrow == true && projId == (int)ProjIds.DZBuster3) {
+				character.addIgFreezeProgress(1.5f);
+			}
 			switch (projId) {
 				//burn [to the ground] section
 				case (int)ProjIds.FireWave:
@@ -401,6 +436,36 @@ public class Damager {
 					break;
 				case (int)ProjIds.Sigma3Fire:
 					character.addBurnTime(owner, new Sigma3FireWeapon(), 1f);
+					break;
+				case (int)ProjIds.BusterZTenshouzan:
+				if (owner?.character?.player.BZFirewave == true)
+					character.addBurnTime(owner, ZeroBuster.netWeapon, 2f);
+					break;
+				case (int)ProjIds.BusterZHuuX6:
+				if (owner?.character?.player.BZFirewave == true)
+					character.addBurnTime(owner, ZeroBuster.netWeapon, 1f);
+					break;
+				case (int)ProjIds.BusterZDashAttack:
+				if (owner?.character?.player.BZFirewave == true)
+					character.addBurnTime(owner, ZeroBuster.netWeapon, 1f);
+					break;
+				case (int)ProjIds.BusterZDrillCrush:
+				if (owner?.character?.player.BZFirewave == true)
+					character.addBurnTime(owner, ZeroBuster.netWeapon, 1f);
+					break;
+				case (int)ProjIds.BusterZRollingSlash:
+				if (owner?.character?.player.BZFirewave == true)
+					character.addBurnTime(owner, ZeroBuster.netWeapon, 1f);
+					break;
+				case (int)ProjIds.BusterZHadangeki:
+				if (owner?.character?.player.BZFirewave == true)
+					character.addBurnTime(owner, ZeroBuster.netWeapon, 1f);
+					break;
+				case (int)ProjIds.BZBurningShot:
+					character.addBurnTime(owner, ZeroBuster.netWeapon, 1f);
+					break;
+				case (int)ProjIds.BZBurningShot2:
+					character.addBurnTime(owner, ZeroBuster.netWeapon, 0.5f);
 					break;
 				//Freeze effects	
 				case (int)ProjIds.IceGattling:
@@ -477,6 +542,9 @@ public class Damager {
 				case (int)ProjIds.DarkHold:
 					character.addDarkHoldTime(4, owner);
 					break;
+				case (int)ProjIds.SakuyaTimeStop:
+					character.addSakuyatimestop(owner);
+					break;
 				case (int)ProjIds.MagnaCTail:
 					character.addInfectedTime(owner, 4f);
 					break;
@@ -522,8 +590,56 @@ public class Damager {
 				if (mmx.checkWeakness((ProjIds)projId)) {
 					weakness = true;
 				}
+				if (mmx.checkWeakness((ProjIds)projId)) {
+					weakness = true;
+				}
 			}
-
+			if ((owner?.character as Zero)?.player.WinceBought == true && GenericMeleeProj.isZSaberClang(projId)) {
+				character.vel = Point.lerp(character.vel, Point.zero, Global.spf * 15);
+				character.slowdownTime += 0.4f;
+			}
+			if ((owner?.character as Zero)?.player.RootBought == true) {
+				switch (projId) {
+					case (int)ProjIds.Hyouretsuzan2:
+					case (int)ProjIds.Raijingeki:
+					case (int)ProjIds.Raijingeki2:
+						character.root();
+						flinch = 12;
+						flinchCooldown = 1;
+						if (character.RootCooldown <= 0)
+						character.playSound("zbusterweak");
+						break;
+					case (int)ProjIds.Denjin:
+						character.root();
+						flinch = 12;
+						if (character.RootCooldown <= 0)
+						character.playSound("zbusterweak");
+						break;
+				}
+			}
+			if ((owner?.character as Zero)?.player.DisarmBought == true) {
+				switch (projId) {
+					case (int)ProjIds.Ryuenjin:
+					case (int)ProjIds.SuiretsusanProj:
+						character.Disarm();
+						if (character.DisarmCooldown <= 0) 
+						character.playSound("ridepunch2");
+						break;
+				}
+			}
+			if (owner?.character is BusterZero bzero && bzero.player.weapon is not BZYammarkOption) {
+				bzero.player.weapon.ammo += (int)damage;
+			}
+			if (owner?.character is BusterZero bzero3 && bzero3.player.weapon is BZYammarkOption
+			&& (projId != (int)ProjIds.BZYammarkProj && projId != (int)ProjIds.BZPbomb)) {
+				bzero3.player.weapon.ammo += damage/2;
+			}
+			if (damage > 0 && (owner?.character as BusterZero)?.player.UnlockTree == true) {
+				owner.character.player.EXP += (int)damage;
+			}
+			if (owner?.character is BusterZero bzero1 && (owner?.character as BusterZero)?.player.HelmetAutoRecover == true) {
+				bzero1.timetest = damage*2;
+			}
 			if (!character.charState.superArmor &&
 				!character.isInvulnerable(true, true) &&
 				!isDot(projId) && (
@@ -544,6 +660,24 @@ public class Damager {
 					flinch = Global.superFlinch;
 				}
 				damage = MathF.Ceiling(damage * 1.5f);
+			}
+			if (!character.charState.superArmor && projId != (int)ProjIds.IrisSwordBlock  && 
+				!character.isInvulnerable(true, true) && (
+				owner?.character is Iris iris && iris.isHyperIris				
+			)) {
+				if (flinch <= 0) {
+					flinch = 6;
+					flinchCooldown = 2.5f;
+				} else if (flinch < Global.halfFlinch) {
+					flinch = Global.halfFlinch;
+				} else if (flinch < Global.defFlinch) {
+					flinch = Global.defFlinch;
+				}
+				else if (flinch < Global.superFlinch && projId != (int)ProjIds.IrisDenjin && projId != (int)ProjIds.IrisRaijingeki) {
+					flinch = Global.superFlinch;				
+				}
+				if (projId != (int)ProjIds.Irisbuster && projId != (int)ProjIds.IrisSaberRollingSlash)
+				damage = damage + 1;
 			}
 			// Disallow flinch stack for non-BZ.
 			else if (!Global.canFlinchCombo) {
@@ -777,7 +911,7 @@ public class Damager {
 							owner.character is Zero zero &&
 							!zero.hypermodeActive()
 						) {      //What in the..
-							if (GenericMeleeProj.isZSaberClang(projId)) {
+							if (GenericMeleeProj.isZSaberClang(projId) || GenericMeleeProj.isSaberIrisClang(projId)) {
 								owner.character.changeState(new ZeroClang(-owner.character.xDir));
 							}
 						}
@@ -865,6 +999,8 @@ public class Damager {
 			(int)ProjIds.CFlasher => true,
 			(int)ProjIds.AcidBurstPoison => true,
 			(int)ProjIds.MetteurCrash => true,
+			(int)ProjIds.IrisRaijingeki => true,
+			(int)ProjIds.IrisDenjin	 => true,
 			_ => false
 		};
 	}
@@ -1043,6 +1179,7 @@ public class Damager {
 			(int)ProjIds.BlastLauncherSplash => true,
 			(int)ProjIds.BoundBlaster2 => true,
 			(int)ProjIds.NapalmSplashHit => true,
+			(int)ProjIds.BusterZBuster2 => true,
 			_ => false
 		};
 	}

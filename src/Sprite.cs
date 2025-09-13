@@ -355,7 +355,10 @@ public class Sprite {
 				}
 			}
 		
-			if (name is "boomerk_dash" or "boomerk_bald_dash" && (animTime > 0 || frameIndex > 0)) {
+			if ((name is "boomerk_dash" or "boomerk_bald_dash" or "mdragoon_shungoku" && (animTime > 0 || frameIndex > 0)) || 
+				(character != null && character is Sakuya sakuya && sakuya.chargedCrystalHunter != null && (animTime > 0 || frameIndex > 0))
+				) 
+			{
 				if (Global.isOnFrameCycle(4)) {
 					var trail = lastTwoBkTrailDraws.ElementAtOrDefault(5);
 					if (trail != null) {

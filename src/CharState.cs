@@ -59,6 +59,7 @@ public class CharState {
 	public bool exitOnLanding;
 	public bool exitOnAirborne;
 	public bool useDashJumpSpeed;
+	public bool BZBugFix;
 
 	public CharState(string sprite, string shootSprite = "", string attackSprite = "", string transitionSprite = "") {
 		this.sprite = string.IsNullOrEmpty(transitionSprite) ? sprite : transitionSprite;
@@ -550,6 +551,18 @@ public class Idle : CharState {
 			}
 			character.changeSpriteFromName(sprite, true);				
 		}
+		if (character is Sakuya) {
+			if (player.health <= player.maxHealth-1 && player.health > 6) {
+				sprite = "idle_fight";
+			} 
+			else if (player.health <= 6) {
+				sprite = "weak";
+			} 
+			else {
+				sprite = "idle";
+			}
+			character.changeSpriteFromName(sprite, true);				
+		}
 		character.dashedInAir = 0;
 	}
 
@@ -560,7 +573,8 @@ public class Idle : CharState {
 			if (!character.isAttacking() && !character.isSoftLocked() && character.canTurn()) {
 				if (player.input.isHeld(Control.Left, player)) character.xDir = -1;
 				if (player.input.isHeld(Control.Right, player)) character.xDir = 1;
-				if (player.character.canMove()) character.changeState(new Run());
+				if (player.character.canMove() && !player.isSakuya) character.changeState(new Run());
+				if (player.character.canMove() && player.isSakuya) character.changeState(new SakuyaWalk(skip: false));
 			}
 		}
 
@@ -577,6 +591,10 @@ public class Idle : CharState {
 					character.changeSpriteFromName(loseSprite, true);
 				}
 			}
+		}
+		if (character is BusterZero bzero && bzero.BZMagnetMineProjCharged?.vel.x == 0) {
+			sprite = "shoot";
+			character.changeSpriteFromName(sprite, true);				
 		}
 	}
 }
@@ -607,6 +625,10 @@ public class Run : CharState {
 			character.move(move);
 		} else {
 			character.changeToIdleOrFall();
+		}
+		if (character is BusterZero bzero && bzero.BZMagnetMineProjCharged?.vel.x == 0) {
+			sprite = "run_shoot";
+			character.changeSpriteFromName(sprite, false);				
 		}
 	}
 }
@@ -649,6 +671,10 @@ public class Crouch : CharState {
 				}
 			}
 		}
+		if (character is BusterZero bzero && bzero.BZMagnetMineProjCharged?.vel.x == 0) {
+			sprite = "crouch_shoot";
+			character.changeSpriteFromName(sprite, true);				
+		}
 	}
 }
 
@@ -684,6 +710,12 @@ public class SwordBlock : CharState {
 				}
 			}
 		}
+		if (character.DisarmTime > 0) character.changeToIdleOrFall();
+	}
+	public override bool canEnter(Character character) {
+		if (!base.canEnter(character)) return false;
+		if (character.DisarmTime > 0) return false;
+		return true;
 	}
 }
 
@@ -733,6 +765,13 @@ public class Jump : CharState {
 			}
 			return;
 		}
+		if (character is BusterZero bzero && bzero.BZMagnetMineProjCharged?.vel.x == 0) {
+			sprite = "jump_shoot";
+			character.changeSpriteFromName(sprite, false);				
+		}
+		if (player.isDragoon && character.grounded) {
+			character.changeSprite("mdragoon_jump_start", false);
+		}
 	}
 }
 
@@ -760,6 +799,10 @@ public class Fall : CharState {
 				character.limboRACheckCooldown = 1;
 				limboVehicleCheckTime = 0;
 			}
+		}
+		if (character is BusterZero bzero && bzero.BZMagnetMineProjCharged?.vel.x == 0) {
+			sprite = "fall_shoot";
+			character.changeSpriteFromName(sprite, false);				
 		}
 	}
 
@@ -789,6 +832,7 @@ public class Dash : CharState {
 	public int initialDashDir;
 	public bool stop;
 	public Anim dashSpark;
+	public float trailTime;
 
 	public Dash(string initialDashButton) : base("dash", "dash_shoot", "attack_dash") {
 		enterSound = "dash";
@@ -801,7 +845,6 @@ public class Dash : CharState {
 
 	public override void onEnter(CharState oldState) {
 		base.onEnter(oldState);
-
 		initialDashDir = character.xDir;
 		if (player.isAxl && player.axlWeapon?.isTwoHanded(false) == true) {
 			if (player.input.isHeld(Control.Left, player)) initialDashDir = -1;
@@ -837,6 +880,11 @@ public class Dash : CharState {
 			}
 		}
 	}
+	public override bool canEnter(Character character) {
+		if (!base.canEnter(character)) return false;
+		if (character.RootTime > 0) return false;
+		return true;
+	}
 
 	public override void update() {
 		dashBackwardsCode(character, initialDashDir);
@@ -856,6 +904,25 @@ public class Dash : CharState {
 		if (character.sprite.name.EndsWith("unpo_grab_dash")) {
 			speedModifier = 1.25f;
 			distanceModifier = 1.25f;
+		}
+		if (player.isZero && player.HyperDashBought) {
+			speedModifier = 1.1f;
+			distanceModifier = 1.1f;
+		}
+		if (player.isBusterZero && player.BootsDash) {
+			distanceModifier = 1.85f;
+		}
+		if (player.isBusterZero && player.BootsSpark && dashTime > 0.3) {
+			Helpers.decrementTime(ref trailTime);
+			if (trailTime <= 0) {
+			trailTime = 0.1f;
+			new FStagTrailProj(player.weapon, character.pos.addxy(0, 0),
+			 character.xDir, player, player.getNextActorNetId(), rpc: true);
+			}
+		}
+		if (character is BusterZero bzero && bzero.BZMagnetMineProjCharged?.vel.x == 0) {
+			sprite = "dash_shoot";
+			character.changeSpriteFromName(sprite, false);				
 		}
 		if (dashTime > Global.spf * 32 * distanceModifier || stop) {
 			if (!stop) {
@@ -959,6 +1026,10 @@ public class AirDash : CharState {
 			character.move(move);
 		}
 		dashTime += Global.spf;
+		if (character is BusterZero bzero && bzero.BZMagnetMineProjCharged?.vel.x == 0) {
+			sprite = "dash_shoot";
+			character.changeSpriteFromName(sprite, false);				
+		}
 	}
 
 	public override void onEnter(CharState oldState) {
@@ -1113,10 +1184,17 @@ public class WallSlide : CharState {
 					}
 				}
 			}
+			if (player.isBusterZero && player.BootsFrog) {
+				character.move(new Point(0, 0));
+			} else 
 			character.move(new Point(0, 100));
 		}
 
 		dustTime += Global.speedMul;
+		if (character is BusterZero bzero && bzero.BZMagnetMineProjCharged?.vel.x == 0) {
+			sprite = "wall_slide_shoot";
+			character.changeSpriteFromName(sprite, false);				
+		}
 		if (stateFrames > 12 && dustTime > 6) {
 			dustTime = 0;
 			generateDust(character);
@@ -1194,6 +1272,10 @@ public class WallKick : CharState {
 		base.update();
 		if (character.vel.y > 0) {
 			character.changeState(new Fall());
+		}
+		if (character is BusterZero bzero && bzero.BZMagnetMineProjCharged?.vel.x == 0) {
+			sprite = "wall_kick_shoot";
+			character.changeSpriteFromName(sprite, false);				
 		}
 	}
 }
@@ -1540,7 +1622,7 @@ public class Die : CharState {
 
 				player.destroySigma();
 			}
-		} else if (player.isVile || player.isSigma) {
+		} else if (player.isVile || player.isSigma || player.isDragoon) {
 			if (stateTime > 0.75f && !once) {
 				once = true;
 				character.visible = false;

@@ -623,6 +623,7 @@ public partial class Global {
 				2 => "axl",
 				3 => "vile",
 				4 => "sigma",
+				5 => "sans",
 				_ => "nullchar"
 			};
 			if (musics.ContainsKey(newMusic + "." + musicExtension)) {

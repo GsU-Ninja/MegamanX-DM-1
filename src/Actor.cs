@@ -281,15 +281,12 @@ public partial class Actor : GameObject {
 	}
 
 	public virtual void changeSprite(string spriteName, bool resetFrame) {
-		string oldSpriteName = sprite.name;
-		if (spriteName == null) {
-			return;
-		}
-		if (sprite.name == spriteName) {
-			if (this is not Character && resetFrame) {
-				sprite.restart();
+		string oldSpriteName = sprite?.name ?? "";
+		if (spriteName == null) return;
+		if (sprite != null && (this is Character || !resetFrame)) {
+			if (sprite.name == spriteName) {
+				return;
 			}
-			return;
 		}
 
 		if (!Global.sprites.ContainsKey(spriteName)) return;

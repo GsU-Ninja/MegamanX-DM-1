@@ -143,6 +143,11 @@ public partial class Player {
 	public bool isVile { get { return charNum == (int)CharIds.Vile; } }
 	public bool isAxl { get { return charNum == (int)CharIds.Axl; } }
 	public bool isSigma { get { return charNum == (int)CharIds.Sigma; } }
+	public bool isBusterZero { get { return charNum == (int)CharIds.BusterZero; } }
+	public bool isIris { get { return charNum == (int)CharIds.Iris; } }
+	public bool isDragoon { get { return charNum == (int)CharIds.MagmaDragoon; } }
+	public bool isSakuya { get { return charNum == (int)CharIds.Sakuya; } }
+	public bool isSans { get { return charNum == (int)CharIds.Sans; } }
 
 	public float healthBackup;
 	public float _health;
@@ -227,6 +232,10 @@ public partial class Player {
 		{ (int)CharIds.PunchyZero, new List<SubTank>() },
 		{ (int)CharIds.BusterZero, new List<SubTank>() },
 		{ (int)CharIds.Rock, new List<SubTank>() },
+		{ (int)CharIds.Iris, new List<SubTank>() },
+		{ (int)CharIds.MagmaDragoon, new List<SubTank>() },
+		{ (int)CharIds.Sakuya, new List<SubTank>() },
+		{ (int)CharIds.Sans, new List<SubTank>() },
 	};
 	// Heart tanks
 	public Dictionary<int, int> charHeartTanks = new Dictionary<int, int>(){
@@ -238,6 +247,10 @@ public partial class Player {
 		{ (int)CharIds.PunchyZero, 0 },
 		{ (int)CharIds.BusterZero, 0 },
 		{ (int)CharIds.Rock, 0 },
+		{ (int)CharIds.Iris, 0 },
+		{ (int)CharIds.MagmaDragoon, 0 },
+		{ (int)CharIds.Sakuya, 0 },
+		{ (int)CharIds.Sans, 0 },
 	};
 	// Getter functions.
 	public List<SubTank> subtanks {
@@ -266,7 +279,7 @@ public partial class Player {
 	}
 
 	// Currency
-	public const int maxCharCurrencyId = 12;
+	public const int maxCharCurrencyId = 16;
 	public static int curMul = Helpers.randomRange(2, 8);
 	public int[] charCurrencyBackup = new int[maxCharCurrencyId];
 	public int[] charCurrency = new int[maxCharCurrencyId];
@@ -367,6 +380,43 @@ public partial class Player {
 	public bool oldFrozenCastle;
 	public bool speedDevil;
 	public bool oldSpeedDevil;
+	public int LV = 0;
+	public float EXP = 0;
+	public float EXPCurrency = 30;
+	public bool UnlockTree = Global.level.ZeroMenuAvailable();
+	public bool BZBubblesplash, BZTenshouzan, BZFishFang, BZDash, BZDash2;
+	public bool BZDrillCrush, BZZSaberExtend, BZShieldBoomerang, BZZSaber;
+	public bool BZDrillCrushSpark, BZFrostShield,BZSaberSlam, BZFirewave;
+	public bool ArmorZ, ArmorZUpgrade, ArmorModeEnergy, ArmorModeX, ArmorModeActive, ArmorModeDefense;
+	public bool ArmorModeRise, ArmorModePower, ArmorModeProto, ArmorModeErase, ArmorModeUltimate;
+	public bool HelmetZ, HelmetAutoCharge, HelmetAutoRecover, HelmetQuickCharge;
+	public bool BootsZ, BootsFastRun, BootsFrog, BootsJump, BootsHighJump, BootsDash, BootsSpark;
+	public bool BZTriThunder, BZYammarkOption, BZParasiteBomb, BZZDrones, BZZLighting, BZBuster;
+	public bool BZLaserShot, BZTripleShot, BZSparkShot, BZBlastShot, BZReflectLaser, BZVulcan, BZBuster2;
+	public bool BZBlizzardArrow, BZVShot, BZBurningShot, BZTimeStopper, BZIceJavelin, BZTractorShot;
+	public bool WinceBought, oldWinceBought;
+	public bool RootBought, oldRootBought;
+	public bool HyperDashBought, oldHyperDashBought;
+	public bool SpeedsterBought, oldSpeedsterBought;
+	public bool JumperBought, oldJumperBought;
+	public bool DisarmBought, oldDisarmBought;
+	public bool isblack, isviral, isaz;
+	public enum SkillTypeS
+	{
+		BubbleSplash,
+		Tenshouzan,
+		FishFang,
+		Dash,
+		Dash2,
+		DrillCrush,
+		SaberExtend,
+		ShieldBoomerang,
+		ZSaber,
+		DrillCrushSpark,
+		FrostShield,
+		SaberSlam,
+		Firewave,
+	}
 
 	public Disguise? disguise;
 
@@ -438,6 +488,8 @@ public partial class Player {
 	// Projectile shaders.
 	public ShaderWrapper timeSlowShader = Helpers.cloneShaderSafe("timeslow");
 	public ShaderWrapper darkHoldScreenShader = Helpers.cloneShaderSafe("darkHoldScreen");
+	public List<ShaderWrapper> omegaAuraShader = new(){Helpers.cloneShaderSafe("omega")};
+	public ShaderWrapper STimeStop = Helpers.cloneShaderSafe("sakuyatimestop");
 
 
 	// Character specific data populated on RPC request
@@ -455,6 +507,10 @@ public partial class Player {
 	public float vileMaxAmmo = 32;
 	public float sigmaAmmo = 32;
 	public float sigmaMaxAmmo = 32;
+	public float OffensiveGigaAmmo = 0;
+	public float OffensiveGigaMaxAmmo = 28;
+	public float SakuyaAmmo = 32;
+	public float SakuyaMaxAmmo = 32;
 	public int? maverick1v1;
 	public bool maverick1v1Spawned;
 
@@ -680,19 +736,24 @@ public partial class Player {
 			/*if (Global.level.gameMode.isTeamMode && alliance == GameMode.redAlliance) {
 				return Global.level.server.customMatchSettings.redDamageModifier;
 			}*/
-			return Global.level.server.customMatchSettings.damageModifier;
+			//return Global.level.server.customMatchSettings.damageModifier;
 		}
 		return 1;
 	}
-
+	public int bonus;
 	public float getMaxHealth() {
 		// 1v1 is the only mode without possible heart tanks/sub tanks
 		if (Global.level.is1v1()) {
 			return getModifiedHealth(28);
 		}
-		int bonus = 0;
 		if (isSigma && isPuppeteer()) {
 			bonus = 4;
+		}
+		if (isDragoon) {
+			bonus = 4;
+		}
+		if (isSakuya) {
+			bonus = 16;
 		}
 		return MathF.Ceiling(
 			getModifiedHealth(16 + bonus) + (heartTanks * getHeartTankModifier())
@@ -975,6 +1036,25 @@ public partial class Player {
 				}
 			}
 		}
+		if (character is Zero zero) {
+			if (zero.isBlack) {
+				isblack = true;
+			} else if (zero.isAwakened) {
+				isaz = true;
+			} else if (zero.isViral) {
+				isviral = true;
+			}
+			if (isDead) {
+				isblack = false;
+				isaz = false;
+				isviral = false;
+			}
+		}
+		if (character is BusterZero busterZero) {
+			if (busterZero.isBlackZero) {
+				isblack = true;
+			} if (isDead) isblack = false;
+		}
 
 		updateWeapons();
 	}
@@ -1094,6 +1174,14 @@ public partial class Player {
 				sigmaAmmo = 0;
 			}
 		}
+		if (charNum == (int)CharIds.MagmaDragoon) {
+			OffensiveGigaMaxAmmo = 28;
+			OffensiveGigaAmmo = 0;
+		}
+		if (charNum == (int)CharIds.Sakuya) {
+			SakuyaMaxAmmo = 32;
+			SakuyaAmmo = 32;
+		}
 		if (charNum == (int)CharIds.X) {
 			loadout.xLoadout.weapon1 = extraData[0];
 			loadout.xLoadout.weapon2 = extraData[1];
@@ -1160,7 +1248,28 @@ public partial class Player {
 				this, pos.x, pos.y, xDir,
 				false, charNetId, ownedByLocalPlayer
 			);
-		} else if (charNum == (int)CharIds.BusterZero) {
+		} else if (charNum == (int)CharIds.Iris) {
+			character = new Iris(
+				this, pos.x, pos.y, xDir,
+				false, charNetId, ownedByLocalPlayer
+			);
+		} else if (charNum == (int)CharIds.MagmaDragoon) {
+			character = new MagmaDragoon(
+				this, pos.x, pos.y, xDir,
+				false, charNetId, ownedByLocalPlayer
+			);
+		} else if (charNum == (int)CharIds.Sakuya) {
+			character = new Sakuya(
+				this, pos.x, pos.y, xDir,
+				false, charNetId, ownedByLocalPlayer
+			);
+		} else if (charNum == (int)CharIds.Sans) {
+			character = new Sans(
+				this, pos.x, pos.y, xDir,
+				false, charNetId, ownedByLocalPlayer
+			);
+		}
+		 else if (charNum == (int)CharIds.BusterZero) {
 			character = new BusterZero(
 				this, pos.x, pos.y, xDir,
 				false, charNetId, ownedByLocalPlayer
@@ -1390,7 +1499,14 @@ public partial class Player {
 		// Save old flags.
 		oldArmorFlag = armorFlag;
 		oldSpeedDevil = speedDevil;
-		oldFrozenCastle = frozenCastle;;
+		oldFrozenCastle = frozenCastle;
+
+		oldRootBought = RootBought;
+		oldWinceBought = WinceBought;
+		oldDisarmBought = DisarmBought;
+		oldSpeedsterBought = SpeedsterBought;
+		oldHyperDashBought = HyperDashBought;
+		oldJumperBought = JumperBought;
 
 		// Armor flags for X.
 		if (data.charNum == (int)CharIds.X) {
@@ -1429,10 +1545,24 @@ public partial class Player {
 		oldArmorFlag = armorFlag;
 		oldFrozenCastle = frozenCastle;
 		oldSpeedDevil = speedDevil;
+		
+		oldRootBought = RootBought;
+		oldWinceBought = WinceBought;
+		oldDisarmBought = DisarmBought;
+		oldSpeedsterBought = SpeedsterBought;
+		oldHyperDashBought = HyperDashBought;
+		oldJumperBought = JumperBought;
 
 		armorFlag = dnaCore.armorFlag;
 		frozenCastle = dnaCore.frozenCastle;
 		speedDevil = dnaCore.speedDevil;
+
+		WinceBought = dnaCore.WinceBought;
+		DisarmBought = dnaCore.DisarmBought;
+		RootBought = dnaCore.RootBought;
+		SpeedsterBought = dnaCore.SpeedsterBought;
+		HyperDashBought = dnaCore.HyperDashBought;
+		JumperBought = dnaCore.JumperBought;
 
 		bool isVileMK2 = charNum == 2 && dnaCore.hyperMode == DNACoreHyperMode.VileMK2;
 		bool isVileMK5 = charNum == 2 && dnaCore.hyperMode == DNACoreHyperMode.VileMK5;
@@ -1485,7 +1615,9 @@ public partial class Player {
 		if (charNum == (int)CharIds.Sigma) {
 			weapons.Add(new SigmaMenuWeapon());
 		}
-		//weapons.Add(new AssassinBullet());
+		if (charNum == (int)CharIds.Axl) {
+			weapons.Add(new AssassinBullet());
+		}
 		weapons.Add(new UndisguiseWeapon());
 		weaponSlot = 0;
 
@@ -1652,6 +1784,13 @@ public partial class Player {
 		speedDevil = oldSpeedDevil;
 		frozenCastle = oldFrozenCastle;
 
+		RootBought = oldRootBought;
+		WinceBought = oldWinceBought;
+		DisarmBought = oldDisarmBought;
+		SpeedsterBought = oldSpeedsterBought;
+		HyperDashBought = oldHyperDashBought;
+		JumperBought = oldJumperBought;
+
 		lastDNACore = null;
 		lastDNACoreIndex = 4;
 		character.ownedByLocalPlayer = ownedByLocalPlayer;
@@ -1696,6 +1835,13 @@ public partial class Player {
 		armorFlag = oldArmorFlag;
 		speedDevil = oldSpeedDevil;
 		frozenCastle = oldFrozenCastle;
+
+		RootBought = oldRootBought;
+		WinceBought = oldWinceBought;
+		DisarmBought = oldDisarmBought;
+		SpeedsterBought = oldSpeedsterBought;
+		HyperDashBought = oldHyperDashBought;
+		JumperBought = oldJumperBought;
 
 		lastDNACore = null;
 		lastDNACoreIndex = 4;
@@ -2162,7 +2308,7 @@ public partial class Player {
 			awakenedCurrencyEnd = null;
 		}
 
-		if (!character.player.isVile && !character.player.isSigma) {
+		if (!character.player.isVile && !character.player.isSigma && !character.player.isDragoon) {
 			character.playSound("die");
 			/*
 			if (character.player == Global.level.mainPlayer)

@@ -65,6 +65,14 @@ public class Zero : Character {
 	public float zeroTripleStartTime;
 	public float zeroTripleSlashEndTime;
 
+	//Zero Menu
+	public const int WinceCost = 10;
+	public const int RootCost = 10;
+	public const int SpeedsterCost = 10;
+	public const int DisarmCost = 10;
+
+	public const int HyperDashCost = 5;
+	public const int JumperCost = 5;
 	// Creation code.
 	public Zero(
 		Player player, float x, float y, int xDir,
@@ -607,9 +615,11 @@ public class Zero : Character {
 		if (isBlack) {
 			runSpeed *= 1.15f;
 		}
+		if (player.SpeedsterBought) {
+			runSpeed *= 1.1f;
+		}
 		return runSpeed * getRunDebuffs();
 	}
-
 	public override float getDashSpeed() {
 		if (flag != null || !isDashing) {
 			return getRunSpeed();
@@ -618,6 +628,10 @@ public class Zero : Character {
 		if (isBlack) {
 			dashSpeed *= 1.15f;
 		}
+		if (player.SpeedsterBought) {
+			dashSpeed *= 1.1f;
+		}
+
 		return dashSpeed * getRunDebuffs();
 	}
 	public override string getSprite(string spriteName) {
@@ -986,6 +1000,14 @@ public class Zero : Character {
 			isBlack,
 			isViral,
 		]));
+		customData.Add(Helpers.boolArrayToByte([
+			player.WinceBought,
+			player.RootBought,
+			player.HyperDashBought,
+			player.SpeedsterBought,
+			player.JumperBought,
+			player.DisarmBought,
+		]));
 		if (hypermodeBlink > 0) {
 			customData.Add(hypermodeBlink);
 		}
@@ -1004,9 +1026,16 @@ public class Zero : Character {
 		awakenedPhase = (flags[2] ? 2 : (flags[1] ? 1 : 0));
 		isBlack = flags[3];
 		isViral = flags[4];
+		bool[] flags1 = Helpers.byteToBoolArray(data[2]);
+		player.WinceBought = flags1[0];
+		player.RootBought = flags1[1];
+		player.HyperDashBought = flags1[2];
+		player.SpeedsterBought = flags1[3];
+		player.JumperBought = flags1[4];
+		player.DisarmBought = flags1[5];
 
 		if (flags[0]) {
-			hypermodeBlink = data[2];
+			hypermodeBlink = data[3];
 		}
 	}
 }

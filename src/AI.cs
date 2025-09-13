@@ -1042,7 +1042,7 @@ public class AI {
 		if (player.currency >= Player.zeroHyperCost && !zero.isSpriteInvulnerable() && !zero.isInvulnerable() &&
 		   zero.charState is not (HyperZeroStart or LadderClimb) && !zero.hypermodeActive() && !player.isMainPlayer
 		) {
-			zero.changeState(new HyperZeroStart(), true);
+			//zero.changeState(new HyperZeroStart(), true);
 		}
 		ComboAttacks(zero);
 		WildDance(zero);

@@ -619,7 +619,7 @@ public class GameMode {
 			drawPlayer = level.specPlayer;
 		}
 
-		if (drawPlayer != null) {
+		if (drawPlayer != null && !drawPlayer.isSakuya) {
 			if (Global.level.mainPlayer == drawPlayer) {
 				renderHealthAndWeapons();
 			} else {
@@ -673,6 +673,66 @@ public class GameMode {
 					xStart += 15;
 				}
 			}
+			if (drawPlayer.character is BusterZero busterZero) {
+				Fonts.drawText(
+				FontType.RedishOrange, "EXP: " + Global.level.mainPlayer?.EXP,
+				24, 190, Alignment.Center);
+				Fonts.drawText(
+				FontType.RedishOrange, "LV: " + Global.level.mainPlayer.LV,
+				5, 200, Alignment.Left);
+				if (busterZero.zSaberCooldown > 0) {
+					Global.sprites["hud_weapon_icon"].drawToHUD(48, 10, 160);
+					Fonts.drawText(
+						FontType.DarkPurple,
+						busterZero.zSaberCooldown.ToString("N0"), 20, 157, Alignment.Left
+					);
+				}
+			}
+			if (drawPlayer.character is MagmaDragoon magmaDragoon) {
+				if (magmaDragoon.ShoryukenCooldown > 0) {
+					Global.sprites["hud_weapon_icon"].drawToHUD(113, 10, 156);
+					Fonts.drawText(
+						FontType.DarkPurple,
+						magmaDragoon.ShoryukenCooldown.ToString("N0"), 20, 153, Alignment.Left
+					);				
+				}
+				if (magmaDragoon.KickCooldown > 0) {
+					Global.sprites["hud_weapon_icon"].drawToHUD(120, 10, 174);
+					Fonts.drawText(
+						FontType.DarkPurple,
+						magmaDragoon.KickCooldown.ToString("N0"), 20, 171, Alignment.Left
+					);				
+				}
+				if (magmaDragoon.HibashiraCooldown > 0) {
+					Global.sprites["hud_weapon_icon"].drawToHUD(4, 10, 191);
+					Fonts.drawText(
+						FontType.DarkPurple,
+						magmaDragoon.HibashiraCooldown.ToString("N0"), 20, 187, Alignment.Left
+					);				
+				}
+				if (magmaDragoon.isBoosted) {
+					Global.sprites["hud_weapon_icon"].drawToHUD(122, 10, 208);
+					Fonts.drawText(
+						FontType.DarkPurple,
+						magmaDragoon.hyperModeTimer.ToString("N0"), 20, 205, Alignment.Left
+					);
+				}
+			}
+			if (drawPlayer.character is Iris iris) {
+				if (iris.RakuhouhaCooldown > 0) {
+					Global.sprites["iris_hud"].drawToHUD(7, 10, 160);
+					Fonts.drawText(
+						FontType.DarkPurple,
+						iris.RakuhouhaCooldown.ToString("N0"), 20, 157, Alignment.Left
+					);				}
+				if (iris.isHyperIris) {
+					Global.sprites["hud_weapon_icon"].drawToHUD(122, 10, 180);
+					Fonts.drawText(
+						FontType.DarkPurple,
+						iris.hyperModeTimer.ToString("N0"), 20, 177	, Alignment.Left
+					);
+				}
+			}
 			if (drawPlayer.character is PunchyZero punchyZero) {
 				int xStart = 11;
 				int yStart = 159;
@@ -712,6 +772,24 @@ public class GameMode {
 			}
 		}
 
+		if (drawPlayer != null && drawPlayer.isSakuya) {			
+			SakuyarenderClockHP(drawPlayer);
+			SakuyarenderClockAmmo(drawPlayer);
+			Global.sprites["sakuya_clock_hud"].drawToHUD(1, Global.halfScreenW-70, Global.halfScreenH-70);	
+			Fonts.drawText(FontType.DarkPurple, drawPlayer.SakuyaAmmo.ToString("N0"), 56, 32, Alignment.Left);	
+			Fonts.drawText(FontType.DarkPurple, drawPlayer.health.ToString("N0"), 56, 20, Alignment.Left);		
+			if (drawPlayer.character is Sakuya sakuya) {	
+				SakuyaLoadoutRender(sakuya);		
+				Point SakuyaPos = sakuya.getCenterPos();
+				DrawWrappers.DrawCircle(Global.halfScreenW , Global.halfScreenH, 4, false, new Color(128, 128, 152), 1, ZIndex.HUD, false);	
+				DrawWrappers.DrawCircle(Global.halfScreenW , Global.halfScreenH, sakuya.SnailHeld, true, Color.Red, 1, ZIndex.HUD, false);					
+				Fonts.drawText(FontType.Red, sakuya.SakuyaTimeStopDMG.ToString(), 56, 100, Alignment.Left);					
+				Fonts.drawText(FontType.Red, "is Time stop?" + sakuya.isSakuyaTimeStopped.ToString(), 56, 90, Alignment.Left);
+				Fonts.drawText(FontType.Red, sakuya.SakuyaTimeStopClock.ToString("N0"), 260, 90, Alignment.Left);
+				Fonts.drawText(FontType.Red, sakuya.sakuyaheld.ToString("N0"), 260, 100, Alignment.Left);	
+	
+			}											
+		}
 		if (!Global.level.is1v1()) {
 			drawKillFeed();
 		}
@@ -931,6 +1009,12 @@ public class GameMode {
 		if (level.mainPlayer.isX && level.mainPlayer.hasHelmetArmor(3)) {
 			return true;
 		}
+		if (level.mainPlayer.isBusterZero && level.mainPlayer.HelmetQuickCharge) {
+			return true;
+		}
+		if (level.mainPlayer.isDragoon) {
+			return true;
+		}
 		if (level.mainPlayer.isAxl && level.boundBlasterAltProjs.Any(b => b.state == 1)) {
 			return true;
 		}
@@ -962,7 +1046,11 @@ public class GameMode {
 				revealedSpots.Add(maverick.pos);
 			}
 			revealedRadius = Global.viewScreenW * 0.5f;
-		} else {
+		} else if (level.mainPlayer.isDragoon) {
+			revealedSpots.Add(new Point(level.camX + Global.viewScreenW / 2, level.camY + Global.viewScreenH / 5));
+			revealedRadius = Global.viewScreenW * 0.9f;
+		}
+		else {
 			foreach (var bbAltProj in level.boundBlasterAltProjs) {
 				revealedSpots.Add(bbAltProj.pos);
 			}
@@ -1176,7 +1264,100 @@ public class GameMode {
 			hudBotRightPlayer = nonSpecPlayers.ElementAtOrDefault(3);
 		}
 	}
-
+	public void SakuyarenderClockHP(Player player) {
+		string spriteName = "sakuya_health_hud";
+		float health = player.health*2;
+		float maxHealth = player.health*2;
+		float asd = (player.heartTanks * player.getHeartTankModifier());
+		float baseX = 71;
+		float baseY = 23;
+		
+		for (var i = 0; i < MathF.Ceiling(maxHealth); i++) {
+			if (i < 64) {
+				if (i <= MathF.Ceiling(health) && i < 64) {
+					Global.sprites[spriteName].drawToHUD(0, baseX, baseY);
+				} 
+				if (i <= MathF.Ceiling(health-64) && i < 64) {
+					Global.sprites[spriteName].drawToHUD(1, baseX, baseY);
+				}
+				baseX += 0.94f;
+			}
+		}
+	}
+	public void SakuyarenderClockHP2(Player player) {
+		string spriteName = "sakuya_health_hud";
+		float health = player.health;
+		float maxHealth = player.maxHealth;
+		float asd1 = maxHealth - (player.heartTanks * player.getHeartTankModifier());
+		float asd = health - (player.heartTanks * player.getHeartTankModifier());
+		float asd3 = (player.heartTanks * player.getHeartTankModifier());
+		float baseX = 71;
+		float baseY = 23;
+		if (player.health > 32) {
+			for (var i = 0; i < MathF.Ceiling(maxHealth-32); i++) {
+				if (i <= MathF.Ceiling(health-32)) {
+					Global.sprites[spriteName].drawToHUD(1, baseX, baseY);
+				} 
+				baseX += 1;
+			}
+		}
+	}
+	public void SakuyarenderClockAmmo(Player player) {
+		string spriteName = "sakuya_ammo_hud";
+		float SakuyaAmmo = player.SakuyaAmmo;
+		float SakuyaMaxAmmo = player.SakuyaMaxAmmo;
+		float baseX = 71;
+		float baseY = 35;
+		for (var a = 0; a < MathF.Ceiling(SakuyaMaxAmmo); a++) {
+			if (a < MathF.Ceiling(SakuyaAmmo)) {
+				Global.sprites[spriteName].drawToHUD(0, baseX, baseY);
+			} 
+			baseX += 1;
+		}
+	}
+	public void SakuyaLoadoutRender(Sakuya sakuya) {
+		if (sakuya.sakuyaheld >= 1) {
+			if (sakuya.SpecialWeaponSelected < 5) {
+				for (var a = 0; a <= sakuya.SpecialWeaponSelected; a++) {
+					if (sakuya.SpecialWeaponSelected == 4) 
+						Global.sprites["sakuya_loadout"].drawToHUD(0, 46, 64, alpha: 1f);	
+					if (sakuya.SpecialWeaponSelected < 4)
+						Global.sprites["sakuya_loadout"].drawToHUD(a+2, 46, 64, alpha: 1f);	
+					Global.sprites["sakuya_loadout"].drawToHUD(a+1, 46, 60, alpha: 1f);	
+				}		
+			}
+			if (sakuya.SpecialWeaponSelected == 5) {
+				Global.sprites["sakuya_loadout"].drawToHUD(1, 46, 64, alpha: 1f);			
+				Global.sprites["sakuya_loadout"].drawToHUD(0, 46, 60, alpha: 1f);	
+			}
+		}	
+		Global.sprites["sakuya_loadout"].drawToHUD(sakuya.SpecialWeaponSelected, 46,54);
+		switch (sakuya.SpecialWeaponSelected) {
+			case 0:
+				Fonts.drawText(FontType.DarkPurple, "Thousand Dagger", 75, 48, Alignment.Left);	
+				Fonts.drawText(FontType.DarkPurple, "Cost: 16", 75, 58, Alignment.Left);	
+				break;
+			case 1:
+				Fonts.drawText(FontType.DarkPurple, "Shield Dagger", 75, 48, Alignment.Left);	
+				Fonts.drawText(FontType.DarkPurple, "Cost: 10", 75, 58, Alignment.Left);	
+				break;
+			case 2:
+				Fonts.drawText(FontType.DarkPurple, "Lost Holy Sword", 75, 48, Alignment.Left);	
+				Fonts.drawText(FontType.DarkPurple, "Cost: 1", 75, 58, Alignment.Left);	
+				break;
+			case 3:
+				Fonts.drawText(FontType.DarkPurple, "Stun Knife", 75, 48, Alignment.Left);	
+				Fonts.drawText(FontType.DarkPurple, "Cost: 4", 75, 58, Alignment.Left);	
+				break;
+			case 4:
+				Fonts.drawText(FontType.DarkPurple, "Chain Saw", 75, 48, Alignment.Left);	
+				Fonts.drawText(FontType.DarkPurple, "Cost: 6", 75, 58, Alignment.Left);	
+				break;
+			case 5:
+				Fonts.drawText(FontType.DarkPurple, "Shop Stock", 75, 48, Alignment.Left);	
+				break;
+		}	
+	}
 	public void renderHealthAndWeapons() {
 		bool is1v1OrTraining = level.is1v1() || level.levelData.isTraining();
 		if (!is1v1OrTraining) {
@@ -1250,6 +1431,9 @@ public class GameMode {
 		if (player.charNum == (int)CharIds.BusterZero) {
 			frameIndex = 1;
 		}
+		if (player.charNum == (int)CharIds.Sans) {
+			frameIndex = 1;
+		}
 		if (player.isDisguisedAxl) frameIndex = 3;
 
 		var hudHealthPosition = getHUDHealthPosition(position, true);
@@ -1313,7 +1497,6 @@ public class GameMode {
 			else if (hpPercent >= 25) barIndex = 4;
 			else barIndex = 5;
 		}
-
 		for (var i = 0; i < MathF.Ceiling(maxHealth); i++) {
 			// Draw HP
 			if (i < MathF.Ceiling(health)) {
@@ -1386,7 +1569,7 @@ public class GameMode {
 
 		// Small Bars option.
 		float ammoDisplayMultiplier = 1;
-		if (player.weapon.allowSmallBar && Options.main.enableSmallBars && !forceSmallBarsOff) {
+		if (player.weapon.allowSmallBar && Options.main.enableSmallBars && !forceSmallBarsOff || player.weapon.forceSmallBar) {
 			ammoDisplayMultiplier = 0.5f;
 		}
 
@@ -1472,9 +1655,20 @@ public class GameMode {
 			if (player.character is PunchyZero punchyZero) {
 				weapon = punchyZero.gigaAttack;
 			}
+			/*if (player.character is BusterZero busterZero && player.BZTriThunder) {
+				weapon = busterZero.TriThunderWeapon;
+			}
+			if (player.character is BusterZero busterZero1 && player.BZYammarkOption && player.weapon is BZYammarkOption) {
+				weapon = busterZero1.YammarkOptionWeapon;
+			}*/
+			if (player.character is Iris iris) {
+				weapon = iris.IrisRakuhouhaWeapon;
+			}
+			if (player.character is MagmaDragoon dragoon) {
+				weapon = dragoon.DefensiveGiga;
+			}
 			player.lastHudWeapon = weapon;
 		}
-
 		if (shouldDrawWeaponAmmo(player, weapon)) {
 			baseY += 25;
 			Global.sprites["hud_weapon_base"].drawToHUD(weapon.weaponBarBaseIndex, baseX, baseY);
@@ -1504,6 +1698,23 @@ public class GameMode {
 			}
 			Global.sprites["hud_health_top"].drawToHUD(0, baseX, baseY);
 		}
+		//Had to put down here to not overlap Defensive Giga
+		if (player.isDragoon) {
+			baseY -= 4;
+			Global.sprites["hud_weapon_base"].drawToHUD(32, 25, baseY);
+			baseY -= 16;
+			for (var i = 0; i < MathF.Ceiling(player.OffensiveGigaMaxAmmo/2 * ammoDisplayMultiplier); i++) {
+				if (i < Math.Ceiling(player.OffensiveGigaAmmo/2 * ammoDisplayMultiplier)) {
+					Global.sprites["hud_weapon_full"].drawToHUD(13, 25, baseY);
+				} else {
+					Global.sprites["hud_health_empty"].drawToHUD(0, 25, baseY);
+				}
+				baseY -= 2;
+			}
+			Global.sprites["hud_health_top"].drawToHUD(0, 25, baseY);
+			return;
+		}
+
 		//if (shouldDrawWeaponAmmo(player, weapon) && player.isIris) {
 		//	Global.sprites["iris_hud"].drawToHUD(0, 25, 125);
 		//}

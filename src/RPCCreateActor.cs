@@ -36,6 +36,8 @@ public enum NetActorCreateId {
 	OverdriveOstrich,
 	FakeZero,
 	CrystalHunterCharged,
+	CrystalHunterChargedS,
+	CrystalHunterChargedBZ,
 	CrystalSnailShell,
 	BlizzardBuffalo,
 	ToxicSeahorse,
@@ -128,7 +130,11 @@ public class RPCCreateActor : RPC {
 			new CrystalSnailShell(pos, xDir, null, player, netProjByte, false, false);
 		} else if (createId == (int)NetActorCreateId.CrystalHunterCharged) {
 			new CrystalHunterCharged(pos, player, netProjByte, false, 2, false);
-		} else if (createId == (int)NetActorCreateId.MechaniloidTank) {
+		} else if (createId == (int)NetActorCreateId.CrystalHunterChargedS) {
+			new CrystalHunterChargedS(pos, player, netProjByte, false, false);
+		} else if (createId == (int)NetActorCreateId.CrystalHunterChargedBZ) {
+			new BZTimeStopper(pos, player, netProjByte, false, false);
+		}  else if (createId == (int)NetActorCreateId.MechaniloidTank) {
 			new Mechaniloid(pos, player, xDir, new MechaniloidWeapon(player, MechaniloidType.Tank), MechaniloidType.Tank, netProjByte, false);
 		} else if (createId == (int)NetActorCreateId.MechaniloidHopper) {
 			new Mechaniloid(pos, player, xDir, new MechaniloidWeapon(player, MechaniloidType.Hopper), MechaniloidType.Hopper, netProjByte, false);

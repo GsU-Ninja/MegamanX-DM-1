@@ -92,6 +92,9 @@ public class GenericMeleeProj : Projectile {
 		Character? grabberChar = owner.character;
 		Character? grabbedChar = damagable as Character;
 		switch (projId) {
+			case (int)ProjIds.MagmaDragoonRagingDemon:
+				charGrabCode(CommandGrabScenario.MagmaDragoonGrab, grabberChar, damagable, new MagmaDragoonGrabState(grabbedChar), new MagmaDragoonGrabbed(grabberChar));
+				break;
 			case (int)ProjIds.UPGrab:
 				charGrabCode(CommandGrabScenario.UPGrab, grabberChar, damagable, new XUPGrabState(grabbedChar), new UPGrabbed(grabberChar));
 				break;
@@ -166,6 +169,16 @@ public class GenericMeleeProj : Projectile {
 		/*projId == (int)ProjIds.ZSaberAir || */ projId == (int)ProjIds.RisingFang /*|| projId == (int)ProjIds.ZSaberRollingSlash*/;
 	}
 	public static bool isZSaberClang(int projId) {
+ 		// Turns out that, isZSaber bool (now, isZSaberEffect) is used on clanging, and i modified it to match with the fancy looks
+		// This one will be used for clanging purpose, also, original bool literally missed ZSaber2 and many others..
+		// how do you.. clang on Ladder? or.. Wall slash???.
+		return projId == (int)ProjIds.ZSaber1 || projId == (int)ProjIds.ZSaber2 || projId == (int)ProjIds.ZSaber3 ||
+		 	   projId == (int)ProjIds.ZSaberAir || projId == (int)ProjIds.ZSaberCrouch || projId == (int)ProjIds.ZSaberDash || 
+			   projId == (int)ProjIds.ZSaberLadder || projId == (int)ProjIds.ZSaberslide || projId == (int)ProjIds.ZSaberProjSwing ||
+			   projId == (int)ProjIds.ZSaberRollingSlash || projId == (int)ProjIds.DZMelee; 
+			   //i wonder if Shippuga could count as Z-Saber or Rising too, but this last wouldn't make sense as is an uppercut
+	}
+	public static bool isSaberIrisClang(int projId) {
  		// Turns out that, isZSaber bool (now, isZSaberEffect) is used on clanging, and i modified it to match with the fancy looks
 		// This one will be used for clanging purpose, also, original bool literally missed ZSaber2 and many others..
 		// how do you.. clang on Ladder? or.. Wall slash???.

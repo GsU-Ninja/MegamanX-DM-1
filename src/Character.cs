@@ -5,7 +5,7 @@ using System.ComponentModel;
 using System.Linq;
 using SFML.Graphics;
 using static SFML.Window.Keyboard;
-
+using SFML.Graphics.Glsl;
 namespace MMXOnline;
 
 public partial class Character : Actor, IDamagable {
@@ -138,6 +138,16 @@ public partial class Character : Actor, IDamagable {
 	bool viralOnce;
 
 	// Status effects.
+	public float DisarmTime;
+	public float DisarmCooldown;
+	public bool isSakuyaTimeStopped;
+	public float SakuyaTimeStopClock;
+	public float SakuyaTimeStopDMG;
+	public SakuyaTimeStop? SakuyaTimeStopProj;
+	//7OD Root
+	public float RootTime;
+	public float RootCooldown;
+	public Anim? RootAnim;
 	// Acid
 	public Damager? acidDamager;
 	public float acidTime;
@@ -162,6 +172,7 @@ public partial class Character : Actor, IDamagable {
 	public bool hasParasite { get { return parasiteTime > 0; } }
 	public float parasiteTime;
 	public float parasiteMashTime;
+	public float WeaknessSoundT;
 	
 	// Disables status.
 	public float paralyzedTime;
@@ -280,6 +291,12 @@ public partial class Character : Actor, IDamagable {
 
 		changeState(new DarkHoldState(this, darkHoldTime), true);
 	}
+	public void addSakuyatimestop(Player attacker) {
+		if (!ownedByLocalPlayer) return;
+		if (isInvulnerable()) return;
+		if (isVaccinated()) return;
+		isSakuyaTimeStopped = true;
+	}
 
 	public void addAcidTime(Player attacker, float time) {
 		if (!ownedByLocalPlayer ||
@@ -395,6 +412,19 @@ public partial class Character : Actor, IDamagable {
 			freeze(freezeTime);
 		}
 	}
+	//7od Root
+	public void root() {
+		if (RootCooldown > 0) return;
+		RootTime = 1.5f;
+		stopMoving();
+		//useGravity = false;
+	}
+	public void Disarm() {
+		if (DisarmCooldown > 0) return;
+		DisarmTime = 1f;
+		stopMoving();
+		//useGravity = false;
+	}
 
 	public bool isCStingInvisible() {
 		return this is MegamanX { stingActive: true };
@@ -414,6 +444,9 @@ public partial class Character : Actor, IDamagable {
 			player.possessedShader.SetUniform("palette", 1);
 			player.possessedShader.SetUniform("paletteTexture", Global.textures["palettePossessed"]);
 			shaders.Add(player.possessedShader);
+		}
+		if (isSakuyaTimeStopped && player.STimeStop != null) {
+			shaders.Add(player.STimeStop);
 		}
 
 		if (isDarkHoldState && player.darkHoldShader != null) {
@@ -517,6 +550,7 @@ public partial class Character : Actor, IDamagable {
 		if (isSoftLocked()) {
 			return false;
 		}
+		if (RootTime > 0) return false;
 		return true;
 	}
 
@@ -526,13 +560,31 @@ public partial class Character : Actor, IDamagable {
 		if (charState is WallKick wallKick && wallKick.stateTime < 0.25f) return false;
 		if (isSoftLocked()) return false;
 		if (isAttacking()) return false;
+		if (RootTime > 0) return false;
 		return flag == null;
 	}
 
 	public virtual bool canJump() {
 		if (rideArmorPlatform != null) return false;
 		if (isSoftLocked()) return false;
+		if (RootTime > 0) return false;
 		return true;
+	}
+	(float twitch, float grow, int time) omegaAura = new(0.015f, 0, 0);
+    void updateOmegaAura() {
+		omegaAura.twitch -= 0.05f;
+		if (omegaAura.twitch < 0.05)
+			omegaAura.twitch = 0.15f;
+
+		if (omegaAura.time >= 0 && omegaAura.time < 50)
+			omegaAura.grow += 0.0025f;
+		else if (omegaAura.time >= 55 && omegaAura.time < 105)	
+			omegaAura.grow -= 0.0025f;
+
+		omegaAura.time++;
+		if (omegaAura.time > 110) {
+			omegaAura.time = 0;
+		}
 	}
 
 	public virtual bool canCrouch() {
@@ -543,14 +595,17 @@ public partial class Character : Actor, IDamagable {
 	}
 
 	public virtual bool canAirDash() {
+		if (RootTime > 0) return false;
 		return dashedInAir == 0;
 	}
 
 	public virtual bool canAirJump() {
+		if (RootTime > 0) return false;
 		return false;
 	}
 
 	public virtual bool canWallClimb() {
+		if (RootTime > 0) return false;
 		if (rideArmorPlatform != null) return false;
 		if (isSoftLocked()) return false;
 		if (charState is VileHover) {
@@ -560,6 +615,7 @@ public partial class Character : Actor, IDamagable {
 	}
 
 	public virtual bool canUseLadder() {
+		if (RootTime > 0) return false;
 		if (!charState.normalCtrl) return false;
 		if (rideArmorPlatform != null) return false;
 		if (isSoftLocked()) return false;
@@ -656,6 +712,7 @@ public partial class Character : Actor, IDamagable {
 		if (igFreezeProgress >= 3) runSpeed *= 0.25f;
 		else if (igFreezeProgress >= 2) runSpeed *= 0.75f;
 		else if (igFreezeProgress >= 1) runSpeed *= 0.5f;
+		if (RootTime > 0) runSpeed = 0;
 		return runSpeed;
 	}
 
@@ -678,15 +735,20 @@ public partial class Character : Actor, IDamagable {
 
 		return jp * getJumpModifier();
 	}
-
+	public float crouchtime;
+	public float highjumpjp = 1;
 	public virtual float getJumpModifier() {
 		float jp = 1;
-
 		if (slowdownTime > 0) jp *= 0.75f;
 		if (igFreezeProgress == 1) jp *= 0.75f;
 		if (igFreezeProgress == 2) jp *= 0.5f;
 		if (igFreezeProgress == 3) jp *= 0.25f;
-
+		if (player.JumperBought && player.isZero) jp *= 1.10f;
+		if (player.isBusterZero) {
+			if (player.BootsHighJump && (charState is Crouch || charState is WallSlide)) {
+				jp = highjumpjp;		
+			}
+		}
 		return jp;
 	}
 
@@ -842,7 +904,6 @@ public partial class Character : Actor, IDamagable {
 		if (ownedByLocalPlayer && player.possessedTime > 0) {
 			player.possesseeUpdate();
 		}
-
 		if (flag != null) {
 			if (MathF.Abs(xPushVel) > 75) xPushVel = 75 * MathF.Sign(xPushVel);
 			if (MathF.Abs(xSwingVel) > 75) xSwingVel = 75 * MathF.Sign(xSwingVel);
@@ -1004,7 +1065,55 @@ public partial class Character : Actor, IDamagable {
 			if (flattenedTime < 0) flattenedTime = 0;
 		}
 		Helpers.decrementTime(ref slowdownTime);
-
+		Helpers.decrementTime(ref RootCooldown);
+		Helpers.decrementTime(ref RootTime);
+		Helpers.decrementTime(ref DisarmTime);
+		Helpers.decrementTime(ref DisarmCooldown);
+		if (player.isBusterZero && player.BootsHighJump) {
+			crouchtime += Global.spf; 
+			if (crouchtime > 0.3f && (charState is Crouch || charState is WallSlide)) {
+				crouchtime = 0;
+				highjumpjp += 0.05f;
+			}
+			else if (charState is not Crouch && charState is not WallSlide) {
+				highjumpjp = 1;
+			}
+			if (highjumpjp >= 1.5f) {
+				highjumpjp = 1.5f;
+			}
+		}
+		//7OD Root
+		if (RootTime > 0) {
+			//RootTime--;
+			//if (RootAnim == null) RootAnim = new Anim(getCenterPos(), "root_anim", 1, null, true, host: this);
+			if (RootTime <= 0) {
+				RootTime = 0;
+				//useGravity = true;
+				//if (RootAnim != null) {
+				//	RootAnim.destroySelf();
+				//	RootAnim = null;
+				//} 
+			}
+			RootCooldown = 2.5f;
+		}
+		if (DisarmTime > 0) {
+			DisarmCooldown = 3f;
+		}
+		if (player.EXP >= 8) {
+			player.EXPCurrency++;
+			player.LV++;
+			player.EXP = 0;
+		}
+		if (isSakuyaTimeStopped && SakuyaTimeStopDMG >= 8) {
+			isSakuyaTimeStopped = false;
+			SakuyaTimeStopDMG = 0;
+		} else if (!isSakuyaTimeStopped) {
+			SakuyaTimeStopDMG = 0;
+		} if (SakuyaTimeStopProj == null) {
+				isSakuyaTimeStopped = false;	
+			} 
+		
+		
 		if (!ownedByLocalPlayer) {
 			if (isCharging()) {
 				chargeGfx();
@@ -1026,6 +1135,7 @@ public partial class Character : Actor, IDamagable {
 		Helpers.decrementTime(ref crystalizeInvulnTime);
 		Helpers.decrementTime(ref grabInvulnTime);
 		Helpers.decrementTime(ref darkHoldInvulnTime);
+		Helpers.decrementFrames(ref WeaknessSoundT);
 
 		if (flag != null && flag.ownedByLocalPlayer) {
 			flag.changePos(getCenterPos());
@@ -1449,7 +1559,7 @@ public partial class Character : Actor, IDamagable {
 		return true;
 	}
 
-	public bool canEnterRideChaser() {
+	public virtual bool canEnterRideChaser() {
 		return charState is Fall fall && rideArmor == null && rideChaser == null && fall.limboVehicleCheckTime == 0;
 	}
 
@@ -2027,7 +2137,26 @@ public partial class Character : Actor, IDamagable {
 			return;
 		}
 		currentLabelY = -getLabelOffY();
+		if (visible && player.isBusterZero && player.ArmorModeUltimate) {
+			// Position to draw the sprite to.
+			float auraSize = 1 + omegaAura.twitch + omegaAura.grow;
+			float drawX = pos.x + x + (float)xDir * currentFrame.offset.x * auraSize;
+			float drawY = pos.y + y + (float)yDir * currentFrame.offset.y * auraSize + 1;
+			float auraAlpha = 0.75f;
 
+			// Draw aura.
+			Global.sprites[sprite.name].draw(
+				sprite.frameIndex, 
+				drawX, drawY,
+				xDir, yDir,
+				null, auraAlpha,
+				auraSize,
+				auraSize,
+				zIndex -1,
+				player.omegaAuraShader
+			);
+			updateOmegaAura();
+		}
 		
 		if (rideArmor == null && rideChaser == null && rideArmorPlatform == null) {
 			base.render(x, y);
@@ -2622,7 +2751,6 @@ public partial class Character : Actor, IDamagable {
 			bool isAxlSelfDamage = player.isAxl && damagerAlliance == player.alliance;
 			if (!isAxlSelfDamage) return false;
 		}
-
 		// Self damaging projIds can go thru alliance check
 		bool isSelfDamaging =
 			projId == (int)ProjIds.BlastLauncherSplash ||
@@ -2634,7 +2762,6 @@ public partial class Character : Actor, IDamagable {
 		if (isSelfDamaging && damagerPlayerId == player.id) {
 			return true;
 		}
-
 		if (player.alliance == damagerAlliance) return false;
 
 		return true;
@@ -2815,6 +2942,26 @@ public partial class Character : Actor, IDamagable {
 					);
 				}
 			}
+			if (this is Iris iris) {
+				float currentAmmo = iris.IrisRakuhouhaWeapon.ammo;
+				iris.IrisRakuhouhaWeapon.addAmmo(gigaAmmoToAdd, player);
+				if (player.isMainPlayer) {
+					Weapon.gigaAttackSoundLogic(
+						this, currentAmmo, iris.IrisRakuhouhaWeapon.ammo,
+						iris.IrisRakuhouhaWeapon.getAmmoUsage(0), iris.IrisRakuhouhaWeapon.maxAmmo
+					);
+				}
+			}
+			if (this is MagmaDragoon MagmaDragoon) {
+				float currentAmmo = MagmaDragoon.DefensiveGiga.ammo;
+				MagmaDragoon.DefensiveGiga.addAmmo(gigaAmmoToAdd/2, player);
+				if (player.isMainPlayer) {
+					Weapon.gigaAttackSoundLogic(
+						this, currentAmmo, MagmaDragoon.DefensiveGiga.ammo,
+						MagmaDragoon.DefensiveGiga.getAmmoUsage(0), MagmaDragoon.DefensiveGiga.maxAmmo
+					);
+				}
+			}
 			if (this is MegamanX) {
 				var gigaCrush = player.weapons.FirstOrDefault(w => w is GigaCrush);
 				if (gigaCrush != null) {
@@ -2887,6 +3034,10 @@ public partial class Character : Actor, IDamagable {
 			player.lastDeathCanRevive = Global.anyQuickStart || Global.debug || Global.level.isTraining() || killer != null;
 			changeState(new Die(), true);
 
+			if (killer?.isBusterZero == true && killer.ArmorModeEnergy) {
+				killer?.character.heal(player,4,true,true);
+			}
+
 			if (ownedByLocalPlayer) {
 				getKillerAndAssister(player, ref killer, ref assister, ref weaponIndex, ref assisterProjId, ref assisterWeaponId);
 			}
@@ -2901,7 +3052,6 @@ public partial class Character : Actor, IDamagable {
 						}
 					}
 				}
-
 				killer.awardCurrency();
 			} else if (Global.level.gameMode.level.is1v1()) {
 				// In 1v1 the other player should always be considered a killer to prevent suicide
@@ -3059,6 +3209,9 @@ public partial class Character : Actor, IDamagable {
 			return;
 		}
 		if (charState is not Die and not InRideArmor and not InRideChaser) {
+			if (player.isSakuya && charState is not SakuyaHurt or SakuyaHurt2) {
+				changeState(new SakuyaHurt(dir, flinchFrames, spiked), true);
+			} else if (!player.isSakuya)
 			changeState(new Hurt(dir, flinchFrames, spiked), true);
 			return;
 		}
@@ -3328,7 +3481,8 @@ public partial class Character : Actor, IDamagable {
 		}
 		*/
 
-		if (this is Zero || this is Rock) {
+		if (this is Zero || this is PunchyZero || this is BusterZero ||
+			this is Axl  || this is Vile) {
 			player.changeWeaponControls();
 		}
 
@@ -3361,7 +3515,9 @@ public partial class Character : Actor, IDamagable {
 				return;
 			}
 		}
-
+		if (player.weapon is AssassinBullet && this is Axl axl1) {
+			player.assassinHitPos = axl1.getFirstHitPos(AssassinBulletProj.range);
+		}
 		if (player.weapon is AssassinBullet) {
 			if (player.input.isPressed(Control.Special1, player) && !isCharging()) {
 				if (player.currency >= 2) {
@@ -3375,7 +3531,6 @@ public partial class Character : Actor, IDamagable {
 				}
 			}
 		}
-
 		if (player.weapon is AssassinBullet && (player.isVile || player.isSigma)) {
 			if (player.input.isHeld(Control.Shoot, player)) {
 				increaseCharge();

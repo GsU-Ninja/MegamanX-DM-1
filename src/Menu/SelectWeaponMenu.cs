@@ -317,7 +317,7 @@ public class SelectWeaponMenu : IMainMenu {
 			int[] strongAgainstMaverickIndices = getStrongAgainstMaverickFrameIndex(wi);
 			int weakAgainstMaverickIndex = getWeakAgainstMaverickFrameIndex(wi);
 			string damage = weapon.damage;
-			string rateOfFire = weapon.fireRate.ToString();
+			string fireRate = weapon.fireRate.ToString();
 			string ammousage = weapon.ammousage.ToString();
 			string effect = weapon.effect;
 			string hitcooldown = weapon.hitcooldown;
@@ -363,7 +363,7 @@ public class SelectWeaponMenu : IMainMenu {
 			Fonts.drawText(FontType.RedishOrange, "Flinch:", 231, wsy - 5);
 			Fonts.drawText(FontType.DarkPurple, "Effects:", 25, wsy + 20);
 			Fonts.drawText(FontType.Red, damage, 172, wsy - 17);
-			Fonts.drawText(FontType.Red, rateOfFire, 190, wsy + 7);
+			Fonts.drawText(FontType.Red, fireRate, 190, wsy + 7);
 			Fonts.drawText(FontType.Red, ammousage, 200, wsy - 5);
 			Fonts.drawText(FontType.RedishOrange, hitcooldown, 279, wsy -17);
 			Fonts.drawText(FontType.RedishOrange, Flinch, 274, wsy + -5);

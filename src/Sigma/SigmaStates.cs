@@ -101,5 +101,11 @@ public class SigmaBlock : CharState {
 				}
 			}
 		}
+		if (character.DisarmTime > 0) character.changeState(new Idle());
+	}
+	public override bool canEnter(Character character) {
+		if (!base.canEnter(character)) return false;
+		if (character.DisarmTime > 0) return false;
+		return true;
 	}
 }

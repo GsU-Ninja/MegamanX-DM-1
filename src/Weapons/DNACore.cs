@@ -34,6 +34,12 @@ public class DNACore : AxlWeapon {
 	public bool frozenCastle;
 	public bool speedDevil;
 	public bool ultimateArmor;
+	public bool WinceBought;
+	public bool RootBought;
+	public bool HyperDashBought;
+	public bool SpeedsterBought;
+	public bool JumperBought;
+	public bool DisarmBought;
 	public DNACoreHyperMode hyperMode;
 	public float rakuhouhaAmmo;
 	public List<Weapon> weapons = new List<Weapon>();
@@ -48,6 +54,12 @@ public class DNACore : AxlWeapon {
 		armorFlag = character.player.armorFlag;
 		frozenCastle = character.player.frozenCastle;
 		speedDevil = character.player.speedDevil;
+		WinceBought = character.player.WinceBought;
+		HyperDashBought = character.player.HyperDashBought;
+		SpeedsterBought = character.player.SpeedsterBought;
+		JumperBought = character.player.JumperBought;
+		DisarmBought = character.player.DisarmBought;
+		RootBought = character.player.RootBought;
 		ultimateArmor = character is MegamanX { hasUltimateArmor: true };
 		if (charNum == 11) {
 			charNum = 1;

@@ -272,6 +272,7 @@ public class PZeroParry : CharState {
 			character.playSound("zeroParry2", forcePlay: false, sendRpc: true);
 		}
 		character.changeState(new PZeroParryCounter(counterAttackTarget, isMelee), true);
+		if (character.DisarmTime > 0) character.changeState(new Idle());
 	}
 
 	public override void onEnter(CharState oldState) {
@@ -288,6 +289,11 @@ public class PZeroParry : CharState {
 
 	public bool canParry(Actor? actor, int projId) {
 		return (!Damager.isDot(projId));
+	}
+	public override bool canEnter(Character character) {
+		if (!base.canEnter(character)) return false;
+		if (character.DisarmTime > 0) return false;
+		return true;
 	}
 }
 

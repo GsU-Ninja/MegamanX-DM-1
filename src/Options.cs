@@ -102,6 +102,7 @@ public class Options {
 
 	// Punchy Zero
 	public PZeroLoadout pzeroLoadout = new PZeroLoadout();
+	public float TreeOpacity = 1f;
 
 	private static Options _main;
 

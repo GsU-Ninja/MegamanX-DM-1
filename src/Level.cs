@@ -35,6 +35,9 @@ public partial class Level {
 	public List<MusicWrapper> musicSources = new List<MusicWrapper>();
 	public List<BoundBlasterAltProj> boundBlasterAltProjs = new List<BoundBlasterAltProj>();
 	public List<CrystalHunterCharged> chargedCrystalHunters = new List<CrystalHunterCharged>();
+	public List<CrystalHunterChargedS> chargedCrystalHuntersS = new List<CrystalHunterChargedS>();
+	public List<SakuyaTimeStop> SakuyaTimeStop = new List<SakuyaTimeStop>();
+	public List<BZTimeStopper> BZTimeStopper = new List<BZTimeStopper>();
 	public List<DarkHoldProj> darkHoldProjs = new List<DarkHoldProj>();
 	public List<GravityWellProj> unchargedGravityWells = new List<GravityWellProj>();
 	public List<BackloggedSpawns> backloggedSpawns = new List<BackloggedSpawns>();
@@ -44,8 +47,10 @@ public partial class Level {
 	public Dictionary<int, FailedSpawn> failedSpawns = new Dictionary<int, FailedSpawn>();
 
 	public string getListCounts() {
-		return effects.Count + "," + recentClipCount.Keys.Count + "," + loopingSounds.Count + "," + musicSources.Count + "," + boundBlasterAltProjs.Count + "," + chargedCrystalHunters.Count + "," + unchargedGravityWells.Count + "," + backloggedSpawns.Count + "," +
-			delayedActions.Count + "," + recentlyDestroyedNetActors.Keys.Count + "," + bufferedDestroyActors.Count + "," + failedSpawns.Keys.Count;
+		return
+		effects.Count + "," + recentClipCount.Keys.Count + "," + loopingSounds.Count + "," + musicSources.Count + "," + boundBlasterAltProjs.Count + "," +
+		chargedCrystalHunters.Count + "," + chargedCrystalHuntersS.Count + "," + SakuyaTimeStop.Count + "," + BZTimeStopper.Count + "," +
+		unchargedGravityWells.Count + "," + backloggedSpawns.Count + "," + delayedActions.Count + "," + recentlyDestroyedNetActors.Keys.Count + "," + bufferedDestroyActors.Count + "," + failedSpawns.Keys.Count;
 	}
 	#endregion
 
@@ -1659,7 +1664,65 @@ public partial class Level {
 					break;
 				}
 			}
+			foreach (var cchs in chargedCrystalHuntersS) {
+				var chr = go as Character;
+				var proj = go as Projectile;
+				var mech = go as RideArmor;
+				if (chr != null && chr.isCCImmune()) continue;
+				if (proj != null && proj.damager?.owner?.character?.isCCImmune() == true) continue;
+				if (cchs.pos.distanceTo(actor.getCenterPos()) < Global.viewScreenW) {
+					if (chr != null && (chr.player.alliance == cchs.owner.alliance)) {
+						if (proj != null && proj.damager?.owner.alliance == cchs.owner.alliance) {
+							if (mech != null && mech.player != null && mech.player.alliance == cchs.owner.alliance) {
+								slowAmount = 0.85f;
+							}
+						}
+					} else {
+						slowAmount = 0.55f;
+					}
+					isSlown = true;
+					break;
+				}
+			}
+			foreach (var cchs1 in SakuyaTimeStop) {
+				var chr = go as Character;
+				var proj = go as Projectile;
+				var mech = go as RideArmor;
+				if (cchs1.pos.distanceTo(actor.getCenterPos()) < Global.viewScreenW) {
+					if (chr != null && (chr.player.alliance == cchs1.owner.alliance)) {
+							if (mech != null && mech.player != null && mech.player.alliance == cchs1.owner.alliance) {
+								slowAmount = 1.5f;
+							}
+					} else if (proj != null) {
+						slowAmount = 0.05f;
+					} else {
+						slowAmount = 0.25f;
+					}
+					isSlown = true;
+					break;
+				}
+			}
 		}
+		foreach (var cchs in BZTimeStopper) {
+				var chr = go as Character;
+				var proj = go as Projectile;
+				var mech = go as RideArmor;
+				if (chr != null && chr.isCCImmune()) continue;
+				if (proj != null && proj.damager?.owner?.character?.isCCImmune() == true) continue;
+				if (cchs.pos.distanceTo(actor.getCenterPos()) < Global.viewScreenW) {
+					if (chr != null && (chr.player.alliance == cchs.owner.alliance)) {
+						if (proj != null && proj.damager?.owner.alliance == cchs.owner.alliance) {
+							if (mech != null && mech.player != null && mech.player.alliance == cchs.owner.alliance) {
+								slowAmount = 0.85f;
+							}
+						}
+					} else {
+						slowAmount = 0.85f;
+					}
+					isSlown = true;
+					break;
+				}
+			}
 
 		return isSlown;
 	}
@@ -1800,6 +1863,21 @@ public partial class Level {
 					ppShaders.Add(cch.timeSlowShader);
 				}
 			}
+			foreach (var cch1 in level.chargedCrystalHuntersS) {
+				if (cch1.timeSlowShader != null) {
+					ppShaders.Add(cch1.timeSlowShader);
+				}
+			}
+			foreach (var cch2 in level.SakuyaTimeStop) {
+				if (cch2.STimeStop != null) {
+					ppShaders.Add(cch2.STimeStop);
+				}
+			}
+			foreach (var cch3 in level.BZTimeStopper) {
+				if (cch3.timeSlowShader != null) {
+					ppShaders.Add(cch3.timeSlowShader);
+				}
+			}
 			foreach (var dhp in level.darkHoldProjs) {
 				if (dhp.screenShader != null) {
 					ppShaders.Add(dhp.screenShader);
@@ -1867,15 +1945,21 @@ public partial class Level {
 			if (Global.level.gameMode.shouldDrawRadar()) {
 				yPos = 219;
 			}
-			Fonts.drawText(
-				FontType.BlueMenu, "VFPS:" + vfps.ToString(), Global.screenW - 5, yPos - 10,
-				Alignment.Right
-			);
-			Fonts.drawText(
-				FontType.BlueMenu, "FPS:" + fps.ToString(), Global.screenW - 5, yPos,
-				Alignment.Right
-			);
-		}
+			if (Global.level.mainPlayer.isSakuya) {
+				Fonts.drawText(
+					FontType.BlueMenu,fps.ToString(), 14, 16, Alignment.Center
+				);
+			} else {
+				Fonts.drawText(
+					FontType.BlueMenu, "VFPS:" + vfps.ToString(), Global.screenW - 5, yPos - 10,
+					Alignment.Right
+				);
+				Fonts.drawText(
+					FontType.BlueMenu, "FPS:" + fps.ToString(), Global.screenW - 5, yPos,
+					Alignment.Right
+				);
+			}
+		} 
 
 		DevConsole.drawConsole();
 	}
@@ -2428,6 +2512,9 @@ public partial class Level {
 
 	public bool isNon1v1Elimination() {
 		return isElimination() && !is1v1();
+	}
+	public bool ZeroMenuAvailable() {
+		return true;
 	}
 
 	public Point getSoundListenerOrigin() {

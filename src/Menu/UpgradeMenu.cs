@@ -111,6 +111,25 @@ public class UpgradeMenu : IMainMenu {
 				Menu.change(new SelectVileArmorMenu(prevMenu));
 				onUpgradeMenu = false;
 				return;
+			} 
+			else if (mainPlayer.realCharNum == 1 && Global.level.ZeroMenuAvailable()) {
+				Menu.change(new ZeroUpgradeMenu(prevMenu));
+				onUpgradeMenu = false;
+				return;
+			}
+		}
+		if (Global.level.ZeroMenuAvailable() && mainPlayer.realCharNum == (int)CharIds.BusterZero) {
+			if (Global.input.isPressedMenu(Control.WeaponLeft)) {	
+				BusterZeroArmorMenu.xGame = 3;
+				Menu.change(new BusterZeroArmorMenu(prevMenu));
+				onUpgradeMenu = false;
+				return;			
+			}	
+			if (Global.input.isPressedMenu(Control.WeaponRight)) {	
+				BusterZeroArmorMenu.xGame = 1;
+				Menu.change(new BusterZeroArmorMenu(prevMenu));
+				onUpgradeMenu = false;
+				return;
 			}
 		}
 
@@ -206,6 +225,20 @@ public class UpgradeMenu : IMainMenu {
 			Fonts.drawText(FontType.DarkPurple, ">", Global.screenW - 14, Global.halfScreenH, Alignment.Center);
 			//Fonts.drawText(FontType.DarkPurple, "X1", Global.screenW - 19, Global.halfScreenH + 15, Alignment.Center);
 		}
+		if (Global.level.ZeroMenuAvailable()) {
+			if (mainPlayer.realCharNum == (int)CharIds.BusterZero) {
+				if (Global.frameCount % 60 < 30) {
+					Fonts.drawText(FontType.DarkPurple, ">", Global.screenW - 14, Global.halfScreenH, Alignment.Center);	
+					Fonts.drawText(FontType.DarkPurple, "<", 14, Global.halfScreenH, Alignment.Center);
+				}
+				Fonts.drawTextEX(FontType.RedishOrange, "[WeaponL]/[WeaponR]: Change Menu",
+				Global.halfScreenW, Global.screenH - 38, Alignment.Center);
+			}
+			if (mainPlayer.realCharNum == (int)CharIds.Zero) {
+				Fonts.drawText(FontType.DarkPurple, ">", Global.screenW - 14, Global.halfScreenH, Alignment.Center);	
+			}
+		}
+		
 
 		bool soldOut = false;
 		int textX = 48;

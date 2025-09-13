@@ -106,28 +106,16 @@ public class BusterZeroDoubleBuster : CharState {
 		}
 		if (!fired1 && character.frameIndex == 3) {
 			fired1 = true;
-			character.playSound("buster3X3", sendRpc: true);
-			new DZBuster3Proj(
-				character.getShootPos(), character.getShootXDir(),
-				player, player.getNextActorNetId(), rpc: true
-			);
+			zero.Buster3Proj(0, 3, zero);
 		}
 		if (!fired2 && character.frameIndex == 7) {
 			fired2 = true;
 			if (!isPinkCharge) {
 				zero.stockedBusterLv = 0;
-				character.playSound("buster3X3", sendRpc: true);
-				new DZBuster3Proj(
-					character.getShootPos(), character.getShootXDir(),
-					player, player.getNextActorNetId(), rpc: true
-				);
+				zero.Buster3Proj(0, 3, zero);
 			} else {
 				zero.stockedBusterLv = 0;
-				character.playSound("buster2X3", sendRpc: true);
-				new DZBuster2Proj(
-					character.getShootPos(), character.getShootXDir(),
-					player, player.getNextActorNetId(), rpc: true
-				);
+				zero.Buster2Proj(zero);
 			}
 		}
 		if (character.isAnimOver()) {
@@ -194,10 +182,6 @@ public class BusterZeroHadangeki : CharState {
 			character.playSound("zerosaberx3", sendRpc: true);
 			zero.stockedSaber = false;
 			fired = true;
-			new DZHadangekiProj(
-				character.pos.addxy(30 * character.xDir, -20), character.xDir,
-				zero.isBlackZero, player, player.getNextActorNetId(), rpc: true
-			);
 		}
 		if (character.isAnimOver()) {
 			character.changeToIdleOrFall();
@@ -239,10 +223,16 @@ public class BusterZeroHadangekiWall : CharState {
 			character.playSound("zerosaberx3", sendRpc: true);
 			zero.stockedSaber = false;
 			fired = true;
-			new DZHadangekiProj(
-				character.pos.addxy(30 * -wallDir, -20), -wallDir,
-				zero.isBlackZero, player, player.getNextActorNetId(), rpc: true
-			);
+			if (player.UnlockTree)
+				new BZHadangekiProj(
+					character.pos.addxy(30 * -wallDir, -20), -wallDir,
+					zero.isBlackZero, player, player.getNextActorNetId(), rpc: true
+				); 
+			else
+				new DZHadangekiProj(
+					character.pos.addxy(30 * -wallDir, -20), -wallDir,
+					zero.isBlackZero, player, player.getNextActorNetId(), rpc: true
+				);
 		}
 		if (character.isAnimOver()) {
 			character.changeState(new WallSlide(wallDir, wallCollider) { enterSound = "" });

@@ -4,7 +4,8 @@ using System.Collections.Generic;
 namespace MMXOnline;
 
 public class Weapon {
-	public string[] shootSounds = { "", "", "", ""};
+	public static Weapon baseNetWeapon = new();
+	public string[] shootSounds = { "", "", "", "" };
 	public float ammo;
 	public float maxAmmo;
 	public float fireRate;
@@ -35,6 +36,7 @@ public class Weapon {
 
 	// Ammo display vars.
 	public bool allowSmallBar = true;
+	public bool forceSmallBar = false;
 	public float ammoDisplayScale = 1;
 	public float ammoDisplayScaleSmall = 2;
 
@@ -59,6 +61,7 @@ public class Weapon {
 	public string effect = "";
 	public string Flinch = "";
 	public string FlinchCD = "";
+	public bool shootSpecial = false;
 
 	public Weapon() {
 		ammo = 32;
@@ -257,6 +260,8 @@ public class Weapon {
 	}
 
 	public virtual void vileShoot(WeaponIds weaponInput, Vile vile) {
+	}
+	public virtual void bZeroShoot(Character character, int[] args) {
 	}
 
 	// For melee / zero weapons, etc.

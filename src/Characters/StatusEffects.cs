@@ -43,6 +43,14 @@ public class Hurt : CharState {
 			sprite = "hurt2";
 			character.changeSpriteFromName("hurt2", true);
 		}
+		if (player.isBusterZero && player.ArmorModeDefense) {
+			sprite = "hurt2";
+			character.changeSpriteFromName("hurt2", true);
+		}
+		if (player.isBusterZero && oldState is BusterZeroRollingSlash) {
+			sprite = "hurt";
+			character.changeSpriteFromName("hurt", true);
+		}
 		if (!spiked) {
 			character.vel.y = (-0.125f * (flinchTime - 1)) * 60f;
 			if (isCombo && character.pos.y < flinchYPos) {
@@ -58,11 +66,14 @@ public class Hurt : CharState {
 
 	public override void update() {
 		base.update();
-		if (hurtSpeed != 0) {
+		if (player.isBusterZero && player.ArmorZUpgrade) {
+			character.vel.y = 0;
+			character.vel.x = 0;
+		}
+		else if (hurtSpeed != 0) {
 			hurtSpeed = Helpers.toZero(hurtSpeed, 1.6f / flinchTime  * Global.speedMul, hurtDir);
 			character.move(new Point(hurtSpeed * 60f, 0));
 		}
-
 		if (isMiniFlinch()) {
 			character.frameSpeed = 0;
 			if (Global.frameCount % 2 == 0) {

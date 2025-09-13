@@ -38,6 +38,10 @@ public enum CharIds {
 	RagingChargeX,
 	// Non-vanilla chars start here.
 	Rock = 10,
+	Iris = 11,
+	MagmaDragoon = 12,
+	Sakuya = 13,
+	Sans = 14,
 }
 
 public class CharSelection {
@@ -65,6 +69,16 @@ public class CharSelection {
 		},
 		new CharSelection("Sigma", 4, 1, 0, "menu_ssigma", sigmaIndex),
 		//new CharSelection("Rock", 10, 1, 0, "rock_idle", 0),
+		new CharSelection("Iris", 11, 1, 0, "iris_idle", 0){
+			offset = new Point(0, 26)
+		},
+		new CharSelection("Magma Dragoon", 12, 1, 0, "mdragoon_idle", 0){
+			offset = new Point(0, 15)
+		},
+		new CharSelection("Sakuya Izayoi", 13, 1, 0, "sakuya_win", 3){
+			offset = new Point(0, 45)
+		},
+		new CharSelection("Sans", 14, 1, 0, "sans_warp_in", 2),
 	];
 
 	public static CharSelection[] selections1v1 => [
@@ -333,6 +347,15 @@ public class SelectCharacterMenu : IMainMenu {
 			},
 			(int)CharIds.PunchyZero => new string[] {
 				"Close range melee brawler", "that can counter the enemy attacks."
+			},
+			(int)CharIds.Iris => new string[] {
+				"Zero (early) sprited over Iris."
+			},
+			(int)CharIds.MagmaDragoon => new string[] {
+				"Killed thousands just to fight X."
+			},
+			(int)CharIds.Sans => new string[] {
+				"Funny bone man"
 			},
 			_ => new string[] { "ERROR" }
 		};

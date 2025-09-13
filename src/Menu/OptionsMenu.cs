@@ -463,6 +463,29 @@ public class OptionsMenu : IMainMenu {
 					"If Yes, will instantly die on character change.\n" +
 					"If No, on next death character change will apply."
 				),
+				// Sound volume
+				new MenuOption(
+					30, startY,
+					() => {
+						if (Global.input.isHeldMenu(Control.MenuLeft)) {
+							Options.main.TreeOpacity = Helpers.clamp(Options.main.TreeOpacity - 0.01f, 0, 1);
+						} else if (Global.input.isHeldMenu(Control.MenuRight)) {
+							Options.main.TreeOpacity = Helpers.clamp(Options.main.TreeOpacity + 0.01f, 0, 1);
+						}
+					},
+					(Point pos, int index) => {
+						var TreeOpacity100 = (int) Math.Round(Options.main.TreeOpacity * 100);
+						Fonts.drawText(
+							optionFontText, "tree opacity:",
+ 							pos.x, pos.y, selected: selectedArrowPosY == index
+						);
+						Fonts.drawText(
+							optionFontValue, TreeOpacity100.ToString(),
+							pos.x + 166, pos.y, selected: selectedArrowPosY == index
+						);
+					},
+					"Adjust the game tree opacity."
+				),
 			};
 		} else if (charNum == null) {
 			if (!Global.regionPingTask.IsCompleted) {
