@@ -879,15 +879,15 @@ public class GameMode {
 			Fonts.drawText(FontType.DarkPurple, drawPlayer.SakuyaAmmo.ToString("N0"), 56, 32, Alignment.Left);	
 			Fonts.drawText(FontType.DarkPurple, drawPlayer.health.ToString("N0"), 56, 20, Alignment.Left);		
 			if (drawPlayer.character is Sakuya sakuya) {
-				Fonts.drawText(FontType.Blue, " walk speed " + sakuya.moveDelta.ToString(), 56, 110, Alignment.Left);				
+				//Fonts.drawText(FontType.Blue, " walk speed " + sakuya.moveDelta.ToString(), 56, 110, Alignment.Left);				
 				SakuyaLoadoutRender(sakuya);		
-				Point SakuyaPos = sakuya.getCenterPos();
-				DrawWrappers.DrawCircle(Global.halfScreenW , Global.halfScreenH, 4, false, new Color(128, 128, 152), 1, ZIndex.HUD, false);	
-				DrawWrappers.DrawCircle(Global.halfScreenW , Global.halfScreenH, sakuya.SnailHeld, true, Color.Red, 1, ZIndex.HUD, false);					
-				Fonts.drawText(FontType.Red, sakuya.SakuyaTimeStopDMG.ToString(), 56, 100, Alignment.Left);					
-				Fonts.drawText(FontType.Red, "is Time stop?" + sakuya.isSakuyaTimeStopped.ToString(), 56, 90, Alignment.Left);
-				Fonts.drawText(FontType.Red, sakuya.SakuyaTimeStopClock.ToString("N0"), 260, 90, Alignment.Left);
-				Fonts.drawText(FontType.Red, sakuya.sakuyaheld.ToString("N0"), 260, 100, Alignment.Left);	
+				//Point SakuyaPos = sakuya.getCenterPos();
+				//DrawWrappers.DrawCircle(Global.halfScreenW , Global.halfScreenH, 4, false, new Color(128, 128, 152), 1, ZIndex.HUD, false);	
+				//DrawWrappers.DrawCircle(Global.halfScreenW , Global.halfScreenH, sakuya.SnailHeld, true, Color.Red, 1, ZIndex.HUD, false);					
+				//Fonts.drawText(FontType.Red, sakuya.SakuyaTimeStopDMG.ToString(), 56, 100, Alignment.Left);					
+				//Fonts.drawText(FontType.Red, "is Time stop?" + sakuya.isSakuyaTimeStopped.ToString(), 56, 90, Alignment.Left);
+				//Fonts.drawText(FontType.Red, sakuya.SakuyaTimeStopClock.ToString("N0"), 260, 90, Alignment.Left);
+				//Fonts.drawText(FontType.Red, sakuya.sakuyaheld.ToString("N0"), 260, 100, Alignment.Left);	
 	
 			}											
 		}
@@ -1532,23 +1532,24 @@ public class GameMode {
 				Fonts.drawText(FontType.DarkPurple, "Cost: 16", 75, 58, Alignment.Left);	
 				break;
 			case 1:
-				Fonts.drawText(FontType.DarkPurple, "Shield Dagger", 75, 48, Alignment.Left);	
-				Fonts.drawText(FontType.DarkPurple, "Cost: 10", 75, 58, Alignment.Left);	
+				Fonts.drawText(FontType.DarkPurple, "Auto Aim", 75, 48, Alignment.Left);	
+				Fonts.drawText(FontType.DarkPurple, "Cost: 20", 75, 58, Alignment.Left);	
 				break;
 			case 2:
-				Fonts.drawText(FontType.DarkPurple, "Lost Holy Sword", 75, 48, Alignment.Left);	
-				Fonts.drawText(FontType.DarkPurple, "Cost: 1", 75, 58, Alignment.Left);	
-				break;
-			case 3:
 				Fonts.drawText(FontType.DarkPurple, "Stun Knife", 75, 48, Alignment.Left);	
 				Fonts.drawText(FontType.DarkPurple, "Cost: 4", 75, 58, Alignment.Left);	
 				break;
-			case 4:
+			case 3:
 				Fonts.drawText(FontType.DarkPurple, "Chain Saw", 75, 48, Alignment.Left);	
 				Fonts.drawText(FontType.DarkPurple, "Cost: 6", 75, 58, Alignment.Left);	
 				break;
+			case 4:
+				Fonts.drawText(FontType.DarkPurple, "Shield Dagger", 75, 48, Alignment.Left);	
+				Fonts.drawText(FontType.DarkPurple, "Cost: 6", 75, 58, Alignment.Left);	
+				break;
 			case 5:
-				Fonts.drawText(FontType.DarkPurple, "Shop Stock", 75, 48, Alignment.Left);	
+				Fonts.drawText(FontType.DarkPurple, "Lost Holy Sword", 75, 48, Alignment.Left);	
+				Fonts.drawText(FontType.DarkPurple, "Cost: 6", 75, 58, Alignment.Left);	
 				break;
 		}	
 	}

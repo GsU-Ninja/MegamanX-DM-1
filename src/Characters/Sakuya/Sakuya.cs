@@ -4,36 +4,42 @@ using SFML.Graphics;
 using System.Linq;
 namespace MMXOnline;
 public class Sakuya : Character {
-public bool TauntPressed => player.input.isPressed(Control.Taunt, player);
-public bool upPressed => player.input.isPressed(Control.Up, player);
-public bool upHeld => player.input.isHeld(Control.Up, player);
-public bool downHeld => player.input.isHeld(Control.Down, player);
-public bool shootHeld => player.input.isHeld(Control.Shoot, player);
-public bool specialHeld => player.input.isHeld(Control.Special1, player);
-public bool specialPressed => player.input.isPressed(Control.Special1, player);
-public bool WLeftPressed => player.input.isPressed(Control.WeaponLeft, player); 
-public bool WRightPressed => player.input.isPressed(Control.WeaponRight, player); 
-public bool shootPressed => player.input.isPressed(Control.Shoot, player);
-public bool LeftOrRightHeld => player.input.isHeld(Control.Left, player) || player.input.isHeld(Control.Right, player);
-public float AmmoCooldown;
-public float onAir;
-public int SpecialWeaponSelected = 0;
-public float sakuyaheld;
-public float AttackCooldown, AttackCooldownStunKnife, AttackCooldownChainsaw;
-public float SnailHeld, SnailTime, tapcheck, timeclock, loadouttapcheck;
-public bool OnceSnail, onceloadout;
-public CrystalHunterChargedS? chargedCrystalHunter;
-public SakuyaMeleeW meleeWeapon = new();
-public Sakuya(
+	public bool TauntPressed => player.input.isPressed(Control.Taunt, player);
+	public bool upPressed => player.input.isPressed(Control.Up, player);
+	public bool upHeld => player.input.isHeld(Control.Up, player);
+	public bool downHeld => player.input.isHeld(Control.Down, player);
+	public bool shootHeld => player.input.isHeld(Control.Shoot, player);
+	public bool specialHeld => player.input.isHeld(Control.Special1, player);
+	public bool specialPressed => player.input.isPressed(Control.Special1, player);
+	public bool WLeftPressed => player.input.isPressed(Control.WeaponLeft, player); 
+	public bool WRightPressed => player.input.isPressed(Control.WeaponRight, player); 
+	public bool shootPressed => player.input.isPressed(Control.Shoot, player);
+	public bool LeftOrRightHeld => player.input.isHeld(Control.Left, player) || player.input.isHeld(Control.Right, player);
+	public bool LeftOrRightPressed => player.input.isPressed(Control.Left, player) || player.input.isPressed(Control.Right, player);
+	public bool LeftHeld => player.input.isHeld(Control.Left, player);
+	public bool RightHeld => player.input.isHeld(Control.Right, player);
+	public float AmmoCooldown;
+	public float onAir;
+	public int SpecialWeaponSelected = 0;
+	public float sakuyaheld;
+	public float AttackCooldown, AttackCooldownStunKnife, AttackCooldownChainsaw;
+	public float SnailHeld, SnailTime, tapcheck, timeclock, loadouttapcheck;
+	public bool OnceSnail, onceloadout;
+	public CrystalHunterChargedS? chargedCrystalHunter;
+	public SakuyaMeleeW meleeWeapon = new();
+	public int autoAimKnifeCount;
+	public float autoAimKnifeTime;
+	public bool autoAimShoot;
+	public Sakuya(
 		Player player, float x, float y, int xDir,
 		bool isVisible, ushort? netId, bool ownedByLocalPlayer,
 		bool isWarpIn = true, int? heartTanks = null, bool isATrans = false
 	) : base(
 		player, x, y, xDir, isVisible, netId, ownedByLocalPlayer, isWarpIn, heartTanks, isATrans
 	) {
-		charId = CharIds.Sakuya;	
-		yScale = 1f;
-		xScale = 1f;
+		charId = CharIds.Sakuya;
+		yScale = 0.7f;
+		xScale = 0.7f;
 	}
 	public override CharState getRunState(bool skipInto = false) => new SakuyaWalk("walk", skipInto);
 	public override void update() {
@@ -45,6 +51,7 @@ public Sakuya(
 		Helpers.decrementFrames(ref AttackCooldown);
 		Helpers.decrementFrames(ref AttackCooldownStunKnife);
 		Helpers.decrementFrames(ref AttackCooldownChainsaw);
+		autoAimSakuyaAttack();
 		SakuyaAmmo();
 		GlideLogic();
 		SakuyaLoadout();
@@ -93,11 +100,14 @@ public Sakuya(
 		if (WRightPressed) {
 			if (player.SakuyaAmmo >= 16 && SpecialWeaponSelected == 0) {
 				changeState(new SakuyaThousandDagger(), true);			
-			} else if (player.SakuyaAmmo >= 6 && SpecialWeaponSelected == 4 && AttackCooldownChainsaw <= 0) {
+			} else if (player.SakuyaAmmo >= 6 && SpecialWeaponSelected == 3 && AttackCooldownChainsaw <= 0) {
 				changeState(new SakuyaAttackChainsaw(), true);
-			} else if (player.SakuyaAmmo >= 4 && SpecialWeaponSelected == 3 && AttackCooldownStunKnife <= 0) {
+			} else if (player.SakuyaAmmo >= 4 && SpecialWeaponSelected == 2 && AttackCooldownStunKnife <= 0) {
 				changeState(new SakuyaAttackStunKnife(), true);
-			} 
+			} else if (player.SakuyaAmmo >= 20 && SpecialWeaponSelected == 1 && autoAimShoot == false) {
+				player.SakuyaAmmo -= 20;
+				autoAimShoot = true;
+			}
 		}
 		if (player.SakuyaAmmo > 0) {
 			if (!grounded) {
@@ -256,7 +266,7 @@ public Sakuya(
 	}
 	public void SakuyaLoadout() {
 		//will do it better later
-		if (specialHeld) {
+		if (player.input.isHeld(Control.WeaponRight, player)) {
 			if (sakuyaheld < 2)
 			sakuyaheld += Global.spf*4;	
 			if (sakuyaheld >= 1) {
@@ -280,6 +290,36 @@ public Sakuya(
 			}
 		}
 	}
+	public void autoAimSakuyaAttack() {
+		int[] randomType0 = { 0, 353, 7 };
+		int[] randomType1 = { 180, 173, 183 };
+		if (autoAimShoot) {
+			autoAimKnifeTime += Global.speedMul;
+			if (autoAimKnifeCount <= 18) {
+				if (autoAimKnifeTime >= Helpers.randomRange(7, 11)) {
+					autoAimKnifeTime = 0;
+					autoAimKnifeCount++;
+					if (xDir == 1) {
+						new SakuyaAutoAimKnife(
+							getCenterPos().addxy(Helpers.randomRange(-30, 25), Helpers.randomRange(-40, 15)),
+							1, this, player, player.getNextActorNetId(),
+							randomType0[Helpers.randomRange(0, 2)], rpc: true
+						);
+					} else if (xDir == -1) {
+						new SakuyaAutoAimKnife(
+							getCenterPos().addxy(Helpers.randomRange(-30, 25), Helpers.randomRange(-40, 15)),
+							1, this, player, player.getNextActorNetId(),
+							randomType1[Helpers.randomRange(0, 2)], rpc: true
+						);
+					}
+				}
+			}
+		}
+		if (autoAimKnifeCount == 18) {
+			autoAimShoot = false;
+			autoAimKnifeCount = 0;
+		}
+	}
 	public void SnailTimeVoid() {
 		if (isWarpIn() || charState is Die) {
 			OnceSnail = true;
@@ -288,7 +328,7 @@ public Sakuya(
 			OnceSnail = false;
 		}
 		if (shootHeld && SnailHeld < 4 && !(isWarpIn() || isWarpOut())) {
-			SnailHeld += Global.spf*5;
+			SnailHeld += Global.spf * 5;
 			if (SnailHeld >= 4) {
 				playSound("snailready", true, true);
 			}
@@ -297,7 +337,7 @@ public Sakuya(
 			OnceSnail = true;
 			chargedCrystalHunter = new CrystalHunterChargedS(getCenterPos(), player, player.getNextActorNetId(), player.ownedByLocalPlayer, sendRpc: true);
 			if (grounded)
-			changeSpriteFromName("snail", true);
+				changeSpriteFromName("snail", true);
 			else changeSpriteFromName("snail_air", true);
 		}
 		if (chargedCrystalHunter != null) {
@@ -305,8 +345,7 @@ public Sakuya(
 				chargedCrystalHunter = null;
 			} else if (charState is Die) {
 				chargedCrystalHunter.destroySelf();
-			} 
-			else {
+			} else {
 				chargedCrystalHunter.changePos(getCenterPos());
 			}
 		}

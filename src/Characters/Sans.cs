@@ -188,7 +188,7 @@ public class BoneAttackProjectile : Projectile {
 
 	public BoneAttackProjectile(Point pos, int xDir, Player player, int type, ushort? netId, bool rpc = false)
 	 : base(BoneAttackWeapon.netWeapon,pos, xDir, -100, 1, player, "sans_bonepiece2", 0, 0, netId, player.ownedByLocalPlayer) {
-		damager.hitCooldown = 4f/60f;
+		damager.hitCooldown = 3;
 		maxTime = 120f/60f;
 		projId = (int)ProjIds.BoneAttackWeaponTestID;
 		destroyOnHit = false;

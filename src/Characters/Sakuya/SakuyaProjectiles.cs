@@ -304,22 +304,31 @@ public class SakuyaChainSawProj : Projectile {
 		60, 1, player, "sakuya_chainsaw", 0, 0.15f,
 		netId, player.ownedByLocalPlayer
 	) {
+		weapon = SakuyaProjW.netWeapon;
+		vel = new Point(70*xDir, -320);
+		damager.damage = 3;
+		damager.flinch = 26;
+		damager.hitCooldown = 7;
 		fadeSprite = "";
 		fadeOnAutoDestroy = true;
 		destroyOnHit = false;
-		maxTime = 1.35f;
+		maxTime = 2.15f;
 		projId = (int)ProjIds.SakuyaChainSawProj;
 		destroyOnHitWall = false;
+		gravityModifier = 0.4f;
+		useGravity = true;
 		xScale = 0.75f;
 		yScale = 0.75f;
-		angle = -80;
+		angle = 0;
 		if (rpc) {
 			rpcCreate(pos, player, netId, xDir);
 		}
 	}
-	public override void update() {	
-		if (vel.y >= -200 && !once2) {
-			vel.y -= 40;
+	public override void update() {
+		if (xDir == -1) {
+			angle += speedMul;
+		} else {
+			angle -= speedMul;
 		}
 		if (!once) {
 			playSound("chainsawsound", true, true);
@@ -329,7 +338,7 @@ public class SakuyaChainSawProj : Projectile {
 	}
 	public override void onHitDamagable(IDamagable damagable) {
 		if (damagable is not FrostShieldProjGround or FrostShieldProjAir or FrostShieldProjCharged
-			or FrostShieldProj or FrostShieldProjPlatform or FrostShieldProjChargedGround 
+			or FrostShieldProj or FrostShieldProjPlatform or FrostShieldProjChargedGround
 			or GaeaShieldProj or ChillPIceProj) {
 			base.onHitDamagable(damagable);
 		}
@@ -342,5 +351,55 @@ public class SakuyaChainSawProj : Projectile {
 		return new SakuyaStunKnifeProj(
 			args.pos, args.xDir, args.player, args.netId
 		);
+	}
+}
+public class SakuyaAutoAimKnife : Projectile {
+	Actor? target;
+	float kSpeed = 400;
+	public SakuyaAutoAimKnife(
+		Point pos, int xDir, Actor owner, Player player, ushort? netId, float angle, bool rpc = false
+	) : base(
+		pos, xDir, owner, "sakuya_knife_autoaim", netId, player
+	) {
+		weapon = XBuster.netWeapon;
+		damager.damage = 1f;
+		damager.hitCooldown = 10;
+		damager.flinch = 0;
+		angle = angle % 360;
+		this.angle = angle;
+		vel.x = kSpeed * Helpers.cosd(angle) * xDir;
+		vel.y = kSpeed * Helpers.sind(angle) * xDir;
+		if (target == null) {
+			target = Global.level.getClosestTarget(pos, damager.owner.alliance, true, aMaxDist: 150);
+		}
+		reflectable = true;
+		maxTime = 0.7f;
+		projId = (int)ProjIds.SakuyaKnifeAutoAim;
+		if (rpc) {
+			rpcCreate(pos, owner, ownerPlayer, netId, xDir);
+		}
+		new Anim(
+			pos, "sakuya_autoknife_effect", xDir, player.getNextActorNetId(), true, true) {xScale = 0.75f, yScale = 0.75f};
+		canBeLocal = false;
+		
+	}
+
+	public static Projectile rpcInvoke(ProjParameters args) {
+		return new SakuyaAutoAimKnife(
+			args.pos, args.xDir, args.owner, args.player, args.netId, args.angle
+		);
+	}
+
+	public override void update() {
+		base.update();
+		target = Global.level.getClosestTarget(pos, damager.owner.alliance, true, aMaxDist: 150);
+		if (target != null) {
+			var dTo = pos.directionTo(target.getCenterPos()).normalize();
+			var destAngle = MathF.Atan2(dTo.y, dTo.x) * 180 / MathF.PI;
+			destAngle = Helpers.to360(destAngle);
+			angle = Helpers.lerpAngle(angle, destAngle, Global.spf * 3);
+			vel.x = Helpers.cosd(angle) * kSpeed * xDir;
+			vel.y = Helpers.sind(angle) * kSpeed * xDir;
+		}
 	}
 }

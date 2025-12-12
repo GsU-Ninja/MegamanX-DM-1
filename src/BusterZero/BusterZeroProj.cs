@@ -59,7 +59,7 @@ public class DZBuster2Proj : Projectile {
 		vel = new Point(350 * xDir, 0);
 		this.dmg = dmg;
 		if (player.BZLaserShot || player.BZTripleShot) {
-			// que será el 0.6
+			damager.hitCooldown = 3.6f;
 		}
 		fadeOnAutoDestroy = true;
 		fadeSprite = "buster2_fade";

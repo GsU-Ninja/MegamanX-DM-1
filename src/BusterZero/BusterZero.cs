@@ -104,6 +104,9 @@ public class BusterZero : Character {
 		if (!ownedByLocalPlayer) {
 			return;
 		}
+		if (!player.weapons.Any(w => w is ZeroBuster)) {
+			player.weapons.Add(new ZeroBuster());
+		}
 		// Hypermode music.
 		if (!Global.level.isHyper1v1()) {
 			if (isBlackZero && ownedByLocalPlayer) {
@@ -139,7 +142,6 @@ public class BusterZero : Character {
 		LightningWeapon.update();
 		LightningWeapon.charLinkedUpdate(this, true);
 		player.changeWeaponControls();
-		base.update();
 		// For the shooting animation.
 		Helpers.decrementTime(ref shootAnimTime);
 		if (shootAnimTime <= 0 && charState.attackCtrl && !charState.isGrabbing) {
@@ -188,7 +190,7 @@ public class BusterZero : Character {
 				this.xDir = 1;
 			}
 		}
-		shootAnimTime = 0.3f;
+		shootAnimTime = 18f;
 	}
 	public override bool canCharge() {
 		return (stockedBusterLv == 0 && !stockedSaber && !isInvulnerableAttack());
@@ -337,7 +339,7 @@ public class BusterZero : Character {
 			if (zeroLemonsOnField.Count >= 4 && player.ArmorModeX) { return; }
 			if (zeroLemonsOnField.Count >= 3 && !player.ArmorModeX) { return; }
 		}
-		if (!charState.BZBugFix) {
+	
 			if (chargeLevel == 0) {
 				var lemon = new DZBusterProj(
 					shootPos, xDir, this, player, player.getNextActorNetId(), rpc: true
@@ -381,7 +383,7 @@ public class BusterZero : Character {
 			if (chargeLevel >= 1) {
 				stopCharge();
 			}
-		}
+		
 		if (!string.IsNullOrEmpty(sound)) playSound(sound, sendRpc: true);
 	}
 	public override void destroySelf(
@@ -490,6 +492,9 @@ public class BusterZero : Character {
 			_ => null
 		};
 		return proj;
+	}
+	public override int getMaxChargeLevel() {
+		return 4;
 	}
 	public enum MeleeIds {
 		None = -1,

@@ -11,6 +11,7 @@ public abstract class SakuyaGenericMeleeState : CharState {
 	public bool soundPlayed;
 	public int soundFrame = Int32.MaxValue;
 	public bool exitOnOver = true;
+	public int xDir;
 	public SakuyaGenericMeleeState(string spr) : base(spr) {
 	}
 	public override void update() {
@@ -49,8 +50,17 @@ public abstract class SakuyaGenericMeleeState : CharState {
 	}
     public void RunLogic() {
 		float runSpeed = 2.25f;
-        character.moveXY(sakuya.xDir * runSpeed, 0);
-    }
+		if (sakuya.LeftHeld) {
+			sakuya.xDir = -1;
+			character.moveXY(-runSpeed, 0);
+		} else if (sakuya.RightHeld) {
+			sakuya.xDir = 1;
+			character.moveXY(runSpeed, 0);
+		}
+		if (character.isAnimOver()) {
+				character.changeState(new SakuyaTransition(), true);
+			}
+		}
 }
 public class SakuyaAttack : SakuyaGenericMeleeState {
 	public bool fired;
@@ -411,21 +421,10 @@ public class SakuyaAttackUP : SakuyaGenericMeleeState {
 			new SakuyaKnifeUpProj(character.getShootPos().addxy(0,18),
 			character.getShootXDir(), player, player.getNextActorNetId(), rpc: true);;
 		}
-		
-		var move = new Point(0, 0);
-		float runSpeed = character.getRunSpeed();
-		if (player.input.isHeld(Control.Left, player)) {
-			character.xDir = -1;
-			if (player.character.canMove()) move.x = -runSpeed;
-			if (move.magnitude > 0) character.changeSpriteFromName("sakuya_attack_up_run", false);
-		} else if (player.input.isHeld(Control.Right, player)) {
-			character.xDir = 1;
-			if (player.character.canMove()) move.x = runSpeed;
+		RunLogic();
+		if (sakuya.LeftOrRightHeld) {
+			character.changeSpriteFromName("sakuya_attack_up_run", false);
 		}
-		if (move.magnitude > 0) {
-			character.move(move);
-		}
-			
 		base.update();
 	}
 	public override bool altCtrlUpdate(bool[] ctrls) {
@@ -493,18 +492,9 @@ public class SakuyaAttackUP2 : SakuyaGenericMeleeState {
 		if (character.isAnimOver()) {
 			character.changeState(new SakuyaWalk(skip: false), true);
 		}
-		var move = new Point(0, 0);
-		float runSpeed = character.getRunSpeed();
-		if (player.input.isHeld(Control.Left, player)) {
-			character.xDir = -1;
-			if (player.character.canMove()) move.x = -runSpeed;
-			if (move.magnitude > 0) character.changeSpriteFromName("sakuya_attack_up_run", false);
-		} else if (player.input.isHeld(Control.Right, player)) {
-			character.xDir = 1;
-			if (player.character.canMove()) move.x = runSpeed;
-		}
-		if (move.magnitude > 0) {
-			character.move(move);
+		RunLogic();
+		if (sakuya.LeftOrRightHeld) {
+			character.changeSpriteFromName("sakuya_attack_up_run", false);
 		}
 		base.update();
 	}
@@ -541,7 +531,7 @@ public class SakuyaAttackUpAir : SakuyaGenericMeleeState {
 		}
 		if (character.isAnimOver()) {
 			character.changeToIdleOrFall();	
-		}		
+		}
 		base.update();
 	}
 	public override bool altCtrlUpdate(bool[] ctrls) {

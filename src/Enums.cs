@@ -801,6 +801,7 @@ public enum ProjIds {
 	SakuyaKnifeDProj,
 	SakuyaKnifeDown,
 	SakuyaKnifeStunProj,
+	SakuyaKnifeAutoAim,
 	SakuyaChainSawProj,
 	SakuyaDaggerShield,
 	SakuyaDoubleJumpKnifeProj,
