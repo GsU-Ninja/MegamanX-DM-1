@@ -18,7 +18,7 @@ public class CharState {
 	);
 	public string landSprite = "";
 	public string airSprite = "";
-	public bool wasGrounded = true;
+	public bool? wasGrounded = null;
 	public Point busterOffset;
 	public Character character = null!;
 	public Collider? lastLeftWallCollider;
@@ -145,7 +145,6 @@ public class CharState {
 			character.useGravity = false;
 			character.stopMoving();
 		}
-		wasGrounded = character.grounded;
 		if (this is not Jump and not WallKick && (!oldState.canStopJump || oldState.stoppedJump)) {
 			stoppedJump = true;
 		}
@@ -154,7 +153,9 @@ public class CharState {
 	public virtual bool canEnter(Character character) {
 		if (character.charState is InRideArmor &&
 			!(this is Die || this is Idle || this is Jump || this is Fall || this is StrikeChainHooked || this is ParasiteCarry || this is VileMK2Grabbed || this is DarkHoldState ||
-			  this is NecroBurstAttack || this is UPGrabbed || this is WhirlpoolGrabbed || this is DeadLiftGrabbed || Helpers.isOfClass(this, typeof(GenericGrabbedState)))) {
+			  this is UPGrabbed || this is WhirlpoolGrabbed || this is DeadLiftGrabbed || Helpers.isOfClass(this, typeof(GenericGrabbedState)))
+		) {
+			//if (character.currentWeapon is NecroBurst && character.charState is LaserAttack) return false;
 			return false;
 		}
 		if (character.charState is DarkHoldState dhs && dhs.stunTime > 0) {
@@ -180,6 +181,10 @@ public class CharState {
 	}
 
 	public virtual void render(float x, float y) {
+	}
+
+	public virtual void preUpdate() {
+		wasGrounded = character.grounded;
 	}
 
 	public virtual void update() {
@@ -242,13 +247,14 @@ public class CharState {
 		} else if (rightWallPlat?.gameObject is Actor rightActor && rightActor.isPlatform && rightActor.pos.x > character.pos.x) {
 			lastRightWallCollider = rightActor.collider;
 		}
+	}
 
+	public virtual void postUpdate() {
 		airTrasition();
-		wasGrounded = character.grounded;
 	}
 
 	public virtual void airTrasition() {
-		if (airSprite != "" && !character.grounded && wasGrounded && sprite == landSprite) {
+		if (airSprite != "" && !character.grounded && wasGrounded != false && sprite == landSprite) {
 			sprite = airSprite;
 			int oldFrameIndex = character.sprite.frameIndex;
 			float oldFrameTime = character.sprite.frameTime;
@@ -260,7 +266,7 @@ public class CharState {
 				character.sprite.frameIndex = character.sprite.totalFrameNum - 1;
 				character.sprite.frameTime = character.sprite.getCurrentFrame().duration;
 			}
-		} else if (landSprite != "" && character.grounded && !wasGrounded && sprite == airSprite) {
+		} else if (landSprite != "" && character.grounded && wasGrounded != true && sprite == airSprite) {
 			character.playAltSound("land", sendRpc: true, altParams: "larmor");
 			sprite = landSprite;
 			int oldFrameIndex = character.sprite.frameIndex;
@@ -409,8 +415,7 @@ public class WarpIn : CharState {
 
 			if (character.isAnimOver()) {
 				character.grounded = true;
-				character.pos.y = destY;
-				character.pos.x = destX;
+				character.changePos(destX, destY);
 				if (refillHP && !player.warpedInOnce) {
 					character.changeState(new WarpIdle(player.warpedInOnce));
 				} else {
@@ -584,7 +589,7 @@ public class WarpOut : CharState {
 			character.playSound("warpOut", forcePlay: true, sendRpc: true);
 		}
 
-		warpAnim.pos.y -= Global.spf * 1000;
+		warpAnim.incPos(0, -16 * character.speedMul);
 
 		if (character.pos.y <= destY) {
 			warpAnim.destroySelf();
@@ -930,24 +935,32 @@ public class Dash : CharState {
 		enterSoundArgs = "larmor";
 	}
 
+	public override void preUpdate() {
+		dashTime += character.speedMul;
+		dustTime += character.speedMul;
+	}
+
 	public override void update() {
 		base.update();
-		if (!player.isAI && !player.input.isHeld(initialDashButton, player) && !stop) {
+
+		if (!player.isAI && !stop && !player.input.isHeld(initialDashButton, player)) {
 			dashTime = 900;
 		}
 		int inputXDir = player.input.getXDir(player);
 		bool dashHeld = player.input.isHeld(initialDashButton, player);
 
 		if (dashTime > 32 && !stop) {
+			character.isDashing = false;
 			dashTime = 0;
 			stop = true;
+			defaultSprite = "dash_end";
 			sprite = "dash_end";
 			shootSprite = "dash_end_shoot";
 			character.changeSpriteFromName(character.shootAnimTime > 0 ? shootSprite : sprite, true);
 		}
 		if (dashTime < 4 || stop) {
 			if (inputXDir != 0 && inputXDir != dashDir) {
-				character.xDir = (int)inputXDir;
+				character.xDir = inputXDir;
 				dashDir = character.xDir;
 			}
 		}
@@ -973,11 +986,7 @@ public class Dash : CharState {
 				"dust", dashDir, player.getNextActorNetId(), true,
 				sendRpc: true
 			);
-		} else {
-			dustTime += character.speedMul;
 		}
-		// Timer.
-		dashTime += character.speedMul;
 
 		// End.
 		if (stop && character.isAnimOver()) {
@@ -1016,7 +1025,6 @@ public class Dash : CharState {
 		base.onEnter(oldState);
 		dashDir = character.xDir;
 		character.isDashing = true;
-		//character.globalCollider = character.getDashingCollider();
 		dashSpark = new Anim(
 			character.getDashSparkEffectPos(dashDir),
 			"dash_sparks", dashDir, player.getNextActorNetId(),
@@ -1068,6 +1076,11 @@ public class AirDash : CharState {
 		enterSoundArgs = "larmor";
 	}
 
+	public override void preUpdate() {
+		base.preUpdate();
+		dashTime += character.speedMul;
+	}
+
 	public override void update() {
 		base.update();
 		if (!player.isAI && !player.input.isHeld(initialDashButton, player) && !stop) {
@@ -1076,23 +1089,18 @@ public class AirDash : CharState {
 		int inputXDir = player.input.getXDir(player);
 		bool dashHeld = player.input.isHeld(initialDashButton, player);
 
+		if (character.canWallClimb() && character.isCWallClose != null && inputXDir == character.xDir) {
+			character.changeToIdleOrFall();
+			return;
+		}
+
 		if (dashTime > 28 && !stop) {
 			character.useGravity = true;
 			dashTime = 0;
 			stop = true;
-			if (character is not Doppma or CmdSigma) {
-				sprite = "dash_end";
-				shootSprite = "dash_end_shoot";
-				character.changeSpriteFromName(character.shootAnimTime > 0 ? shootSprite : sprite, true);
-			}
-			else if (character is Doppma) {
-				character.changeSpriteFromName("fall", false);
-				exitOnLanding = true;
-			}
-			if (character is CmdSigma) {
-				character.changeSpriteFromName("fall", false);
-				exitOnLanding = true;
-			}
+			sprite = "dash_end";
+			shootSprite = "dash_end_shoot";
+			character.changeSpriteFromName(character.shootAnimTime > 0 ? shootSprite : sprite, true);
 		}
 		if (dashTime < 4 || stop) {
 			if (inputXDir != 0 && inputXDir != dashDir) {
@@ -1101,20 +1109,17 @@ public class AirDash : CharState {
 			}
 		}
 		// Dash regular speed.
-		if (dashTime >= 4 && !stop) {
+		if (dashTime >= 4 && !stop || stop && dashHeld) {
 			character.moveXY(character.getDashSpeed() * dashDir, 0);
 		}
-		// End move.
-		else if (stop && inputXDir != 0) {
-			character.moveXY(character.getDashSpeed() * inputXDir, 0);
-		}
-		// Speed at start and end.
+		// Dash start.
 		else if (!stop) {
 			character.moveXY(Physics.DashStartSpeed * character.getRunDebuffs() * dashDir, 0);
 		}
-		// Timer
-		dashTime += character.speedMul;
-
+		// Air move.
+		else if (stop && inputXDir != 0) {
+			character.moveXY(character.getDashSpeed() * inputXDir, 0);
+		}
 		// End.
 		if (stop && character.isAnimOver()) {
 			character.changeToIdleOrFall();
@@ -1164,6 +1169,7 @@ public class WallSlide : CharState {
 		this.wallDir = wallDir;
 		this.wallCollider = wallCollider;
 		accuracy = 2;
+		normalCtrl = true;
 		attackCtrl = true;
 		enterSound = "wallLand";
 		enterSoundArgs = "larmor";
@@ -1304,6 +1310,8 @@ public class WallSlideAttack : CharState {
 }
 
 public class WallKick : CharState {
+	public float dashThreshold = 0.2f;
+
 	public WallKick() : base("wall_kick", "wall_kick_shoot") {
 		accuracy = 5;
 		exitOnLanding = true;
@@ -1320,6 +1328,10 @@ public class WallKick : CharState {
 		base.update();
 		if (character.vel.y > 0) {
 			character.changeState(character.getFallState());
+		}
+		if (!character.isDashing && stateTime < dashThreshold && player.input.isHeld(Control.Dash, player)) {
+			character.dashedInAir++;
+			character.isDashing = true;
 		}
 		if (character is BusterZero bzero && bzero.BZMagnetMineProjCharged?.vel.x == 0) {
 			sprite = "wall_kick_shoot";
@@ -1662,11 +1674,9 @@ public class GenericGrabbedState : CharState {
 		}
 
 		grabTime -= player.mashValue();
+		
 		if (grabTime <= 0) {
 			character.changeToIdleOrFall();
-		}
-		if (character is Axl axl) {
-			axl.stealthRevealTime = Axl.maxStealthRevealTime;
 		}
 	}
 

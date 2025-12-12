@@ -120,7 +120,7 @@ public partial class Actor {
 				rect.y2 = MathF.Round(rect.y2 - 1);
 				DrawWrappers.DrawRect(
 					rect.x1, rect.y1, rect.x2, rect.y2,
-					true, hitboxColor, 1, zIndex + 1, true,
+					true, hitboxColor, 1, zIndex +  + ZIndex.HUD, true,
 					outlineColor
 				);
 			} else {
@@ -133,7 +133,7 @@ public partial class Actor {
 				} else {
 					hasNonAttackColider = true;
 				}
-				DrawWrappers.DrawPolygon(allCollider.shape.points, hitboxColor, fill: true, zIndex + 1);
+				DrawWrappers.DrawPolygon(allCollider.shape.points, hitboxColor, fill: true, zIndex + ZIndex.HUD);
 			}
 		}
 		if (hasNonAttackColider) {
@@ -149,7 +149,7 @@ public partial class Actor {
 			DrawWrappers.DrawPolygon(
 				rect.getPoints(),
 				new Color(0, 255, 0, 150),
-				fill: false, zIndex + 1, true
+				fill: false, zIndex +  + ZIndex.HUD, true
 			);
 		}
 		//DrawWrappers.DrawCircle(collider.shape, Color.Blue, true, zIndex + 1, false, true);
@@ -249,7 +249,7 @@ public partial class Actor {
 		Projectile? proj = getMeleeProjById(meleeId, centerPoint);
 		if (proj != null) {
 			proj.meleeId = meleeId;
-			proj.owningActor = this;
+			proj.ownerActor = this;
 			updateProjFromHitbox(proj);
 		}
 		return proj;
@@ -272,8 +272,12 @@ public partial class Actor {
 			return;
 		}
 		Global.level.removeFromGrid(this);
-		pos.inc(amount);
+		unsafePos.inc(amount);
 		Global.level.addToGrid(this);
+	}
+
+	public void incPos(float x, float y) {
+		incPos(new Point(x, y));
 	}
 
 	public void changePos(Point newPos) {
@@ -281,8 +285,18 @@ public partial class Actor {
 			return;
 		}
 		Global.level.removeFromGrid(this);
-		pos = newPos;
+		unsafePos = newPos;
 		Global.level.addToGrid(this);
+	}
+
+	public void changePos(float x, float y) {
+		changePos(new Point(x, y));
+	}
+	public void changePosX(float x) {
+		changePos(new Point(x, pos.y));
+	}
+	public void changePosY(float y) {
+		changePos(new Point(pos.x, y));
 	}
 
 	public CollideData? sweepTest(Point offset) {

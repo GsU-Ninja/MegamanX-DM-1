@@ -133,14 +133,18 @@ public partial class Level {
 	public const ushort cp1NetId = 14;
 	public const ushort cp2NetId = 15;
 
-	public ShaderWrapper backgroundShader;
+	public ShaderWrapper? backgroundShader;
 	public Texture backgroundShaderImage;
-	public ShaderWrapper parallaxShader;
+	public ShaderWrapper? parallaxShader;
 	public Texture parallaxShaderImage;
-	public ShaderWrapper backwallShader;
+	public ShaderWrapper? altBackwallShader => backwallShader ?? backgroundShader;
+	public ShaderWrapper? backwallShader;
 	public Texture backwallShaderImage;
-	public ShaderWrapper foregroundShader;
+	public ShaderWrapper? altForegroundShader => foregroundShader ?? backgroundShader;
+	public ShaderWrapper? foregroundShader;
 	public Texture foregroundShaderImage;
+
+	public float mapVersion;
 
 	public List<Player> players = new List<Player>();
 	public Player mainPlayer;
@@ -315,7 +319,7 @@ public partial class Level {
 		InGameMainMenu.selectY = 0;
 		UpgradeMenu.onUpgradeMenu = true;
 		UpgradeArmorMenu.xGame = 1;
-		UpgradeArmorMenuEX.xGame = 1;
+		//UpgradeArmorMenuEX.xGame = 1;
 
 		Menu.exit();
 		this.server = server;
@@ -433,16 +437,19 @@ public partial class Level {
 			int yDir = flipY ? -1 : 1;
 			if (instance.points != null) {
 				foreach (var point in instance.points) {
-					points.Add(new Point((float)point.x, (float)point.y));
+					points.Add(new Point((float)point.x, (float)point.y).round());
 				}
 			}
-			Point pos = new Point((float)(instance.pos?.x ?? 0), (float)(instance.pos?.y ?? 0));
+			Point pos = new Point((float)(instance.pos?.x ?? 0), (float)(instance.pos?.y ?? 0)).round();
 
 			if (objectName == "Collision Shape") {
 				Wall wall = new Wall(instanceName, points);
 
 				float moveX = instance?.properties?.moveX ?? 0;
-				wall.moveX = moveX / 60f;
+				if (mapVersion == 0) {
+					moveX /= 60;
+				}
+				wall.moveX = moveX;
 
 				if (instance?.properties?.slippery != null && instance.properties.slippery == true) {
 					wall.slippery = true;
@@ -456,14 +463,14 @@ public partial class Level {
 				if (instance?.properties?.pitWall != null && instance.properties.pitWall == true) {
 					isPitWall = true;
 					wall.collider._shape.points[2] = (
-						new Point(wall.collider._shape.points[2].x, Global.level.height + 45)
+						new Point(wall.collider._shape.points[2].x, Global.level.height + 45).round()
 					);
 					wall.collider._shape.points[3] = (
-						new Point(wall.collider._shape.points[3].x, Global.level.height + 45)
+						new Point(wall.collider._shape.points[3].x, Global.level.height + 45).round()
 					);
-					var rect = wall.collider.shape.getRect();
-					var newRect = new Rect(rect.x1, rect.y2, rect.x2, rect.y2 + 1000);
-					var pitWall = new Wall(wall.name + "Pit", newRect.getPoints());
+					Rect rect = wall.collider.shape.getRect();
+					Rect newRect = new Rect(rect.x1, rect.y2, rect.x2, rect.y2 + 1000);
+					Wall pitWall = new Wall(wall.name + "Pit", newRect.getPoints());
 					pitWall.collider.isClimbable = false;
 					addGameObject(pitWall); 
 				}
@@ -524,14 +531,24 @@ public partial class Level {
 				float? damage = instance.properties.damage;
 				bool flinch = instance.properties.flinch ?? false;
 				float hitCooldown = instance.properties.hitCooldown ?? 1;
+				if (mapVersion == 0) {
+					hitCooldown *= 60;
+				}
 
 				var killZone = new KillZone(instanceName, points, killInvuln, damage, flinch, hitCooldown);
 				addGameObject(killZone);
 			} else if (objectName == "Move Zone") {
 				if (levelData.name != "giantdam" || enableGiantDamPropellers()) {
+					float moveX = (float?)instance.properties.moveX ?? 0;
+					float moveY = (float?)instance.properties.moveY ?? 0;
+
+					if (mapVersion == 0) {
+						moveX /= 60;
+						moveY /= 60;
+					}
 					var moveZone = new MoveZone(
 						instanceName, points,
-						(float)instance.properties.moveX / 60f, (float)instance.properties.moveY / 60f
+						moveX, moveY
 					);
 					addGameObject(moveZone);
 				}
@@ -1374,6 +1391,7 @@ public partial class Level {
 			go.speedMul = slowAmount * Global.gameSpeed;
 			go.update();
 			go.stateUpdate();
+			go.physicsUpdate();
 			if (isNon1v1Elimination() &&
 				gameMode.virusStarted > 0 && go is Actor actor &&
 				actor.ownedByLocalPlayer && go is IDamagable damagable
@@ -1411,7 +1429,9 @@ public partial class Level {
 
 		// Collision shenanigans.
 		collidedGObjs.Clear();
-		(int x, int y)[] arrayGrid = populatedGrids.ToArray();
+		(int x, int y)[] arrayGrid = populatedGrids.OrderBy(
+			grid => grid.x + grid.y * 4096
+		).ToArray();
 		foreach ((int x, int y)gridData in arrayGrid) {
 			// Initalize data.
 			List<GameObject> currentGrid = new(grid[gridData.x, gridData.y]);
@@ -2043,7 +2063,7 @@ public partial class Level {
 
 		// If a backwall wasn't set, the background becomes the backwall.
 		if (level.backwallSprites != null) {
-			DrawWrappers.DrawMapTiles(level.backwallSprites, 0, 0, srt, level.backgroundShader);
+			DrawWrappers.DrawMapTiles(level.backwallSprites, 0, 0, srt, level.altBackwallShader);
 		} else {
 			DrawWrappers.DrawMapTiles(level.backgroundSprites, 0, 0, srt, level.backgroundShader);
 		}
@@ -2052,13 +2072,12 @@ public partial class Level {
 
 		// If a backwall wasn't set, the background becomes the backwall.
 		if (level.backwallSprites != null) {
-			DrawWrappers.DrawMapTiles(level.backwallSprites, 0, 0, srt, level.backwallShader);
 			DrawWrappers.DrawMapTiles(level.backgroundSprites, 0, 0, srt, level.backgroundShader);
 		}
 
 		level.drawKeyRange(keys, ZIndex.Background, ZIndex.Foreground, srt, walDrawObjects);
 
-		DrawWrappers.DrawMapTiles(level.foregroundSprites, 0, 0, srt, level.foregroundShader);
+		DrawWrappers.DrawMapTiles(level.foregroundSprites, 0, 0, srt, level.altForegroundShader);
 
 		level.drawKeyRange(keys, ZIndex.Foreground, long.MaxValue, srt, walDrawObjects);
 

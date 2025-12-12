@@ -295,6 +295,8 @@ public enum WeaponIds {
 	Sigma3KaiserStomp,
 	RideChaserGun,
 	RideChaserHit,
+	VileWeaponSystem,
+	DNACore = 250,
 	IrisZSaber,
 	IrisRakuhouha,
 	IrisRekkoha,
@@ -307,7 +309,6 @@ public enum WeaponIds {
 	SakuyaMeleeW,
 	SakuyaProjW,
 	BZBoomerangShield,
-	DNACore = 250,
 	BZTTriThunderW,
 	BZYammarkOption,
 	//Sans

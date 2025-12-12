@@ -61,7 +61,7 @@ public class TriadThunder : Weapon {
 public class TriadThunderProj : Projectile {
 	int state;
 	Character? character;
-	MegamanX mmx = null!;
+	MegamanX? mmx = null;
 	public List<TriadThunderBall> balls;
 	public TriadThunderProj(
 		Point pos, int xDir, int yDir, Actor owner, Player player, ushort netProjId, bool rpc = false
@@ -74,13 +74,15 @@ public class TriadThunderProj : Projectile {
 		damager.flinch = Global.miniFlinch;
 		projId = (int)ProjIds.TriadThunder;
 		character = player.character;
-		mmx = player.character as MegamanX ?? throw new NullReferenceException();
+		if (ownedByLocalPlayer) {
+			mmx = player.character as MegamanX;
+		}
 		destroyOnHit = false;
 		shouldShieldBlock = false;
 		shouldVortexSuck = false;
 		this.yDir = yDir;
 		maxTime = 1.5f;
-		mmx.linkedTriadThunder = this;
+		mmx?.linkedTriadThunder = this;
 
 		visible = false;
 
@@ -97,7 +99,7 @@ public class TriadThunderProj : Projectile {
 
 		isMelee = true;
 		if (ownerPlayer?.character != null) {
-			owningActor = ownerPlayer.character;
+			ownerActor = ownerPlayer.character;
 		}
 	}
 
@@ -162,7 +164,7 @@ public class TriadThunderProj : Projectile {
 
 	public override void onDestroy() {
 		base.onDestroy();
-		mmx.linkedTriadThunder = null;
+		mmx?.linkedTriadThunder = null;
 	}
 }
 
@@ -184,7 +186,7 @@ public class TriadThunderBall : Projectile {
 
 		isMelee = true;
 		if (ownerPlayer.character != null) {
-			owningActor = ownerPlayer.character;
+			ownerActor = ownerPlayer.character;
 		}
 		if (rpc) {
 			rpcCreate(pos, owner, ownerPlayer, netId, xDir);
@@ -360,7 +362,7 @@ public class TriadThunderQuake : Projectile {
 
 		isMelee = true;
 		if (ownerPlayer?.character != null) {
-			owningActor = ownerPlayer.character;
+			ownerActor = ownerPlayer.character;
 		}
 	}
 

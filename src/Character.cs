@@ -229,15 +229,19 @@ public partial class Character : Actor, IDamagable {
 	public int secondBarOffset;
 	public bool isQuickAssassinate;
 	public bool disguiseCoverBlown;
-
 	public AltSoundIds altSoundId = AltSoundIds.None;
-
 	public enum AltSoundIds {
 		None,
 		X1,
 		X2,
 		X3,
 	}
+	public CollideData? isCWallClose => (
+		Global.level.raycastCond(
+			pos, pos.addxy(10 * xDir, 0),
+			[typeof(Wall)], (go) => go is Wall { slippery: false }
+		)
+	);
 
 	// Main character class starts here.
 	public Character(
@@ -245,7 +249,7 @@ public partial class Character : Actor, IDamagable {
 		bool isVisible, ushort? netId, bool ownedByLocalPlayer,
 		bool isWarpIn = true, int? heartTanks = null, bool isATrans = false
 	) : base(
-		null!, new Point(x, y), netId, ownedByLocalPlayer, addToLevel: true
+		"", new Point(x, y), netId, ownedByLocalPlayer, addToLevel: true
 	) {
 		//hasStateMachine = true;
 		slideOnIce = true;
@@ -580,7 +584,8 @@ public partial class Character : Actor, IDamagable {
 	public virtual bool canDash() {
 		if (player.isAI && charState is Dash) return false;
 		if (rideArmorPlatform != null) return false;
-		if (charState is WallKick wallKick && wallKick.stateTime < 0.25f) return false;
+		if (charState is WallSlide) return false;
+		if (charState is WallKick wallKick && wallKick.stateTime < wallKick.dashThreshold) return false;
 		if (isSoftLocked()) return false;
 		if (isAttacking()) return false;
 		if (RootTime > 0) return false;
@@ -736,7 +741,7 @@ public partial class Character : Actor, IDamagable {
 		return Physics.WalkSpeed * getRunDebuffs();
 	}
 
-	public float getRunDebuffs() {
+	public virtual float getRunDebuffs() {
 		if (isSlowImmune()) {
 			return 1;
 		}
@@ -790,8 +795,7 @@ public partial class Character : Actor, IDamagable {
 
 	// For terrain collision.
 	public override Collider? getTerrainCollider() {
-		Collider? overrideGlobalCollider = null;
-		if (spriteToColliderMatch(sprite.name, out overrideGlobalCollider)) {
+		if (spriteToColliderMatch(sprite.name, out Collider? overrideGlobalCollider)) {
 			return overrideGlobalCollider;
 		}
 		if (physicsCollider == null) {
@@ -872,9 +876,7 @@ public partial class Character : Actor, IDamagable {
 		if (grounded && !isDashing) {
 			dashedInAir = 0;
 		}
-		if (ai != null) {
-			ai.preUpdate();
-		}
+		ai?.preUpdate();
 	}
 
 	public override void onCollision(CollideData other) {
@@ -891,7 +893,8 @@ public partial class Character : Actor, IDamagable {
 		}
 
 		// Crystal break.
-		if ((charState is Dash || charState is AirDash) &&
+		if (((charState is Dash or AirDash or LightDash or GigaAirDash) || 
+			(charState.useDashJumpSpeed || isDashing) && !(charState is Fall or Jump)) &&
 			other.gameObject is Character character && character.isCrystalized &&
 			character.player.alliance != player.alliance
 		) {
@@ -1023,10 +1026,7 @@ public partial class Character : Actor, IDamagable {
 				removeBurn();
 			}
 		}
-		if (flattenedTime > 0 && !(charState is Die)) {
-			flattenedTime -= Global.spf;
-			if (flattenedTime < 0) flattenedTime = 0;
-		}
+		Helpers.decrementFrames(ref flattenedTime);
 		Helpers.decrementTime(ref slowdownTime);
 		Helpers.decrementTime(ref RootCooldown);
 		Helpers.decrementTime(ref RootTime);
@@ -1302,9 +1302,7 @@ public partial class Character : Actor, IDamagable {
 			usedSubtank = null;
 		}
 
-		if (ai != null) {
-			ai.update();
-		}
+		ai?.update();
 
 		if (slideVel != 0) {
 			slideVel = Helpers.toZero(slideVel, speedMul * 0.1f, Math.Sign(slideVel));
@@ -1344,13 +1342,38 @@ public partial class Character : Actor, IDamagable {
 		updateCtrl();
 	}
 
+	
+	public override void statePreUpdate() {
+		charState.stateFrames += 1f * Global.speedMul;
+		charState.preUpdate();
+	}
+
 	public override void stateUpdate() {
 		charState.update();
 	}
 
 	public override void statePostUpdate() {
-		base.statePostUpdate();
-		charState.stateFrames += 1f * Global.speedMul;
+		charState.postUpdate();
+	}
+
+	public override void postUpdate() {
+		base.postUpdate();
+		postUpdateCtrl();
+	}
+
+	public virtual bool postUpdateCtrl() {
+		if (!ownedByLocalPlayer) {
+			return false;
+		}
+		if (charState.exitOnLanding && grounded) {
+			landingCode();
+			return true;
+		}
+		if (charState.exitOnAirborne && !grounded) {
+			changeState(getFallState());
+			return true;
+		}
+		return false;
 	}
 
 	public virtual bool updateCtrl() {
@@ -1487,7 +1510,7 @@ public partial class Character : Actor, IDamagable {
 			if (player.input.isPressed(Control.Jump, player) && canJump()) {
 				vel.y = -getJumpPower();
 				isDashing = (
-					isDashing || player.dashPressed(out string dashControl) && canDash()
+					isDashing || player.dashPressed(out _) && canDash()
 				);
 				if (isDashing) {
 					dashedInAir++;
@@ -1720,8 +1743,7 @@ public partial class Character : Actor, IDamagable {
 			int chargeType = 0;
 			if (!sprite.name.Contains("ra_hide")) {
 				int level = getDisplayChargeLevel();
-				var renderGfx = RenderEffectType.ChargeBlue;
-				renderGfx = level switch {
+				RenderEffectType renderGfx = level switch {
 					1 => RenderEffectType.ChargeBlue,
 					2 => RenderEffectType.ChargeYellow,
 					3 when (chargeType == 2) => RenderEffectType.ChargeOrange,
@@ -2212,11 +2234,9 @@ public partial class Character : Actor, IDamagable {
 			changeSprite(getSprite(newState.shootSpriteEx), true);
 		} else {
 			string spriteName = sprite.name;
-			string targetSprite = newState.sprite;
 			if (newState.sprite == newState.transitionSprite &&
 				!Global.sprites.ContainsKey(getSprite(newState.transitionSprite))
 			) {
-				targetSprite = newState.defaultSprite;
 				newState.sprite = newState.defaultSprite;
 			}
 			if (Global.sprites.ContainsKey(getSprite(newState.sprite))) {
@@ -2313,11 +2333,11 @@ public partial class Character : Actor, IDamagable {
 				0, pos.x + x, pos.y + y + yOff, xDir, 1, null, 1, 1, 1, zIndex + 1
 			);
 		}
-		List<Player> nonSpecPlayers = Global.level.nonSpecPlayers();
+		//List<Player> nonSpecPlayers = Global.level.nonSpecPlayers();
 
-		bool drawCursorChar = player.isMainPlayer && (
+		/*bool drawCursorChar = player.isMainPlayer && (
 			Global.level.is1v1() || Global.level.server.fixedCamera
-		);
+		);*/
 
 		bool shouldDrawName = false;
 		bool shouldDrawHealthBar = false;
@@ -2480,7 +2500,6 @@ public partial class Character : Actor, IDamagable {
 				Alignment.Center, true, depth: ZIndex.HUD
 			);
 			if (ai != null) {
-				var charTarget = ai.target as Character;
 				Fonts.drawText(
 					FontType.Grey, "dest:" + ai.aiState.getDestNodeName(),
 					textPosX, textPosY -= 10, Alignment.Center, true, depth: ZIndex.HUD
@@ -2497,7 +2516,7 @@ public partial class Character : Actor, IDamagable {
 					FontType.Grey, ai.aiState.GetType().ToString().RemovePrefix("MMXOnline."),
 					textPosX, textPosY -= 10, Alignment.Center, true, depth: ZIndex.HUD
 				);
-				if (charTarget != null) {
+				if (ai.target is Character charTarget) {
 					Fonts.drawText(
 						FontType.Grey, "target:" + charTarget?.name, textPosX, textPosY -= 10,
 						Alignment.Center, true, depth: ZIndex.HUD
@@ -2512,6 +2531,10 @@ public partial class Character : Actor, IDamagable {
 			} else {
 				Fonts.drawText(
 					FontType.Grey, charState.GetType().ToString().RemovePrefix("MMXOnline."),
+					textPosX, textPosY -= 10, Alignment.Center, true, depth: ZIndex.HUD
+				);
+				Fonts.drawText(
+					FontType.Grey, sprite.name,
 					textPosX, textPosY -= 10, Alignment.Center, true, depth: ZIndex.HUD
 				);
 			}
@@ -2604,7 +2627,7 @@ public partial class Character : Actor, IDamagable {
 
 		if (charState is GenericStun gst) {
 			bool hasDrawn = false;
-			List<int> iconsToDraw = new();
+			List<int> iconsToDraw = [];
 			if (crystalizedTime > 0) {
 				drawStatusBar(crystalizedTime, gst.getTimerFalloff(), crystalizedMaxTime, new Color(247, 206, 247));
 				deductLabelY(5);
@@ -2907,8 +2930,15 @@ public partial class Character : Actor, IDamagable {
 		) {
 			damage = 0;
 		}
-
+		// Get armor penetration flag.
 		bool isArmorPiercing = Damager.isArmorPiercing(projId);
+		// Instakills and hits while dead also ignore armor.
+		if (originalDamage == (decimal)Damager.forceKillDamage ||
+			originalDamage == (decimal)Damager.ohkoDamage ||
+			originalDamage == (decimal)Damager.envKillDamage
+		) {
+			isArmorPiercing = true;
+		}
 
 		if (projId == (int)ProjIds.CrystalHunterDash &&
 			charState is GenericStun && crystalizedTime > 0 &&
@@ -2917,12 +2947,10 @@ public partial class Character : Actor, IDamagable {
 			crystalizedTime = 0; // Dash to destroy crystal
 		}
 
-		var inRideArmor = charState as InRideArmor;
-		if (inRideArmor != null && inRideArmor.crystalizeTime > 0) {
+		if (charState is InRideArmor inRideArmor && inRideArmor.crystalizeTime > 0) {
 			if (weaponIndex == 20 && damage > 0) inRideArmor.crystalizeTime = 0;   //Dash to destroy crystal
 			inRideArmor.checkCrystalizeTime();
 		}
-
 		// For fractional damage shenanigans.
 		if (damage % 1 != 0) {
 			decimal decDamage = damage % 1;
@@ -2951,41 +2979,44 @@ public partial class Character : Actor, IDamagable {
 			damage -= 1;
 		}
 		// Damage increase/reduction section
-		if (!isArmorPiercing && (
-			damage != (decimal)Damager.forceKillDamage &&
-			damage != (decimal)Damager.ohkoDamage &&
-			damage != (decimal)Damager.envKillDamage
-		)) {
+		if (!isArmorPiercing && damageSavings < maxHealth) {
+			// Limit calculation damage to our max HP.
+			decimal calcDamage = Math.Min(originalDamage, maxHealth);
+			// Apply savings.
 			if (charState is SwordBlock) {
-				damageSavings += (originalDamage * 0.5m);
+				damageSavings += (calcDamage * 0.5m);
 			}
 			if (charState is SigmaAutoBlock) {
-				damageSavings += (originalDamage * 0.25m);
+				damageSavings += (calcDamage * 0.25m);
 			}
 			if (charState is SigmaBlock) {
-				damageSavings += (originalDamage * 0.5m);
+				damageSavings += (calcDamage * 0.5m);
 			}
 			if (acidTime > 0) {
 				decimal extraDamage = 0.25m + (0.25m * ((decimal)acidTime / 8.0m));
-				damageDebt += (originalDamage * extraDamage);
+				damageDebt += (calcDamage * extraDamage);
 			}
 			if (mmx != null) {
 				if (mmx.barrierActiveTime > 0) {
 					if (mmx.hyperChestArmor == ArmorId.Max) {
-						damageSavings += (originalDamage * 0.5m);
+						damageSavings += (calcDamage * 0.5m);
 					} else {
-						damageSavings += (originalDamage * 0.25m);
+						damageSavings += (calcDamage * 0.25m);
 					}
 				}
 				if (mmx.chestArmor == ArmorId.Light) {
-					damageSavings += (originalDamage * 0.125m);
+					damageSavings += (calcDamage * 0.125m);
 				}
 				if (mmx.chestArmor == ArmorId.Giga) {
-					damageSavings += (originalDamage * 0.125m);
+					damageSavings += (calcDamage * 0.125m);
 				}
 			}
-			if (vile != null && vile.hasFrozenCastle && charState is not Die or VileRevive) {
-				damageSavings += originalDamage * Vile.frozenCastlePercent;
+			if (vile != null && vile.hasFrozenCastle) {
+				damageSavings += calcDamage * Vile.frozenCastlePercent;
+			}
+			// Limit to max HP.
+			if (damageSavings > maxHealth) {
+				damageSavings = maxHealth;
 			}
 		}
 		// This is to defend from overkill damage.
@@ -3031,7 +3062,7 @@ public partial class Character : Actor, IDamagable {
 				player.delaySubtank();
 				enterCombat();
 			}
-			if (actor is Projectile proj && proj.owningActor != null) {
+			if (actor is Projectile proj && proj.ownerActor != null) {
 
 			}
 			else if (player.character != null) {
@@ -3125,12 +3156,14 @@ public partial class Character : Actor, IDamagable {
 					}
 				}
 				if (mmx != null) {
+					/* what is this doing here?
 					if (mmx.fullArmor == ArmorId.Light) {
 						player.hadoukenAmmo += (float)(originalDamage * 32);
 					}
 					if (mmx.fullArmor == ArmorId.Giga) {
 						player.shoryukenAmmo += (float)(originalDamage * 32);
 					}
+					*/
 				}
 			}
 			if (this is NeoSigma neoSigma) {
@@ -3211,9 +3244,7 @@ public partial class Character : Actor, IDamagable {
 			} else if (Global.level.gameMode.level.is1v1()) {
 				// In 1v1 the other player should always be considered a killer to prevent suicide
 				var otherPlayer = Global.level.nonSpecPlayers().Find(p => p.id != player.id);
-				if (otherPlayer != null) {
-					otherPlayer.addKill();
-				}
+				otherPlayer?.addKill();
 			}
 
 			if (assister != null && assister != player && assister != Player.stagePlayer) {
@@ -3538,7 +3569,7 @@ public partial class Character : Actor, IDamagable {
 			shape = shape.clone(0, MathF.Abs(shape.maxY) + 1);
 		}
 
-		var collision = Global.level.checkCollisionShape(shape, new List<GameObject>() { rideArmor });
+		var collision = Global.level.checkCollisionShape(shape, [rideArmor]);
 		if (collision?.gameObject is not Wall) {
 			return true;
 		}

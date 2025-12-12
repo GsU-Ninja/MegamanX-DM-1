@@ -452,7 +452,7 @@ public class MEnter : MaverickState {
 		base.onEnter(oldState);
 		maverick.useGravity = false;
 		maverick.alpha = 0;
-		maverick.pos.y = destY - 32;
+		maverick.changePosY(destY - 32);
 		if (maverick.controlMode != MaverickModeId.TagTeam && !once) {
 			maverick.playSound("warpIn", sendRpc: true);
 			once = true;
@@ -1357,7 +1357,6 @@ public class MWallKick : MaverickState {
 		base.update();
 		if (kickSpeed != 0) {
 			kickSpeed = Helpers.toZero(kickSpeed, 800 * Global.spf, kickDir);
-			bool stopMove = false;
 			if (player.input.isHeld(Control.Left, player) && kickSpeed < 0 ||
 				player.input.isHeld(Control.Right, player) && kickSpeed > 0
 			) {

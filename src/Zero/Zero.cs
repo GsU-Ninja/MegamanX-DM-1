@@ -593,9 +593,16 @@ public class Zero : Character {
 			return true;
 		}
 		// Air attack.
-		if (specialPressed) {
+		bool altSpecialPressed = this.specialPressed;
+		bool altShootPressed = this.shootPressed;
+
+		if (Options.main.swapAirAttacks) {
+			(altSpecialPressed, altShootPressed) = (altShootPressed, altSpecialPressed);
+		}
+
+		if (altSpecialPressed) {
 			if (airSpecial.type == 0 && charState is not ZeroRollingSlashtate) {
-				if (Options.main.swapAirAttacks == false && kuuenzanCooldown <= 0) {
+				if (kuuenzanCooldown <= 0) {
 					changeState(new ZeroRollingSlashtate(), true);
 				} else {
 					changeState(new ZeroAirSlashState(), true);
@@ -607,7 +614,7 @@ public class Zero : Character {
 			return true;
 		}
 		// Air attack.
-		if (shootPressed) {
+		if (altShootPressed) {
 			if (charState is WallSlide wallSlide) {
 				changeState(new ZeroMeleeWall(wallSlide.wallDir, wallSlide.wallCollider), true);
 			} else {
@@ -708,7 +715,7 @@ public class Zero : Character {
 		}
 		// Assing data variables.
 		proj.meleeId = meleeId;
-		proj.owningActor = this;
+		proj.ownerActor = this;
 
 		// Damage based on tripleSlash time.
 		if (meleeId == (int)MeleeIds.HuhSlash) {
@@ -948,7 +955,7 @@ public class Zero : Character {
 							HitboxFlag.Hitbox, Point.zero
 						),
 						meleeId = (int)MeleeIds.AwakenedAura,
-						owningActor = this
+						ownerActor = this
 					};
 					return proj;
 				}

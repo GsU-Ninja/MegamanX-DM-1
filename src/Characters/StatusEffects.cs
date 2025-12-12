@@ -81,9 +81,6 @@ public class Hurt : CharState {
 			if (character is not BaseSigma && !character.isToughGuyHyperMode()) //Tough guy
 				character.move(new Point(hurtSpeed * 60f, 0));
 		}
-		if (character is Axl axl) {
-			axl.stealthRevealTime = Axl.maxStealthRevealTime;
-		}
 
 		if (isMiniFlinch()) {
 			character.frameSpeed = 0;
@@ -148,10 +145,6 @@ public class GenericStun : CharState {
 			if (stunAnim == "idle") {
 				character.sprite.frameSpeed = 0;
 			}
-		}
-
-		if (character is Axl axl) {
-			axl.stealthRevealTime = Axl.maxStealthRevealTime;
 		}
 
 		if (character.frozenTime == 0 && character.crystalizedTime == 0 && character.paralyzedTime == 0) {
@@ -350,10 +343,6 @@ public class KnockedDown : CharState {
 
 		if (character.canCharge() && player.input.isHeld(Control.Shoot, player)) {
 			character.increaseCharge();
-		}
-
-		if (character is Axl axl) {
-			axl.stealthRevealTime = Axl.maxStealthRevealTime;
 		}
 
 		if (stateTime >= flinchTime) {

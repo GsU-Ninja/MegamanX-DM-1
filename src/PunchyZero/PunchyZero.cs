@@ -446,8 +446,10 @@ public class PunchyZero : Character {
 			return true;
 		}
 		int yDir = player.input.getYDir(player);
+		bool altAttack = player.input.getYDir(player) == (Options.main.altZeroSpinCtrl ? 1 : 0);
+
 		if (isDashing && dashAttackCooldown == 0 &&
-			player.input.getYDir(player) == 0 && shootPressTime > 0
+			altAttack && shootPressTime > 0
 		) {
 			changeState(new PZeroSpinKick(), true);
 			return true;
@@ -673,7 +675,7 @@ public class PunchyZero : Character {
 							HitboxFlag.Hitbox, Point.zero
 						),
 						meleeId = (int)MeleeIds.AwakenedAura,
-						owningActor = this
+						ownerActor = this
 					};
 					return proj;
 				}
@@ -894,7 +896,7 @@ public class PunchyZero : Character {
 				) {
 					if (gigaAttack.shootCooldown <= 0 && grounded && gigaAttack.ammo >= gigaAttack.getAmmoUsage(0)) {
 						gigaAttack.shoot(this, []);
-					} else if (!(proj.projId == (int)ProjIds.SwordBlock) && grounded) {
+					} else if (!(proj.projId == (int)ProjIds.SwordBlock) && grounded && parryCooldown <= 0) {
 						if (target != null)
 							turnToPos(target.getCenterPos());
 						changeState(new PZeroParry(), true);
