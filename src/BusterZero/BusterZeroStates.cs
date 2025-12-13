@@ -120,17 +120,17 @@ public class BusterZeroDoubleBuster : BusterZeroState {
 		}
 		if (!fired1 && character.frameIndex == 3) {
 			fired1 = true;
-			zero.Buster3Proj(0, 3, zero);
+			//zero.Buster3Proj(0, 3, zero);
 			zero.stockedTime = 0;
 		}
 		if (!fired2 && character.frameIndex == 7) {
 			fired2 = true;
 			if (!isPinkCharge) {
 				zero.stockedBusterLv = 0;
-				zero.Buster3Proj(0, 3, zero);
+				//zero.Buster3Proj(0, 3, zero);
 			} else {
 				zero.stockedBusterLv = 0;
-				zero.Buster2Proj(zero);
+				//zero.Buster2Proj(zero);
 			}
 			zero.stockedTime = 0;
 		}

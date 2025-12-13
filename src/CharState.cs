@@ -672,7 +672,7 @@ public class Idle : CharState {
 				}
 			}
 		}
-		if (character is BusterZero bzero && bzero.BZMagnetMineProjCharged?.vel.x == 0) {
+		if (character is BusterZeroTree bzero && bzero.BZMagnetMineProjCharged?.vel.x == 0) {
 			sprite = "shoot";
 			character.changeSpriteFromName(sprite, true);				
 		}
@@ -709,7 +709,7 @@ public class Run : CharState {
 		} else {
 			character.changeToIdleOrFall();
 		}
-		if (character is BusterZero bzero && bzero.BZMagnetMineProjCharged?.vel.x == 0) {
+		if (character is BusterZeroTree bzero && bzero.BZMagnetMineProjCharged?.vel.x == 0) {
 			sprite = "run_shoot";
 			character.changeSpriteFromName(sprite, false);				
 		}
@@ -763,7 +763,7 @@ public class Crouch : CharState {
 				}
 			}
 		}
-		if (character is BusterZero bzero && bzero.BZMagnetMineProjCharged?.vel.x == 0) {
+		if (character is BusterZeroTree bzero && bzero.BZMagnetMineProjCharged?.vel.x == 0) {
 			sprite = "crouch_shoot";
 			character.changeSpriteFromName(sprite, true);				
 		}
@@ -858,7 +858,7 @@ public class Jump : CharState {
 			}
 			return;
 		}
-		if (character is BusterZero bzero && bzero.BZMagnetMineProjCharged?.vel.x == 0) {
+		if (character is BusterZeroTree bzero && bzero.BZMagnetMineProjCharged?.vel.x == 0) {
 			sprite = "jump_shoot";
 			character.changeSpriteFromName(sprite, false);				
 		}
@@ -892,7 +892,7 @@ public class Fall : CharState {
 				limboVehicleCheckTime = 0;
 			}
 		}
-		if (character is BusterZero bzero && bzero.BZMagnetMineProjCharged?.vel.x == 0) {
+		if (character is BusterZeroTree bzero && bzero.BZMagnetMineProjCharged?.vel.x == 0) {
 			sprite = "fall_shoot";
 			character.changeSpriteFromName(sprite, false);				
 		}
@@ -1125,7 +1125,7 @@ public class AirDash : CharState {
 			character.changeToIdleOrFall();
 			return;
 		}
-		if (character is BusterZero bzero && bzero.BZMagnetMineProjCharged?.vel.x == 0) {
+		if (character is BusterZeroTree bzero && bzero.BZMagnetMineProjCharged?.vel.x == 0) {
 			sprite = "dash_shoot";
 			character.changeSpriteFromName(sprite, false);				
 		}
@@ -1244,7 +1244,7 @@ public class WallSlide : CharState {
 		}
 
 		dustTime += Global.speedMul;
-		if (character is BusterZero bzero && bzero.BZMagnetMineProjCharged?.vel.x == 0) {
+		if (character is BusterZeroTree bzero && bzero.BZMagnetMineProjCharged?.vel.x == 0) {
 			sprite = "wall_slide_shoot";
 			character.changeSpriteFromName(sprite, false);				
 		}
@@ -1333,7 +1333,7 @@ public class WallKick : CharState {
 			character.dashedInAir++;
 			character.isDashing = true;
 		}
-		if (character is BusterZero bzero && bzero.BZMagnetMineProjCharged?.vel.x == 0) {
+		if (character is BusterZeroTree bzero && bzero.BZMagnetMineProjCharged?.vel.x == 0) {
 			sprite = "wall_kick_shoot";
 			character.changeSpriteFromName(sprite, false);				
 		}

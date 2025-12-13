@@ -1030,7 +1030,7 @@ public partial class Player {
 				isviral = false;
 			}
 		}
-		if (character is BusterZero busterZero) {
+		if (character is BusterZeroTree busterZero) {
 			if (busterZero.isBlackZero) {
 				isblack = true;
 			} if (isDead) isblack = false;

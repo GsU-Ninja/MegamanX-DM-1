@@ -6,7 +6,7 @@ using SFML.Graphics;
 
 namespace MMXOnline;
 public abstract class BusterZeroGenericMeleeState : CharState {
-	public BusterZero zero = null!;
+	public BusterZeroTree zero = null!;
 	public int comboFrame = Int32.MaxValue;
 	public string sound = "";
 	public bool soundPlayed;
@@ -39,11 +39,111 @@ public abstract class BusterZeroGenericMeleeState : CharState {
 	public override void onEnter(CharState oldState) {
 		base.onEnter(oldState);
 		character.turnToInput(player.input, player);
-		zero = character as BusterZero ?? throw new NullReferenceException();
+		zero = character as BusterZeroTree ?? throw new NullReferenceException();
 	}
 
 	public virtual bool altCtrlUpdate(bool[] ctrls) {
 		return false;
+	}
+}
+public class BusterZeroDoubleBusterTree : BusterZeroGenericMeleeState {
+	public bool fired1;
+	public bool fired2;
+	public bool isSecond;
+	public bool isPinkCharge;
+	public bool shootPressedAgain;
+	public int startStockLevel;
+
+	public BusterZeroDoubleBusterTree(bool isSecond, int startstockLevel) : base("doublebuster") {
+		this.isSecond = isSecond;
+		this.startStockLevel = startstockLevel;
+		useDashJumpSpeed = true;
+		airMove = true;
+		superArmor = false;
+		canStopJump = true;
+		canJump = true;
+		landSprite = "doublebuster";
+		airSprite = "doublebuster_air";
+	}
+
+	public override void update() {
+		base.update();
+		if (player.input.isPressed(Control.Shoot, player)) {
+			shootPressedAgain = true;
+		}
+		if (!fired1 && character.frameIndex == 3) {
+			fired1 = true;
+			zero.Buster3Proj(0, 3, zero);
+			zero.stockedTime = 0;
+		}
+		if (!fired2 && character.frameIndex == 7) {
+			fired2 = true;
+			if (!isPinkCharge) {
+				zero.stockedBusterLv = 0;
+				zero.Buster3Proj(0, 3, zero);
+			} else {
+				zero.stockedBusterLv = 0;
+				zero.Buster2Proj(zero);
+			}
+			zero.stockedTime = 0;
+		}
+		if (character.isAnimOver()) {
+			character.changeToIdleOrFall();
+		} else if (!isSecond && character.frameIndex >= 4 && !shootPressedAgain) {
+			character.changeToIdleOrFall();
+		}
+	}
+
+	public override void onEnter(CharState oldState) {
+		base.onEnter(oldState);
+		// For the starting buster;
+		if (startStockLevel is 1 or 3) {
+			isPinkCharge = true;
+		}
+		// Non-full charge.
+		if (isPinkCharge) {
+			zero.stockedBusterLv = 1;
+			isPinkCharge = true;
+		}
+		// Full charge.
+		else {
+			// We add Z-Saber charge if we fire the full charge and we were at 0 charge before.
+			if (startStockLevel == 4 || !isSecond) {
+				zero.stockedSaber = true;
+			}
+			zero.stockedBusterLv = 2;
+		}
+		if (!character.grounded || character.vel.y < 0) {
+			sprite = "doublebuster_air";
+			character.changeSpriteFromName(sprite, true);
+		}
+		// For halfway shot.
+		if (startStockLevel <= 2) {
+			character.frameIndex = 4;
+			fired1 = true;
+		}
+	}
+
+	public override void onExit(CharState? newState) {
+		zero.stockedTime = 0;
+		base.onExit(newState);
+		// We check if we fired the second shot. If not we add the stocked charge.
+		if (!fired2) {
+			if (isPinkCharge) {
+				zero.stockedBusterLv = 1;
+			} else {
+				zero.stockedBusterLv = 2;
+				zero.stockedSaber = true;
+			}
+		}
+		if (!fired1) {
+			if (isPinkCharge) {
+				zero.stockedBusterLv = 3;
+			} else {
+				zero.stockedBusterLv = 4;
+				zero.stockedSaber = true;
+			}
+		}
 	}
 }
 public class BusterZeroHuuX6 : BusterZeroGenericMeleeState {
@@ -763,7 +863,7 @@ public class BusterZeroTHadangeki2 : BusterZeroGenericMeleeState {
 }
 public class BZMagnetMineProjCharged : Projectile {
 	public float size;
-	public BusterZero? zero;
+	public BusterZeroTree? zero;
 	public float timee;
 	public BZMagnetMineProjCharged(
 		Point pos, int xDir, Player player, ushort? netId, bool rpc = false
@@ -775,7 +875,7 @@ public class BZMagnetMineProjCharged : Projectile {
 		maxTime = 9999;
 		destroyOnHit = true;
 		shouldShieldBlock = false;
-		zero = (player.character as BusterZero);
+		zero = (player.character as BusterZeroTree);
 		if (zero is not null) {
 			zero.BZMagnetMineProjCharged = this;
 		}
@@ -896,8 +996,8 @@ public class BoomerangShield : Projectile {
 		var center = owner.character.getCenterPos();
 
 		// Movimiento circular
-		pos.x = center.x + (int)(MathF.Cos(anglee) * radiusX);
-		pos.y = center.y + (int)(MathF.Sin(anglee) * radiusY);
+		unsafePos.x = center.x + (int)(MathF.Cos(anglee) * radiusX);
+		unsafePos.y = center.y + (int)(MathF.Sin(anglee) * radiusY);
 	}
 }
 public class BZSlamProj : Projectile {
@@ -948,8 +1048,8 @@ public class BZZSaberExtend : Projectile {
 	public override void update() {
 		var center = owner.character.getCenterPos();
 		if (follow) {
-			pos.x = center.x + xF * xDir;
-			pos.y = center.y + yF;
+			unsafePos.x = center.x + xF * xDir;
+			unsafePos.y = center.y + yF;
 		}
 		base.update();
 	}
@@ -977,8 +1077,8 @@ public class BZZSaberExtendRolling : Projectile {
 	}
 	public override void update() {
 		var center = owner.character.getCenterPos();
-		pos.x = center.x;
-		pos.y = center.y - 40;
+		unsafePos.x = center.x;
+		unsafePos.y = center.y - 40;
 		base.update();
 	}
 
@@ -1327,7 +1427,7 @@ public class BZYammarkOption : Weapon {
 	}
 	public override void bZeroShoot(Character character, int[] args) {
 		int chargeLevel = args[0];
-		BusterZero bz = character as BusterZero ?? throw new NullReferenceException();
+		BusterZeroTree bz = character as BusterZeroTree ?? throw new NullReferenceException();
 		base.bZeroShoot(character, args);
 		if (character.ownedByLocalPlayer && bz.yammarkOptionClass == null && bz.player.weapon.ammo > 0) {
 			bz.yammarkOptionClass = new YammarkOptionClass(bz);
@@ -1364,10 +1464,10 @@ public class BZYammarkProj : Projectile {
 }
 
 public class YammarkOptionClass {
-	public BusterZero bz;
+	public BusterZeroTree bz;
 	public List<YammarkOption> Yams = new List<YammarkOption>();
 	Player MainP => Global.level.mainPlayer;
-	public YammarkOptionClass(BusterZero bz) {
+	public YammarkOptionClass(BusterZeroTree bz) {
 		this.bz = bz;
 		float separation = (MathF.PI * 2) / 3f;
 		if (MainP.BZYammarkOption && bz.player.weapon.ammo > 0) {
@@ -1435,9 +1535,9 @@ public class YammarkOption : Projectile, IDamagable {
 		angle += currentSpeed * Global.spf;
 		var center = owner.character.getCenterPos();
 		float totalAngle = angle + angleOffset;
-		pos.x = center.x + (int)(MathF.Cos(totalAngle) * orbitRadius);
-		pos.y = center.y + (int)(MathF.Sin(totalAngle) * orbitRadius);
-		if (owner.character is BusterZero busterZero) {
+		unsafePos.x = center.x + (int)(MathF.Cos(totalAngle) * orbitRadius);
+		unsafePos.y = center.y + (int)(MathF.Sin(totalAngle) * orbitRadius);
+		if (owner.character is BusterZeroTree busterZero) {
 			if (owner.input.isPressed(Control.Shoot, owner) && owner.weapon.ammo > 0 && busterZero.YammarkShotCooldown <= 0) {
 				new BZYammarkProj(pos.addxy(20 * xDir, 0), xDir, owner, owner.getNextActorNetId(), true);
 				owner.weapon.addAmmo(-1, owner);
@@ -1451,7 +1551,7 @@ public class YammarkOption : Projectile, IDamagable {
 		xDir = owner.character.getShootXDir();
 		exhaust.xDir = xDir;
 		exhaust.pos = pos.addxy(-20 * xDir, 0);
-		if (owner.character is BusterZero busterZero) {
+		if (owner.character is BusterZeroTree busterZero) {
 			if (owner.input.isPressed(Control.Shoot, owner)) {
 				busterZero.YammarkShotCooldown = 0.20f;
 			}
@@ -1526,9 +1626,9 @@ public class BZDrone : Projectile, IDamagable {
 		angle += currentSpeed * Global.spf;
 		var center = owner.character.getCenterPos();
 		float totalAngle = angle + angleOffset;
-		pos.x = center.x + (int)(MathF.Cos(totalAngle) * orbitRadius);
-		pos.y = center.y + (int)(MathF.Sin(totalAngle) * orbitRadius);
-		if (owner.character is BusterZero busterZero) {
+		unsafePos.x = center.x + (int)(MathF.Cos(totalAngle) * orbitRadius);
+		unsafePos.y = center.y + (int)(MathF.Sin(totalAngle) * orbitRadius);
+		if (owner.character is BusterZeroTree busterZero) {
 			if (owner.input.isPressed(Control.Shoot, owner) && owner.weapon.ammo > 0 && busterZero.YammarkShotCooldown <= 0) {
 				new BZYammarkProj(pos.addxy(20 * xDir, 0), xDir, owner, owner.getNextActorNetId(), true);
 				owner.weapon.addAmmo(-owner.weapon.getAmmoUsage(0), owner);
@@ -1542,7 +1642,7 @@ public class BZDrone : Projectile, IDamagable {
 		xDir = owner.character.getShootXDir();
 		exhaust.xDir = xDir;
 		exhaust.pos = pos.addxy(-20 * xDir, 0);
-		if (owner.character is BusterZero busterZero) {
+		if (owner.character is BusterZeroTree busterZero) {
 			if (owner.input.isPressed(Control.Shoot, owner)) {
 				busterZero.YammarkShotCooldown = 0.20f;
 			}
@@ -1579,7 +1679,7 @@ public class BZDrone : Projectile, IDamagable {
 }
 public class BZBeeCursorAnim : Anim {
 	public int state = 0;
-	BusterZero? character;
+	BusterZeroTree? character;
 	Player player;
 	public Actor? target;
 	public float angle = 0;
@@ -1589,7 +1689,7 @@ public class BZBeeCursorAnim : Anim {
 	public float angleOffset = 0;
 	public BZBeeCursorAnim(Point pos, Character character)
 		: base(pos, "parasite_cursor_start", 1, character.player.getNextActorNetId(), false, true, character.ownedByLocalPlayer) {
-		this.character = character as BusterZero;
+		this.character = character as BusterZeroTree;
 		player = character.player;
 	}
 
@@ -1603,8 +1703,8 @@ public class BZBeeCursorAnim : Anim {
 			if (character != null) {
 				var center = character.getCenterPos();
 				float totalAngle = angle + angleOffset;
-				pos.x = center.x + (int)(MathF.Cos(totalAngle) * orbitRadius);
-				pos.y = center.y + (int)(MathF.Sin(totalAngle) * orbitRadius);
+				unsafePos.x = center.x + (int)(MathF.Cos(totalAngle) * orbitRadius);
+				unsafePos.y = center.y + (int)(MathF.Sin(totalAngle) * orbitRadius);
 			}
 		}
 		if (state == 0) {
@@ -1719,13 +1819,13 @@ public class BZParasiticBombProjCharged : Projectile, IDamagable {
 	}
 }
 public class BZParasiteBombClass {
-	public BusterZero bz;
+	public BusterZeroTree bz;
 	public List<BZBeeCursorAnim> Pbomb = new List<BZBeeCursorAnim>();
 	Player MainP => Global.level.mainPlayer;
 	int currentIndex;
 	float currentTime = 0f;
 	const float beeCooldown = 1f;
-	public BZParasiteBombClass(BusterZero bz) {
+	public BZParasiteBombClass(BusterZeroTree bz) {
 		this.bz = bz;
 		if (bz.ownedByLocalPlayer) {
 			if (MainP.BZParasiteBomb && bz.player.weapon.ammo > 0) {

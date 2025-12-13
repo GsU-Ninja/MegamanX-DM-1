@@ -45,6 +45,7 @@ public enum CharIds {
 	MagmaDragoon = 12,
 	Sakuya = 13,
 	Sans = 14,
+	BusterZeroTree = 15,
 }
 
 public class CharSelection {

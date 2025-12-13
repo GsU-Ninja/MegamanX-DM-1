@@ -381,10 +381,10 @@ public class Damager {
 			if (owner.character is PunchyZero { isViral: true }) {
 				character.addVirusTime(owner, damage);
 			}
-			if ((owner?.character as BusterZero)?.player.BZIceJavelin == true && projId == (int)ProjIds.DZBuster2) {
+			if ((owner?.character as BusterZeroTree)?.player.BZIceJavelin == true && projId == (int)ProjIds.DZBuster2) {
 				character.addIgFreezeProgress(1.5f);
 			}
-			if ((owner?.character as BusterZero)?.player.BZBlizzardArrow == true && projId == (int)ProjIds.DZBuster3) {
+			if ((owner?.character as BusterZeroTree)?.player.BZBlizzardArrow == true && projId == (int)ProjIds.DZBuster3) {
 				character.addIgFreezeProgress(1.5f);
 			}
 			switch (projId) {
@@ -645,17 +645,17 @@ public class Damager {
 						break;
 				}
 			}
-			if (owner?.character is BusterZero bzero && bzero.player.weapon is not BZYammarkOption) {
+			if (owner?.character is BusterZeroTree bzero && bzero.player.weapon is not BZYammarkOption) {
 				bzero.player.weapon.ammo += (int)damage;
 			}
-			if (owner?.character is BusterZero bzero3 && bzero3.player.weapon is BZYammarkOption
+			if (owner?.character is BusterZeroTree bzero3 && bzero3.player.weapon is BZYammarkOption
 			&& (projId != (int)ProjIds.BZYammarkProj && projId != (int)ProjIds.BZPbomb)) {
 				bzero3.player.weapon.ammo += damage/2;
 			}
-			if (damage > 0 && (owner?.character as BusterZero)?.player.UnlockTree == true) {
+			if (damage > 0 && (owner?.character as BusterZeroTree)?.player.UnlockTree == true) {
 				owner.character.player.EXP += (int)damage;
 			}
-			if (owner?.character is BusterZero bzero1 && (owner?.character as BusterZero)?.player.HelmetAutoRecover == true) {
+			if (owner?.character is BusterZeroTree bzero1 && (owner?.character as BusterZeroTree)?.player.HelmetAutoRecover == true) {
 				bzero1.timetest = damage*2;
 			}
 			if (!character.isFlinchImmune() &&

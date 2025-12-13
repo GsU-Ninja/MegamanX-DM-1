@@ -383,7 +383,7 @@ public class Projectile : Actor {
 		if ((attacker as Zero)?.hypermodeActive() == true) return false;
 		if ((attacker as BusterZero)?.isBlackZero == true) return false;
 
-		if ((defender as BusterZero)?.player.UnlockTree == true && (defender as BusterZero)?.isBlackZero == false) return false;
+		if ((defender as BusterZeroTree)?.player.UnlockTree == true && (defender as BusterZeroTree)?.isBlackZero == false) return false;
 		if ((attacker as Iris)?.hypermodeActive() == true) return false;
 		// Not facing each other
 		if (attacker.pos.x >= defender.pos.x && (attacker.xDir != -1 || defender.xDir != 1)) return false;
