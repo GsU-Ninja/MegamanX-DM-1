@@ -169,7 +169,7 @@ public class FlameBurnerAltProj : Projectile {
 		base.update();
 		updateAngle();
 
-		float timeFactor = (time / sprite.getAnimLength());
+		float timeFactor = ((Global.speedMul*5) / sprite.getAnimLength());
 		xScale = 1 + (3 * timeFactor);
 		yScale = 1 + (3 * timeFactor);
 		alpha = 1 - timeFactor;

@@ -3501,16 +3501,9 @@ public partial class Character : Actor, IDamagable {
 		bool altShootPressed = player.input.isHeld(Control.Special1, player);
 		bool specialPressed = player.input.isPressed(Control.Special1, player);
 		bool upPressed = player.input.isHeld(Control.Up, player);
-
-		// Change Weapon controls.
-		if (this is BusterZero) {
-			player.changeWeaponControls();
-		}
-		if (this is Zero or PunchyZero or Vile && upPressed) {
-			player.changeWeaponControls();
-		}
+		bool commandPressed = player.input.isPressed(Control.Special2, player);
 		// Tranform.
-		if (currentWeapon is UndisguiseWeapon && (shootPressed || altShootPressed)) {
+		if ((currentWeapon is UndisguiseWeapon && (shootPressed || altShootPressed)) || (upPressed && commandPressed && player.isDisguisedAxl)) {
 			undisguiseTime = 6;
 			int lastDNAIndex = player.lastDNACoreIndex;
 			playSound("transform", sendRpc: true);

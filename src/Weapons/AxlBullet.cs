@@ -286,13 +286,20 @@ public class MachineBullets : AxlWeapon {
 		IDamagable? target, Character? headshotTarget, Point cursorPos, int chargeLevel, ushort netId
 	) {
 		Point bulletDir = Point.createFromAngle(angle);
-		Projectile? bullet = null;
-		if (chargeLevel == 0) {
-			bullet = new MachineBulletProj(weapon, bulletPos, player, Point.createFromAngle(angle + Helpers.randomRange(-25, 25)), player.getNextActorNetId(), sendRpc: true);
-			bullet = new MachineBulletProj(weapon, bulletPos, player, Point.createFromAngle(angle + Helpers.randomRange(-25, 25)), player.getNextActorNetId(), sendRpc: true);
-		} else {
-			bullet = new CopyShotProj(weapon, bulletPos, chargeLevel, player, bulletDir, netId);
+		Projectile bullet;
+		bullet = new MachineBulletProj(weapon, bulletPos, player, Point.createFromAngle(angle + Helpers.randomRange(-25, 25)), player.getNextActorNetId(), sendRpc: true);
+		bullet = new MachineBulletProj(weapon, bulletPos, player, Point.createFromAngle(angle + Helpers.randomRange(-25, 25)), player.getNextActorNetId(), sendRpc: true);
+		if (player.ownedByLocalPlayer) {
+			RPC.axlShoot.sendRpc(player.id, bullet.projId, netId, bulletPos, xDir, angle);
 		}
+	}
+	public override void axlGetAltProjectile(
+		Weapon weapon, Point bulletPos, int xDir, Player player, float angle,
+		IDamagable? target, Character? headshotTarget, Point cursorPos, int chargeLevel, ushort netId
+	) {
+		Point bulletDir = Point.createFromAngle(angle);
+		Projectile bullet;
+		bullet = new CopyShotProj(weapon, bulletPos, chargeLevel, player, bulletDir, netId);
 		if (player.ownedByLocalPlayer) {
 			RPC.axlShoot.sendRpc(player.id, bullet.projId, netId, bulletPos, xDir, angle);
 		}
