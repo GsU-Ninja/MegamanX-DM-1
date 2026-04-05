@@ -171,11 +171,11 @@ public class SonicSlicerProjCharged : Projectile {
 		projId = (int)ProjIds.SonicSlicerCharged;
 		destroyOnHit = true;
 
-		if (num == 0) dest = pos.addxy(-60, -100);
-		if (num == 1) dest = pos.addxy(-30, -100);
-		if (num == 2) dest = pos.addxy(-0, -100);
-		if (num == 3) dest = pos.addxy(30, -100);
-		if (num == 4) dest = pos.addxy(60, -100);
+		if (num == 0) dest = pos.addxy(-65, -100);
+		if (num == 1) dest = pos.addxy(-35, -100);
+		if (num == 2) dest = pos.addxy(0, -100);
+		if (num == 3) dest = pos.addxy(35, -100);
+		if (num == 4) dest = pos.addxy(65, -100);
 
 		vel.x = 0;
 		useGravity = false;
@@ -196,9 +196,9 @@ public class SonicSlicerProjCharged : Projectile {
 		if (!fall) {
 			float x = Helpers.lerp(pos.x, dest.x, Global.spf * 10);
 			changePos(new Point(x, pos.y));
-			vel.y += -40;
+			vel.y -= 35;
 		}
-		if (vel.y <= -375) fall = true;
+		if (vel.y <= -400) fall = true;
 		if (vel.y > 100) yDir = -1;
 		if (fall) vel.y += 30;
 		
