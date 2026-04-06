@@ -16,7 +16,7 @@ public class XBuster : Weapon {
 		weaponBarIndex = weaponBarBaseIndex;
 		weaponSlotIndex = 0;
 		shootSounds = new string[] { "", "", "", "" };
-		fireRate = 8;
+		fireRate = 9;
 		canHealAmmo = false;
 		drawAmmo = false;
 		drawCooldown = false;
