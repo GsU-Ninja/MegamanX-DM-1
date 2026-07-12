@@ -282,7 +282,9 @@ public class AI {
 				}
 				if (jumpZoneDir == 0) jumpZoneDir = -1;
 
-				if (jumpZone.targetNode == null || jumpZone.targetNode == aiState.getNextNodeName()) {
+				/*if (jumpTime <= 0 && jumpZone.targetNodes.Length == 0 ||
+					jumpZone.targetNodes.Contains(aiState.getNextNodeName())
+				) {
 					if (aiState is not FindPlayer) {
 						changeState(new InJumpZone(character, jumpZone, jumpZoneDir));
 					} else {
@@ -302,7 +304,7 @@ public class AI {
 						}
 					}
 				} else {
-				}
+				}*/
 			} else {
 				jumpZoneTime = 0;
 			}

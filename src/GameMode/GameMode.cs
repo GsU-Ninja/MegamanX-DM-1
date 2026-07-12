@@ -771,7 +771,7 @@ public class GameMode {
 				}
 				/*
 				if (axl.axlWeapon != null) {
-					 i just saw below there was a code that does this but better, like wtf? why was debug only
+					// GSU: i just saw below there was a code that does this but better, like wtf? why was debug only
 					if (axl.axlWeapon.shootCooldown > 0) {
 						float Ccooldown = 1 - Helpers.progress(axl.axlWeapon.shootCooldown, axl.axlWeapon.fireRate);
 						drawGigaWeaponCooldown(axl.axlWeapon.hudSprite, Ccooldown, xStart, yStart);
