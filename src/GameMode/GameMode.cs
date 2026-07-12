@@ -1630,6 +1630,8 @@ public class GameMode {
 				Global.sprites["hud_health_full"].drawToHUD(barIndex, baseX, baseY);
 			} else if (i < savings) {
 				Global.sprites["hud_health_full"].drawToHUD(sBarIndex, baseX, baseY);
+			} else if (i < greyHp) {
+				Global.sprites["hud_weapon_full"].drawToHUD(30, baseX, baseY);
 			} else {
 				Global.sprites["hud_health_empty"].drawToHUD(0, baseX, baseY);
 				if (i < ceilCurHP) {

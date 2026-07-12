@@ -112,7 +112,7 @@ public class XBuster : Weapon {
 		}
 
 		if (mmx.hasUltimateArmor && chargeLevel >= 3 && !isStock && mmx.armArmor != ArmorId.Max) {
-			new Anim(pos, "buster4_muzzle_flash", xDir, null, true);
+			new Anim(pos.addxy(-14*xDir, 17), "buster4_muzzle_flash", xDir, null, true);
 			new BusterPlasmaProj(pos, xDir, mmx, player, player.getNextActorNetId(), true);
 			character.playSound("plasmaShot", sendRpc: true);	
 			return;

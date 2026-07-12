@@ -65,6 +65,7 @@ public class AxlWeapon : Weapon {
 		ammo -= ammoUsage;
 		if (ammo < 0) ammo = 0;
 
+		//consumes shop ammo
 		if (type > 0 && !axl.isWhiteAxl()) 
 			for (int i = 0; i < ammoUsage; i++)
 				axl.ammoUsages.Add(1);
@@ -111,6 +112,11 @@ public class AxlWeapon : Weapon {
 		float ammoUsage = getAmmoUsage(isAxlBullets ? axl.getChargeLevel() + 1 : 3);
 		ammo -= ammoUsage;
 		if (ammo < 0) ammo = 0;
+
+		//prevents copy shot using shop ammo
+		if (type > 0 && !axl.isWhiteAxl()) 
+			for (int i = 0; i < ammoUsage; i++)
+				axl.ammoUsages.Add(0);
 
 		Point bulletPos = axl.getAxlBulletPos();
 		Point cursorPos = axl.getCorrectedCursorPos();

@@ -442,7 +442,7 @@ public class Zero : Character {
 		}
 		// If we changed state this frame. Return.
 		// This is to prevent jumping guard shenanigans.
-		bool changedState = base.normalCtrl();
+		bool changedState = base.normalCtrl() && !player.input.isHeld(Control.Down, player);
 		if (changedState) {
 			return true;
 		}
@@ -450,26 +450,10 @@ public class Zero : Character {
 		if (charState.attackCtrl && charState is not Dash && grounded && (
 				player.input.isHeld(Control.WeaponLeft, player) ||
 				(player.input.isHeld(Control.WeaponRight, player) && !isAwakened)
-			) && (
-				!isATrans ||
-				player.input.isHeld(Control.Down, player)
 			)
 		) {
 			turnToInput(player.input, player);
 			changeState(new SwordBlock());
-			return true;
-		} else if (
-			charState.attackCtrl && !isDashing && (
-				player.input.isPressed(Control.WeaponLeft, player) ||
-				(player.input.isHeld(Control.WeaponRight, player) && !isAwakened)
-			  ) && (
-				!isATrans || player.input.isHeld(Control.Down, player)
-			  )
-			) {
-			if (grounded) {
-				turnToInput(player.input, player);
-				changeState(new SwordBlock());
-			}
 			return true;
 		}
 		return false;

@@ -47,6 +47,11 @@ public class SpiralMagnum : AxlWeapon {
 			}
         }
 	}
+	public override void axlShoot(Character character, int[] args) {
+		if (character is not Axl axl) return;
+		if (axl.isZooming() && axl.currentWeapon?.noAmmo() == true) return;
+		base.axlShoot(character, args);
+	}
 	public override void axlGetAltProjectile(
 		Weapon weapon, Point bulletPos, int xDir, Player player, float angle,
 		IDamagable? target, Character? headshotTarget, Point cursorPos, int chargeLevel, ushort netId
