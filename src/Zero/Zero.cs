@@ -61,6 +61,7 @@ public class Zero : Character {
 	public float fSplasherCooldown;
 	public int quakeBlazerBounces;
 	public float kuuenzanCooldown;
+	public int fallSaberAnimationCounter;
 
 	// Hypermode stuff.
 	public float donutTimer;
@@ -112,7 +113,7 @@ public class Zero : Character {
 	// State overdrive.
 	public override CharState getAirJumpState() => new Jump() { sprite = "kuuenbu" };
 	public override CharState getFallState() {
-		if (airRisingUses > 0) {
+		if (fallSaberAnimationCounter > 0) {
 			return new FallSaber();
 		}
 		return new Fall();
@@ -128,8 +129,10 @@ public class Zero : Character {
 	public override void preUpdate() {
 		base.preUpdate();
 		if (grounded || charState is WallSlide) {
-			if (charState is not ZeroUppercut)
+			if (charState is not ZeroUppercut) {
+				fallSaberAnimationCounter = 0;
 				airRisingUses = 0;
+			}
 			if (charState is not FSplasherState)
 				fSplasherUses = 0;
 			if (charState is not ZeroDownthrust)
@@ -323,6 +326,7 @@ public class Zero : Character {
 	public void setShootAnim() {
 		string shootSprite = getSprite(charState.shootSpriteEx);
 		if (!Global.sprites.ContainsKey(shootSprite)) {
+			if (sprite.name.Contains("hyoroga") == true) return;
 			if (grounded) { shootSprite = "zero_shoot"; } else { shootSprite = "zero_fall_shoot"; }
 		}
 		if (shootAnimTime == 0) {
@@ -465,6 +469,13 @@ public class Zero : Character {
 		if (donutsPending != 0) {
 			return false;
 		}
+		if (grounded && vel.y >= 0 && isGenmuZero && swingPressTime > 0 && player.input.isHeld(Control.Up, player)) {
+			if (genmureiCooldown == 0) {
+				genmureiCooldown = 120;
+				changeState(new GenmureiState(), true);
+				return true;
+			}
+		} 
 		if (isAwakened && swingPressTime > 0 && hadangekiCooldown == 0) {
 			hadangekiCooldown = 60;
 			if (charState is WallSlide wallSlide) {
@@ -474,17 +485,9 @@ public class Zero : Character {
 			if (isDashing && grounded) {
 				slideVel = xDir * getDashSpeed() * 0.9f;
 			}
-			if (grounded && vel.y >= 0 && isGenmuZero) {
-				if (genmureiCooldown == 0) {
-					genmureiCooldown = 120;
-					changeState(new GenmureiState(), true);
-					return true;
-				}
-			} else {
-				changeState(new AwakenedZeroHadangeki(), true);
-				return true;
-			}
-		}
+			changeState(new AwakenedZeroHadangeki(), true);
+			return true;
+		} 
 		if (grounded && vel.y >= 0) {
 			return groundAttacks();
 		} else {
@@ -968,7 +971,7 @@ public class Zero : Character {
 		CharState idleState = getIdleState();
 		idleState.transitionSprite = "land";
 		idleState.transShootSprite = "land_shoot";
-		if (airRisingUses > 0) {
+		if (fallSaberAnimationCounter > 0) {
 			idleState.transitionSprite = "land_saber";
 		}
 		if (idleState.transitionSprite != "") {

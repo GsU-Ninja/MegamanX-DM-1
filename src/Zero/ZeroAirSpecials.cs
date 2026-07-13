@@ -1,4 +1,6 @@
 ﻿using System;
+using System.Collections.Generic;
+using SFML.Graphics;
 
 namespace MMXOnline;
 
@@ -241,17 +243,17 @@ public class HyorogaStartState : CharState {
 	}
 }
 
-public class HyorogaState : CharState {
-	Zero? zero;
+public class HyorogaState : ZeroState {
 	public HyorogaState() : base("hyoroga") {
 		normalCtrl = true;
 	}
 	public override void update() {
+		hyorogaReuse(zero);
 		base.update();
 		if (player.input.isPressed(Control.Special1, player)) {
 			character.changeState(new HyorogaStateA(), true);
 		}
-		if (player.input.isPressed(Control.Shoot, player) && character.getChargeLevel() >= 1) {
+		if (player.input.isPressed(Control.Shoot, player) && zero.isCharging()) {
 			character.changeState(new HyorogaStateB(), true);
 		}
 		if (player.input.isPressed(Control.Jump, player)) {
@@ -261,24 +263,26 @@ public class HyorogaState : CharState {
 	}
 	public override void onEnter(CharState oldState) {
 		base.onEnter(oldState);
-		character.vel = new Point(0, 0);
-		character.useGravity = false;
-		character.gravityModifier = 0;
-		zero = character as Zero;
+		hyorogaReuse(zero);
+		zero.airRisingUses = 0;
+		zero.fallSaberAnimationCounter = 0;
 	}
 	public override void onExit(CharState? newState) {
 		character.useGravity = true;
 		character.gravityModifier = 1;
 		base.onExit(newState);
 	}
+	public static void hyorogaReuse(Character character) {
+		character.vel = new Point(0, 0);
+		character.useGravity = false;
+		character.gravityModifier = 0;
+	}
 }
 public class HyorogaStateA : ZeroState {
 	public HyorogaStateA() : base("hyoroga_attack") {
 	}
 	public override void update() {
-		character.vel = new Point(0, 0);
-		character.useGravity = false;
-		character.gravityModifier = 0;
+		HyorogaState.hyorogaReuse(zero);
 		base.update();
 		var pois = character.sprite.getCurrentFrame().POIs;
 		if (pois != null && pois.Length > 0 && !once) {
@@ -296,52 +300,63 @@ public class HyorogaStateA : ZeroState {
 				poi, -1, 1, zero,
 				player, player.getNextActorNetId(), sendRpc: true
 			);
+			if (zero.isAwakened && !zero.isGenmuZero && zero.hadangekiCooldown <= 0) {
+				zero.hadangekiCooldown = 60;
+				new ZSaberProj(
+					player.input.isHeld(Control.Left, player) ? poi.addxy(-20,-40) :
+					player.input.isHeld(Control.Right, player) ? poi.addxy(20,-40) 
+					: poi.addxy(0,-40),
+					character.xDir, isAZ: zero.isAwakened ? true : false,
+					zero, player, player.getNextActorNetId(), rpc: true
+				);
+			} else if (zero.isGenmuZero && zero.genmureiCooldown <= 0) {
+				zero.genmureiCooldown = 120;
+				new GenmuHyorogaProj(
+					character.pos.addxy(-55, 10), 1,
+					isAZ: zero.isAwakened ? true : false,
+					zero, player, player.getNextActorNetId(), rpc: true
+				);
+			}
 		}
 		if (character.isAnimOver()) {
 			character.changeState(new HyorogaState(), true);
 		}
+	}
+	public override void onExit(CharState? newState) {
+		character.useGravity = true;
+		character.gravityModifier = 1;
+		base.onExit(newState);
 	}
 }
 public class HyorogaStateB : ZeroState {
 	public bool fired;
 
 	public HyorogaStateB() : base("hyoroga_shoot") {
+		normalCtrl = true;
+		attackCtrl = true;
 	}
 
 	public override void update() {
-		character.vel = new Point(0, 0);
-		character.useGravity = false;
-		character.gravityModifier = 0;
+		HyorogaState.hyorogaReuse(zero);
 		base.update();
 		if (!fired && character.frameIndex == 3) {
 			fired = true;
-			switch (character.getChargeLevel()) {
-				case 1:
-					character.playSound("buster2", sendRpc: true);
-					new ZBuster2Proj(character.getShootPos(), character.xDir, zero,
-					player, player.getNextActorNetId(), rpc: true);
-					break;
-				case 2:
-					character.playSound("buster2X3", sendRpc: true);
-					new ZBuster3Proj(character.getShootPos(), character.xDir, zero,
-					player, player.getNextActorNetId(), rpc: true);
-					break;
-				case >= 3:
-					character.playSound("buster3X3", sendRpc: true);
-					new ZBuster4Proj(character.getShootPos(), character.xDir, zero,
-					player, player.getNextActorNetId(), rpc: true);
-					break;
+			if (zero.isAwakened) {
+				zero.chargeLogic(zero.shootDonuts);
+			} else {
+				zero.chargeLogic(zero.shoot);
 			}
-			player.currency--;
-			character.stopCharge();
 		}
-
-		if (character.isAnimOver()) {
+		if (character.isAnimOver() && fired) {
 			character.changeState(new HyorogaState(), true);
 		}
 	}
+	public override void onExit(CharState? newState) {
+		character.useGravity = true;
+		character.gravityModifier = 1;
+		base.onExit(newState);
+	}
 }
-
 public class HyorogaProj : Projectile {
 	public HyorogaProj(
 		Point pos, int velDir, int xDir, Actor owner, Player player, ushort? netId, bool sendRpc = false
@@ -373,5 +388,67 @@ public class HyorogaProj : Projectile {
 		base.onDestroy();
 		playSound("iceBreak");
 		Anim.createGibEffect("hyoroga_proj_pieces", getCenterPos(), owner);
+	}
+}
+public class GenmuHyorogaProj : Projectile {
+	public float initY = 0;
+	public float initX = 0;
+
+	public GenmuHyorogaProj(
+		Point pos, int xDir, bool isAZ, Actor owner, Player player, ushort? netId, bool rpc = false
+	) : base(
+		pos, xDir, owner, "genmu_proj2", netId, player
+	) {
+		weapon = Genmu.netWeapon;
+		damager.damage = 6;
+		damager.hitCooldown = 30;
+		damager.flinch = Global.defFlinch;
+		vel = new Point(0, 300);
+		initX = owner.pos.x;
+		maxTime = 0.45f;
+		destroyOnHit = false;
+		xScale = 0.75f;
+		yScale = 0.75f;
+		projId = (int)ProjIds.GenmuHyorogaProj;
+		angle = 90;
+		if (isAZ) {
+			genericShader = player.zeroAzPaletteShader;
+		}
+		if (rpc) {
+			rpcCreate(pos, player, netId, xDir, 
+			new byte[] { isAZ ? (byte)1 : (byte)0}
+			);
+		}
+	}
+	public static Projectile rpcInvoke(ProjParameters args) {
+		return new GenmuHyorogaProj(
+			args.pos, args.xDir, args.extraData[0] == 1, args.owner, args.player, args.netId
+		);
+	}
+	public List<Point> getPoints() {
+		Point pos1 = new Point(45, 30);
+		Point pos2 = new Point(100, 5);
+		var points = new List<Point> {
+			pos,
+			pos.add(pos1),
+			pos.add(pos2),
+		};
+		return points;
+	}
+
+
+	public override void update() {
+		base.update();
+		if (globalCollider == null) {
+			globalCollider = new Collider(getPoints(), true, null, false, false, 0, new Point(0, 0));
+		} else {
+			changeGlobalCollider(getPoints());
+		}
+		float x = 0;
+		x = initX + (MathF.Sin(-time * 8) * 50) - 20;
+		changePos(new Point(x, pos.y));
+	}
+	public override void render(float x, float y) {
+		base.render(x, y);
 	}
 }

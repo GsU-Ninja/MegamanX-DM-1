@@ -658,24 +658,19 @@ public class GameMode {
 				int xStart = 11;
 				if (zero.gigaAttack.shootCooldown > 0) {
 					drawZeroGigaCooldown(zero.gigaAttack, y: yStart);
-					xStart += 15;
+					yStart += 15;
 				}
-				if (zero.hadangekiCooldown > 0 && zero.isGenmuZero || zero.genmureiCooldown > 0) {
-					float cooldown = 1 - Helpers.progress(zero.genmureiCooldown, 120);
-					if (zero.hadangekiCooldown > zero.genmureiCooldown) {
-						cooldown = 1 - Helpers.progress(zero.hadangekiCooldown, 60);
-					}
-					drawGigaWeaponCooldown(102, cooldown, xStart, yStart);
-					xStart += 15;
-				}
-				if (zero.hadangekiCooldown > 0 || zero.genmureiCooldown > 60) {
+				if (zero.hadangekiCooldown > 0) {
 					float cooldown = 1 - Helpers.progress(zero.hadangekiCooldown, 60);
-					if (zero.genmureiCooldown - 1 > zero.hadangekiCooldown) {
-						cooldown = 1 - Helpers.progress(zero.genmureiCooldown - 60, 1);
-					}
-					drawGigaWeaponCooldown(zero.isGenmuZero ? 48 : 102, cooldown, xStart, yStart);
-					xStart += 15;
+					drawGigaWeaponCooldown(48, cooldown, xStart, yStart);
+					yStart += 15;
 				}
+				if (zero.genmureiCooldown > 0) {
+					float cooldown = 1 - Helpers.progress(zero.genmureiCooldown, 120);
+					drawGigaWeaponCooldown(102, cooldown, xStart, yStart);
+					yStart += 15;
+				}
+
 			}
 			#endregion
 			#region Punchy Zero

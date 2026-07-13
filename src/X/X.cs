@@ -496,13 +496,13 @@ public class MegamanX : Character {
 				stockedBusterLv = 2;
 				isStockActive = true;
 			}
-			if (!weapon.hasCustomChargeAnim && charState.normalCtrl && charState.attackCtrl) {
+			if (!weapon.hasCustomChargeAnim && charState.normalCtrl && charState.attackCtrl && charState is not WallSlide) {
 				useCrossShotAnim = true;
 			} else {
 				chargeLevel = 3;
 			}
 		}
-		if (charState is LadderClimb) {
+		if (charState is LadderClimb or WallSlide) {
 			useCrossShotAnim = false;
 			turnToInput(player.input, player);
 		}

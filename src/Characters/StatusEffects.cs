@@ -110,8 +110,10 @@ public class GenericStun : CharState {
 
 	public float flinchTime;
 	public float flinchMaxTime;
+	public float yFall = 0;
+    public bool shake = false;
 
-	public GenericStun() : base("hurt") {
+	public GenericStun() : base("") {
 
 	}
 
@@ -182,6 +184,25 @@ public class GenericStun : CharState {
 			character.crystalizeEnd();
 			Global.serverClient?.rpc(RPC.playerToggle, (byte)character.player.id, (byte)RPCToggleType.StopCrystalize);
 		}
+		//Korenji Code
+		stateTime += 1;
+        if (character.crystalizedTime != 0) {
+            if (stateTime >= 21) {
+                character.useGravity = true;
+                useGravity = true;
+            } else {
+                character.useGravity = false;
+                useGravity = false;
+            }
+            if (!character.grounded) {
+                yFall = character.vel.y;
+                if (yFall >= 150) shake = true;
+            } else if (character.grounded && shake) {
+                character.vel.y = -yFall/2;
+                character.shakeCamera(sendRpc: true);
+                shake = false;
+            }
+        }
 	}
 
 	public void paralizeAnimLogic() {
@@ -218,7 +239,7 @@ public class GenericStun : CharState {
 			return "frozen";
 		}
 		if (character.isCrystalized) {
-			return "idle";
+			return "";
 		}
 		if (character.paralyzedTime > 0 && character.grounded) {
 			return "lose";
@@ -282,6 +303,7 @@ public class GenericStun : CharState {
 		character.paralyzedTime = 0;
 		character.frozenTime = 0;
 		character.crystalizedTime = 0;
+		character.useGravity = true;
 
 		base.onExit(newState);
 	}

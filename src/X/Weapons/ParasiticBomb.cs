@@ -198,6 +198,9 @@ public class BeeSwarm {
 		var targets = Global.level.getTargets(centerPos, mmx.player.alliance, true, ParasiticBomb.beeRange);
 
 		foreach (var target in targets) {
+
+			if (target is RideArmor rideArmor && rideArmor.isDevilBear) break;
+
 			if (beeCursors.Any(b => b.target == target)) {
 				continue;
 			}

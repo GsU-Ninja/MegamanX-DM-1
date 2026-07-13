@@ -304,7 +304,7 @@ public class VileQuickHomesick : Projectile {
 		base.onDestroy();
 		if (pickup != null) {
 			pickup.useGravity = true;
-			pickup.collider.isTrigger = false;
+			pickup.collider?.isTrigger = false;
 		}
 	}
 
@@ -312,7 +312,7 @@ public class VileQuickHomesick : Projectile {
 		base.update();
 
 		if (!destroyed && pickup != null) {
-			pickup.collider.isTrigger = true;
+			pickup.collider?.isTrigger = true;
 			pickup.useGravity = false;
 			pickup.changePos(pos);
 		}

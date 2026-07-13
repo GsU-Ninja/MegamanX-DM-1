@@ -75,7 +75,7 @@ public class ShotgunIceProj : Projectile {
 			vel = new Point(maxSpeed * velOverride.Value.x, maxSpeed * (velOverride.Value.y * 0.5f));
 		}
 		reflectable = true;
-		//this.fadeSound = "explosion";
+		destroyOnHit = true;
 		if (rpc) {
 			byte[] extraArgs;
 			if (velOverride != null) {

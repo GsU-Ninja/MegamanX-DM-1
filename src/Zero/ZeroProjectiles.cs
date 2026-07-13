@@ -126,6 +126,7 @@ public class ZSaberProj : Projectile {
 		if (isAZ) {
 			genericShader = player.zeroAzPaletteShader;
 		}
+		ZBuster2Proj.hyorogaCode(this, player);
 		
 		if (rpc) {
 			rpcCreate(pos, player, netId, xDir, (isAZ ? (byte)1 : (byte)0));

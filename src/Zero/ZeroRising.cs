@@ -204,6 +204,7 @@ public class ZeroUppercut : ZeroState {
 			character.sprite.frameIndex = 4;
 		}
 		zero.airRisingUses++;
+		zero.fallSaberAnimationCounter++;
 	}
 
 	public override void onExit(CharState? newState) {

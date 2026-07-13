@@ -390,6 +390,13 @@ public class PunchyZero : Character {
 		if (donutsPending != 0) {
 			return false;
 		}
+		if (grounded && vel.y >= 0 && isGenmuZero && swingPressTime > 0 && player.input.isHeld(Control.Up, player)) {
+			if (genmureiCooldown == 0) {
+				genmureiCooldown = 120;
+				changeState(new PunchyZeroGenmureiState(), true);
+				return true;
+			}
+		}
 		if (isAwakened && swingPressTime > 0 && hadangekiCooldown == 0) {
 			hadangekiCooldown = 60;
 			if (charState is WallSlide wallSlide) {
@@ -399,16 +406,7 @@ public class PunchyZero : Character {
 			if (isDashing && grounded) {
 				slideVel = xDir * getDashSpeed() * 0.9f;
 			}
-			if (grounded && vel.y >= 0 && isGenmuZero) {
-				if (genmureiCooldown == 0) {
-					genmureiCooldown = 120;
-					changeState(new PunchyZeroGenmureiState(), true);
-					return true;
-				}
-			} else {
-				changeState(new AwakenedPunchyZeroHadangeki(), true);
-				return true;
-			}
+			changeState(new AwakenedPunchyZeroHadangeki(), true);
 			return true;
 		}
 		if (grounded && vel.y >= 0) {

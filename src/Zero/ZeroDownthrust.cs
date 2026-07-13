@@ -106,7 +106,7 @@ public class ZeroDownthrust : ZeroState {
 		base.update();
 		if (isUnderwaterQuakeBlazer()) {
 			if (!sprite.EndsWith("_water")) {
-				transitionSprite += "";
+				transitionSprite += "_water";
 				sprite += "_water";
 				defaultSprite += "_water";
 				character.changeSpriteFromName(sprite, false);

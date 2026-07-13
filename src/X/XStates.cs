@@ -518,49 +518,18 @@ public class X3ChargeShot : XState {
 		character.turnToInput(player.input, player);
 		if (!fired && character.currentFrame.getBusterOffset() != null && player.ownedByLocalPlayer) {
 			fired = true;
+			Point shootPos = character.getShootPos();
+			int shootDir = character.getShootXDir();
 			if (state == 0) {
-				Point shootPos = character.getShootPos();
-				int shootDir = character.getShootXDir();
 				if (!mmx.hasUltimateArmor) {
-					new Anim(
-						shootPos, "buster4_x3_muzzle", shootDir,
-						player.getNextActorNetId(), true, sendRpc: true
-					);
-					new Buster4MaxProj(
-						shootPos, shootDir,
-						mmx, player, player.getNextActorNetId(), true
-					);
-					if (!(player.weapon is HyperCharge)) {
-						character.playSound("buster3X3", sendRpc: true);
-					}
+					XBuster.shootMaxBuster4(mmx, shootPos, shootDir);
 				} else {
-					new Anim(shootPos, "buster4_muzzle_flash", shootDir, null, true);
-					new BusterPlasmaProj(
-						shootPos, shootDir, mmx,
-						player, player.getNextActorNetId(), rpc: true
-					);
-					character.playSound("plasmaShot", sendRpc: true);
+					XBuster.shootPlasmaShot(mmx, shootPos, shootDir);
 				}
 				mmx.stockedTime = 0;
 			} else {
 				character.playSound("buster3X3", sendRpc: true);
-				float xDir = character.getShootXDir();
-				new BusterX3Proj2(
-					character.getShootPos().addxy(6 * xDir, -2), character.getShootXDir(), 0, mmx,
-					player, player.getNextActorNetId(), rpc: true
-				);
-				new BusterX3Proj2(
-					character.getShootPos().addxy(6 * xDir, -2), character.getShootXDir(), 1, mmx,
-					player, player.getNextActorNetId(), rpc: true
-				);
-				new BusterX3Proj2(
-					character.getShootPos().addxy(6 * xDir, -2), character.getShootXDir(), 2, mmx,
-					player, player.getNextActorNetId(), rpc: true
-				);
-				new BusterX3Proj2(
-					character.getShootPos().addxy(6 * xDir, -2), character.getShootXDir(), 3, mmx,
-					player, player.getNextActorNetId(), rpc: true
-				);
+				XBuster.shootMaxBuster3(mmx, shootPos, shootDir);
 			}
 			mmx.stockedTime = 0;
 			if (mmx.stockedMaxBusterLv >= 1) {

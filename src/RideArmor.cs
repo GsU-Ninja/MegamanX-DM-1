@@ -39,6 +39,17 @@ public class RideArmor : Actor, IDamagable {
 	public float consecutiveJumpTimeout;
 	public int consecutiveJump;
 	public bool manualDisabled = false;
+	public bool isBlackBear { get { return raNum == 0; }}
+	public bool isKangaroo { get { return raNum == 1; }}
+	public bool isHawk { get { return raNum == 2; }}
+	public bool isFrog { get { return raNum == 3; }}
+	public bool isDevilBear { get { return raNum == 5; }}
+	public bool isGoliath { get { return raNum == 4; }}
+	public bool isHyperRide() {
+		if (isGoliath) return true;
+		if (isDevilBear) return true;
+		return false;
+	}
 
 	public static ShaderWrapper? paletteEG01 = Helpers.cloneGenericPaletteShader("paletteEG01");
 	public static ShaderWrapper? paletteKangaroo = Helpers.cloneGenericPaletteShader("paletteKangaroo");
@@ -101,34 +112,34 @@ public class RideArmor : Actor, IDamagable {
 		else return;
 
 		// If adding a palette here it must be added to RPCActorToggleType.ChangeRAPieceColor check to sync
-		if (raNum == 0 && isNeutral) {
+		if (isBlackBear&& isNeutral) {
 			if (neutralId % 2 == 1) {
 				colorShader = paletteEG01;
 				colorShader?.SetUniform("palette", 1);
 			}
-		} else if (raNum == 1 && isNeutral) {
+		} else if (isKangaroo && isNeutral) {
 			colorShader = paletteKangaroo;
 			colorShader?.SetUniform("palette", 1);
-		} else if (raNum == 2 && !isNeutral) {
+		} else if (isHawk && !isNeutral) {
 			colorShader = paletteHawk;
 			colorShader?.SetUniform("palette", 1);
-		} else if (raNum == 3 && !isNeutral) {
+		} else if (isFrog && !isNeutral) {
 			colorShader = paletteFrog;
 			colorShader?.SetUniform("palette", 1);
 		}
 	}
 
 	public void setMaxHealth() {
-		if (raNum == 2) {
+		if (isHawk) {
 			maxHealth = 24;
 			// + Helpers.clampMax(netOwner.heartTanks * netOwner.getHeartTankModifier(), 8);
-		} else if (raNum == 3) {
+		} else if (isFrog) {
 			maxHealth = 24;
 			// + Helpers.clampMax(netOwner.heartTanks * netOwner.getHeartTankModifier(), 8);
 		} else {
 			maxHealth = 32;
 		}
-		if (raNum == 4) {
+		if (isGoliath) {
 			goliathHealth = MathF.Ceiling(32 * Player.getHpMod());
 		}
 		maxHealth = MathF.Ceiling(Player.getModifiedHealth(maxHealth) * Player.getHpMod());
@@ -152,7 +163,7 @@ public class RideArmor : Actor, IDamagable {
 				float sy = -40;
 				float sx = 0;
 				if (xDir == -1) sx = 90;
-				if (raNum == 3) {
+				if (isFrog) {
 					sx = 10;
 					if (xDir == -1) sx = 80;
 				}
@@ -220,7 +231,7 @@ public class RideArmor : Actor, IDamagable {
 	public override void update() {
 		base.update();
 
-		if (raNum == 5) {
+		if (isDevilBear) {
 			if (!ownedByLocalPlayer) {
 				zIndex = ZIndex.Character - 100;
 			} else if (!isNeutral) {
@@ -229,7 +240,7 @@ public class RideArmor : Actor, IDamagable {
 			}
 		}
 
-		if (raNum == 4 && character != null && musicSource == null) {
+		if (isGoliath && character != null && musicSource == null) {
 			addMusicSource("vile_X3", getCenterPos(), true);
 		}
 		if (character == null && musicSource != null) {
@@ -276,7 +287,7 @@ public class RideArmor : Actor, IDamagable {
 	}
 
 	public bool isVileNArmor() {
-		return raNum == 0 && !isNeutral;
+		return isBlackBear&& !isNeutral;
 	}
 
 	//float soundTime;
@@ -320,7 +331,7 @@ public class RideArmor : Actor, IDamagable {
 			}
 		}
 
-		if (raNum == 2 && isUnderwater() && character != null && character.isUnderwater() && selfDestructTime == 0) {
+		if (isHawk && isUnderwater() && character != null && character.isUnderwater() && selfDestructTime == 0) {
 			if (hawkElec == null) {
 				hawkElec = new Anim(pos.addxy(0, -20), "hawk_elec", 1, null, false);
 			}
@@ -393,7 +404,7 @@ public class RideArmor : Actor, IDamagable {
 					healAmount--;
 					health = Helpers.clampMax(health + 1, maxHealth);
 					if (player == Global.level.mainPlayer || playHealSound) {
-						if (raNum == 0 || raNum == 5) {
+						if (isBlackBear|| isDevilBear) {
 							playSound("heal", forcePlay: true, sendRpc: true);
 						}
 						else {
@@ -416,9 +427,9 @@ public class RideArmor : Actor, IDamagable {
 			}
 		}
 
-		if (sprite.name.Contains("attack") && (raNum == 2 || raNum == 3) && sprite.frameIndex == 1 && missileCooldown == 0) {
+		if (sprite.name.Contains("attack") && (isHawk || isFrog) && sprite.frameIndex == 1 && missileCooldown == 0) {
 			bool isBombDrop = sprite.name.EndsWith("down2");
-			if (raNum == 2) {
+			if (isHawk) {
 				missileCooldown = 0.75f;
 				for (int i = 0; i < currentFrame.POIs.Length; i++) {
 					Point poi = currentFrame.POIs[i];
@@ -426,7 +437,7 @@ public class RideArmor : Actor, IDamagable {
 					if (poiTag == "b" && player != null) {
 						Point shootPos = pos.addxy(poi.x * xDir, poi.y);
 						if (!isBombDrop) {
-							new MechMissileProj(new MechMissileWeapon(), shootPos, xDir, sprite.name.Contains("down"), player, player.getNextActorNetId(), rpc: true);
+							new MechMissileProj(shootPos, xDir, this, player, player.getNextActorNetId(), sprite.name.Contains("down"), rpc: true);
 							new Anim(shootPos, "dust", 1, player.getNextActorNetId(), true, true, true) { vel = new Point(0, -100) };
 						} else {
 							if (character is Vile vile) {
@@ -439,7 +450,7 @@ public class RideArmor : Actor, IDamagable {
 				if (!isBombDrop) {
 					playSound("hawkShootX3", forcePlay: false, sendRpc: true);
 				}
-			} else if (raNum == 3 && rideArmorState is not RAGroundPound && rideArmorState is not RAGroundPoundStart) {
+			} else if (isFrog && rideArmorState is not RAGroundPound && rideArmorState is not RAGroundPoundStart) {
 				missileCooldown = 1f;
 				for (int i = 0; i < currentFrame.POIs.Length; i++) {
 					Point poi = currentFrame.POIs[i];
@@ -453,14 +464,14 @@ public class RideArmor : Actor, IDamagable {
 			}
 		}
 			bool attackConditionMet = character != null && canAttack() && character.player.input.isPressed(Control.Shoot, character.player) && punchCooldown == 0;
-			if (raNum == 5) attackConditionMet = canAttack() && character != null && character.player.input.isHeld(Control.Shoot, character.player);
+			if (isDevilBear) attackConditionMet = canAttack() && character != null && character.player.input.isHeld(Control.Shoot, character.player);
 			if (attackConditionMet) {
 				if (rideArmorState is RARun) changeState(new RAIdle(), true);
 				if (rideArmorState is RAJump) changeState(new RAFall(), true);
-				if (raNum == 1) punchCooldown = 0.8f;
+				if (isKangaroo) punchCooldown = 0.8f;
 				else punchCooldown = 0.56f;
 				string? attackSprite = rideArmorState?.attackSprite;
-				if (raNum == 2 && character != null && rideArmorState != null && character.player.input.isHeld(Control.Down, character.player) && !rideArmorState.inTransition()) {
+				if (isHawk && character != null && rideArmorState != null && character.player.input.isHeld(Control.Down, character.player) && !rideArmorState.inTransition()) {
 					attackSprite = "hawk_attack_air_down";
 				}
 				changeSprite(attackSprite, false);
@@ -469,7 +480,7 @@ public class RideArmor : Actor, IDamagable {
 				canAttack() &&
 				character is Vile vile &&
 				punchCooldown == 0 &&
-				raNum == 2 &&
+				isHawk &&
 				vile.weaponSystem.rideWeapon.shootCooldown == 0 &&
 				player.input.isPressed(Control.Special1, player) &&
 				player.input.isHeld(Control.Down, player) &&
@@ -535,7 +546,7 @@ public class RideArmor : Actor, IDamagable {
 	public bool canAttack() {
 		if (character == null) return false;
 		bool ignoreRideArmorHide = true;
-		if (raNum == 2 || raNum == 3) ignoreRideArmorHide = false;
+		if (isHawk || isFrog) ignoreRideArmorHide = false;
 		if (missileCooldown > 0) return false;
 		return !string.IsNullOrEmpty(rideArmorState?.attackSprite) && !character.isInvulnerable(ignoreRideArmorHide, true) && !sprite.name.Contains("attack");
 	}
@@ -635,10 +646,10 @@ public class RideArmor : Actor, IDamagable {
 	// This can run on both owners and non-owners. So data used must be in sync.
 	public override int getHitboxMeleeId(Collider hitbox) {
 		if (sprite.name.Contains("attack")) {
-			if (raNum == 0) return (int)MeleeIds.Punch;
-			if (raNum == 1) return (int)MeleeIds.KPunch;
-			if (raNum == 4) return (int)MeleeIds.GPunch;
-			if (raNum == 5) return (int)MeleeIds.DPunch;
+			if (isBlackBear) return (int)MeleeIds.Punch;
+			if (isKangaroo) return (int)MeleeIds.KPunch;
+			if (isGoliath) return (int)MeleeIds.GPunch;
+			if (isDevilBear) return (int)MeleeIds.DPunch;
 		}
 		if (sprite.name.Contains("deactive")) {
 			return (int)MeleeIds.Deactive;
@@ -651,12 +662,12 @@ public class RideArmor : Actor, IDamagable {
 		}
 		bool canDamage = deltaPos.y > 150 * Global.spf;
 		if (hitbox.name.Contains("stomp") && canDamage) {
-			if (raNum == 0) return (int)MeleeIds.Stomp;
-			if (raNum == 1) return (int)MeleeIds.KStomp;
-			if (raNum == 2) return (int)MeleeIds.HStomp;
-			if (raNum == 3) return (int)MeleeIds.FStomp;
-			if (raNum == 4) return (int)MeleeIds.GStomp;
-			if (raNum == 5) return (int)MeleeIds.DStomp;
+			if (isBlackBear) return (int)MeleeIds.Stomp;
+			if (isKangaroo) return (int)MeleeIds.KStomp;
+			if (isHawk) return (int)MeleeIds.HStomp;
+			if (isFrog) return (int)MeleeIds.FStomp;
+			if (isGoliath) return (int)MeleeIds.GStomp;
+			if (isDevilBear) return (int)MeleeIds.DStomp;
 		}
 		return (int)MeleeIds.None;
 	}
@@ -731,7 +742,7 @@ public class RideArmor : Actor, IDamagable {
 		chr.changeState(new InRideArmor(), true);
 		changeState(new RAIdle("ridearmor_activating"), true);
 		if (character != null) {
-			if (!healedOnEnter && raNum == 4 && character.ownedByLocalPlayer && character.linkedRideArmor == this) {
+			if (!healedOnEnter && isGoliath && character.ownedByLocalPlayer && character.linkedRideArmor == this) {
 				healedOnEnter = true;
 				character.fillHealthToMax();
 			}
@@ -827,7 +838,7 @@ public class RideArmor : Actor, IDamagable {
 		if (netOwner != null) {
 		Global.level.addEffect(new ExplodeDieEffect(netOwner, centerPos, pos, raName + "_idle", 1, zIndex, false, 15, 0.5f, false));
 			string piecesSpriteName = raName + "_pieces";
-			if (raNum == 4) piecesSpriteName = "goliath_pieces";
+			if (isGoliath) piecesSpriteName = "goliath_pieces";
 			int frameCount = Global.sprites[piecesSpriteName].frames.Length;
 			var shrapnelVels = getShrapnelVels(frameCount);
 			bool hasRaColorShader = colorShader != null;
@@ -866,7 +877,7 @@ public class RideArmor : Actor, IDamagable {
 	}
 
 	public bool isInvincible(Player? attacker, int? projId) {
-		if (raNum == 5) return true;
+		if (isDevilBear) return true;
 		return false;
 	}
 
@@ -897,8 +908,8 @@ public class RideArmor : Actor, IDamagable {
 
 	public override Collider? getGlobalCollider() {
 		int yHeight = 50;
-		if (raNum == 5) yHeight = 60;
-		if (raNum == 0 || raNum == 4) yHeight = 52;
+		if (isDevilBear) yHeight = 60;
+		if (isBlackBear|| isGoliath) yHeight = 52;
 		var rect = new Rect(0, 0, 26, yHeight);
 		return new Collider(rect.getPoints(), false, this, false, false, HitboxFlag.Hurtbox, new Point(0, 0));
 	}
@@ -913,8 +924,8 @@ public class RideArmor : Actor, IDamagable {
 	}
 
 	public float getDashSpeed() {
-		if (isDashing && !(raNum == 3 && (isUnderwater() || isWading()))) {
-			return raNum == 3 ? 1.5f : 2.5f;
+		if (isDashing && !(isFrog && (isUnderwater() || isWading()))) {
+			return isFrog ? 1.5f : 2.5f;
 		}
 		return 1;
 	}
@@ -927,14 +938,14 @@ public class RideArmor : Actor, IDamagable {
 		if (rideArmorState is RAFall raFall && raFall.hovering && raNum != 2) {
 			return 30;
 		}
-		if (raNum == 3) {
+		if (isFrog) {
 			if (isSwimming) {
 				return 150;
 			}
 			return 120;
-		} else if (raNum == 2) {
+		} else if (isHawk) {
 			return 80;
-		} else if (raNum == 1) {
+		} else if (isKangaroo) {
 			if (isNeutral) return 70;
 			return 54;
 		} else {
@@ -945,8 +956,8 @@ public class RideArmor : Actor, IDamagable {
 
 	public float getJumpPower() {
 		if (isNeutral) {
-			if (raNum == 0) return Physics.JumpSpeed * 1.15f;
-			if (raNum == 1) return Physics.JumpSpeed * 1.075f;
+			if (isBlackBear) return Physics.JumpSpeed * 1.15f;
+			if (isKangaroo) return Physics.JumpSpeed * 1.075f;
 		}
 		return Physics.JumpSpeed;
 	}
@@ -1214,7 +1225,7 @@ public class RideArmorState {
 					break;
 			}
 			string ts = "ridearmor_land".Replace("ridearmor", rideArmor.getRaTypeName());
-			if (!rideArmor.isAttacking() || rideArmor.raNum == 2 || rideArmor.raNum == 3) {
+			if (!rideArmor.isAttacking() || rideArmor.isHawk || rideArmor.isFrog) {
 				rideArmor.changeState(new RAIdle(ts));
 			} else {
 				int oldFrameIndex = rideArmor.sprite.frameIndex;
@@ -1262,7 +1273,7 @@ public class RideArmorState {
 				rideArmor.move(move);
 			}
 
-			if (rideArmor.raNum == 3 && player.input.isPressed(Control.Dash, player) && player.input.isHeld(Control.Down, player)) {
+			if (rideArmor.isFrog && player.input.isPressed(Control.Dash, player) && player.input.isHeld(Control.Down, player)) {
 				rideArmor.changeState(new RAGroundPoundStart(), true);
 			}
 		}
@@ -1425,7 +1436,7 @@ public class RAIdle : RideArmorState {
 		if (player != null) {
 			bool jumpHeld = player.input.isHeld(Control.Jump, player);
 			bool dashHeld = player.input.isHeld(Control.Dash, player) && character.flag == null;
-			if (jumpHeld && rideArmor.raNum == 3 && character.flag == null) {
+			if (jumpHeld && rideArmor.isFrog && character.flag == null) {
 				if (rideArmor.consecutiveJumpTimeout > 0 && character.flag == null && !rideArmor.isUnderwater()) {
 					rideArmor.consecutiveJumpTimeout = 0;
 					rideArmor.consecutiveJump++;
@@ -1592,9 +1603,9 @@ public class RAFall : RideArmorState {
 
 		airCode();
 		if (rideArmor != null) {
-			if (rideArmor.isVileNArmor() || rideArmor.raNum == 4) defaultHoverCode();
-			if (rideArmor.raNum == 2) hawkHoverCode();
-			else if (rideArmor.raNum == 3) frogHoverCode();
+			if (rideArmor.isVileNArmor() || rideArmor.isGoliath) defaultHoverCode();
+			if (rideArmor.isHawk) hawkHoverCode();
+			else if (rideArmor.isFrog) frogHoverCode();
 		}
 	}
 
@@ -1658,7 +1669,7 @@ public class RAFall : RideArmorState {
 
 			rideArmor.vel.y = getHoverVelY(-106);
 		} else {
-			if (rideArmor.raNum == 3 && rideArmor.sprite.name.Contains("hover")) {
+			if (rideArmor.isFrog && rideArmor.sprite.name.Contains("hover")) {
 				rideArmor.changeSprite("hawk_fall", true);
 			}
 		}
@@ -1697,7 +1708,7 @@ public class RAFall : RideArmorState {
 			rideArmor.vel.x = 120 * character.xDir;
 			rideArmor.vel.y = -106;
 		} else {
-			if (rideArmor.raNum == 3 && rideArmor.sprite.name.Contains("swim") && swimTime == 0) {
+			if (rideArmor.isFrog && rideArmor.sprite.name.Contains("swim") && swimTime == 0) {
 				rideArmor.changeSprite("frog_fall", true);
 			}
 			rideArmor.vel.x = 0;
@@ -1830,7 +1841,7 @@ public class RADash : RideArmorState {
 		var move = getDashVel();
 		rideArmor.move(move);
 		if (player != null) {
-			bool isHeldDashAttack = rideArmor.raNum == 4 && player.input.isHeld(Control.Shoot, player);
+			bool isHeldDashAttack = rideArmor.isGoliath && player.input.isHeld(Control.Shoot, player);
 			if (isHeldDashAttack) {
 				dashTime = 0;
 				dashAttackTime += Global.spf;
@@ -2113,12 +2124,11 @@ public class RAGoliathShoot : RideArmorState {
 		if (rideArmor.frameIndex == 3 && !once) {
 			once = true;
 			//mechBusterCooldown = 1f;
-			if (player != null) {
-				var mbw = new MechBusterWeapon();
+			if (player != null && character != null) {
 				rideArmor.playSound("buster2X3", forcePlay: false, sendRpc: true);
-				new MechBusterProj2(mbw, rideArmor.pos.addxy(15 * rideArmor.xDir, -36), rideArmor.xDir, 0, player, player.getNextActorNetId(), rpc: true);
-				new MechBusterProj(mbw, rideArmor.pos.addxy(15 * rideArmor.xDir, -36), rideArmor.xDir, player, player.getNextActorNetId(), rpc: true);
-				new MechBusterProj2(mbw, rideArmor.pos.addxy(15 * rideArmor.xDir, -36), rideArmor.xDir, 1, player, player.getNextActorNetId(), rpc: true);
+				new MechBusterProj2(rideArmor.pos.addxy(15 * rideArmor.xDir, -36), rideArmor.xDir, character, player, 0, player.getNextActorNetId(), rpc: true);
+				new MechBusterProj(rideArmor.pos.addxy(15 * rideArmor.xDir, -36), rideArmor.xDir, character, player, player.getNextActorNetId(), rpc: true);
+				new MechBusterProj2(rideArmor.pos.addxy(15 * rideArmor.xDir, -36), rideArmor.xDir, character, player,  1, player.getNextActorNetId(), rpc: true);
 			}
 		}
 

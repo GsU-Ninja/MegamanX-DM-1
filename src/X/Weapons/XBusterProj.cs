@@ -146,6 +146,25 @@ public class Buster3MaxProj : Projectile {
 		}
 	}
 
+	// Down here is where the Cross Shot actually happens
+	public override void onCollision(CollideData other) {
+		base.onCollision(other);
+		if (other.gameObject is BusterX3Proj1 X3shot && X3shot.ownedByLocalPlayer && !destroyed) {
+			if (!ownedByLocalPlayer) return;
+				Global.level.delayedActions.Add(new DelayedAction(delegate {
+					new Anim(new Point(pos.x, pos.y), "buster4_x3_muzzle", xDir, owner.getNextActorNetId(), true, true);
+					destroySelfNoEffect(); X3shot.destroySelfNoEffect();
+					Global.level.delayedActions.Add(new DelayedAction(delegate { 
+					new Buster4MaxProj(pos, xDir, this, owner, owner.getNextActorNetId(), rpc: true);
+					new BusterX3Proj3(weapon, pos, xDir, 0, owner, owner.getNextActorNetId(), rpc: true);
+					new BusterX3Proj3(weapon, pos, xDir, 1, owner, owner.getNextActorNetId(), rpc: true);
+					new BusterX3Proj3(weapon, pos, xDir, 2, owner, owner.getNextActorNetId(), rpc: true);
+					new BusterX3Proj3(weapon, pos, xDir, 3, owner, owner.getNextActorNetId(), rpc: true);
+				}, 20f / 60f ));
+			}, 1f / 60f ));
+		}
+	}
+
 	public static Projectile rpcInvoke(ProjParameters args) {
 		return new Buster3MaxProj(
 			args.pos, args.xDir, args.owner, args.player, args.netId
@@ -332,46 +351,46 @@ public class BusterX3Proj2 : Projectile {
 	public BusterX3Proj2(
 		Point pos, int xDir, int type, Actor owner, Player player, ushort? netId, bool rpc = false
 	) : base(
-		pos, xDir, owner, type == 0 || type == 3 ? "buster4_x3_orbit" : "buster4_x3_orbit2", netId, player	
+		pos, xDir, owner, type == 0 || type == 1 ? "buster4_max_orb1" : "buster4_max_orb3", netId, player
 	) {
-		weapon = XBuster.netWeapon;
 		damager.damage = 1;
-		vel = new Point(400 * xDir, 0);
+		vel.x = 400;
 		fadeSprite = "buster4_fade";
-		fadeOnAutoDestroy = true;
 		this.type = type;
 		reflectable = true;
-		maxTime = 0.675f;
+		maxTime = 1f;
+		fadeOnAutoDestroy = true;
 		projId = (int)ProjIds.BusterX3Proj2;
-		if (type == 0) vel = new Point(-200 * xDir, -100);
-		if (type == 1) vel = new Point(-150 * xDir, -50);
-		if (type == 2) vel = new Point(-150 * xDir, 50);
-		if (type == 3) vel = new Point(-200 * xDir, 100);
+		if (type == 0) { changeSprite("buster4_max_orb3", true); vel = new Point(-250 * xDir, -75);}
+		if (type == 1) { changeSprite("buster4_max_orb1", true); vel = new Point(-250 * xDir, 75);}
 		frameSpeed = 0;
 		frameIndex = 0;
 
-		if (rpc) {
-			rpcCreate(pos, owner, ownerPlayer, netId, xDir, (byte)type);
+			if (rpc) {
+			byte[] extraArgs = new byte[] { (byte)type };
+
+			rpcCreate(pos, player, netId, xDir, extraArgs);
 		}
 	}
 
-	public static Projectile rpcInvoke(ProjParameters args) {
+		public static Projectile rpcInvoke(ProjParameters arg) {
 		return new BusterX3Proj2(
-			args.pos, args.xDir, args.extraData[0], args.owner, args.player, args.netId
+			arg.pos, arg.xDir, 
+			arg.extraData[0], arg.owner, arg.player, arg.netId
 		);
 	}
 
 	public override void update() {
 		base.update();
-		float maxSpeed = 600;
-		vel.inc(new Point(Global.spf * 1500 * xDir, 0));
+		float maxSpeed = 300;
+		vel.inc(new Point(Global.spf * 750 * xDir, 0));
 		if (MathF.Abs(vel.x) > maxSpeed) vel.x = maxSpeed * xDir;
 		lastPositions.Add(pos);
 		if (lastPositions.Count > 4) lastPositions.RemoveAt(0);
 	}
 
 	public override void render(float x, float y) {
-		string spriteName = type == 0 || type == 3 ? "buster4_x3_orbit" : "buster4_x3_orbit2";
+		string spriteName = type == 0 || type == 1 ? "buster4_max_orb3" : "buster4_max_orb1";
 		//if (lastPositions.Count > 3) Global.sprites[spriteName].draw(1, lastPositions[3].x + x, lastPositions[3].y + y, 1, 1, null, 1, 1, 1, zIndex);
 		if (lastPositions.Count > 2) Global.sprites[spriteName].draw(2, lastPositions[2].x + x, lastPositions[2].y + y, 1, 1, null, 1, 1, 1, zIndex);
 		if (lastPositions.Count > 1) Global.sprites[spriteName].draw(3, lastPositions[1].x + x, lastPositions[1].y + y, 1, 1, null, 1, 1, 1, zIndex);
@@ -449,5 +468,129 @@ public class BusterPlasmaHitProj : Projectile {
 		return new BusterPlasmaHitProj(
 			args.pos, args.xDir, args.owner, args.player, args.netId
 		);
+	}
+}
+
+public class BusterX3Proj1 : Projectile {
+	public int type;
+	public List<Sprite> spriteMids = new List<Sprite>();
+	float offsetTime = 0;
+	float initY = 0;
+	float line1Y = 0;
+	float line2Y = -2;
+	float line3Y = 2;
+	float partTime;
+		public BusterX3Proj1(Point pos, int xDir, int type, Actor owner, Player player, ushort? netId, bool rpc = false) :
+		base(pos, xDir, owner, "buster4_max_orb2", netId, player) {
+		this.type = type;
+		damager.damage = 1;
+		damager.flinch = Global.halfFlinch;
+		damager.hitCooldown = 0;
+		vel.x = 350;
+		maxDistance = 175;
+		vel.x = 0;
+		fadeSprite = "buster3_fade";
+		fadeOnAutoDestroy = true;
+		projId = (int)ProjIds.BusterX3Proj1;
+		reflectable = false;
+		
+			if (rpc) {
+			byte[] extraArgs = new byte[] { (byte)type };
+
+			rpcCreate(pos, player, netId, xDir, extraArgs);
+		}
+	}
+
+
+		public static Projectile rpcInvoke(ProjParameters arg) {
+		return new BusterX3Proj1(
+			arg.pos, arg.xDir, 
+			arg.extraData[0], arg.owner, arg.player, arg.netId
+		);
+	}
+	public override void update() {
+		base.update();
+		vel.x += Global.spf * xDir * 300;
+		if (MathF.Abs(vel.x) > 300) { vel.x = 300 * xDir; }
+		frameIndex = type;
+		float currentOffsetTime = offsetTime;
+		if (time < 5f / 60f) {
+			currentOffsetTime *= time / 5f * 60f;
+		}
+		float zLayer = 10;
+		line1Y = initY + (MathF.Sin((time + currentOffsetTime) * (MathF.PI * 6)) * 15f);
+		line2Y = initY + (MathF.Sin((time + currentOffsetTime) * (MathF.PI * 6)) * 15f);
+		line3Y = initY + (MathF.Sin((time + currentOffsetTime) * (MathF.PI * 6)) * 15f);
+		new Anim(new Point(pos.x - 4, pos.y + line1Y), "buster4_max_orb1", 1, null, true, zIndex == zLayer + line1Y);
+		new Anim(new Point(pos.x, pos.y - 4 + (line2Y * -1)), "buster4_max_orb2", xDir, null, true, zIndex == zLayer + line2Y);
+		new Anim(new Point(pos.x + 4, pos.y + line3Y), "buster4_max_orb3", xDir, null, true, zIndex == zLayer + line3Y);
+	}
+	// This down here is meant for the split shot when hitting another character
+	public override void onHitDamagable(IDamagable damagable) {
+		base.onHitDamagable(damagable);
+		if (ownedByLocalPlayer) {
+				fadeSprite = "buster3_fade";
+				destroySelf();
+				Global.level.delayedActions.Add(new DelayedAction(delegate { 
+					new BusterX3Proj2(pos, xDir, 0, this, damager.owner, owner.getNextActorNetId(), rpc: true);
+					new BusterX3Proj2(pos, xDir, 1, this, damager.owner, owner.getNextActorNetId(), rpc: true);
+				}, 2f / 60f ));
+		}
+	}
+}
+
+public class BusterX3Proj3 : Projectile {
+	public int type = 0;
+	public List<Point> lastPositions = new List<Point>();
+	public BusterX3Proj3(
+		Weapon weapon, Point pos, int xDir, int type,
+		Player player, ushort netProjId, bool rpc = false
+	) : base(
+		weapon, pos, xDir, 400, 1,
+		player, type == 0 || type == 3 ? "buster4_x3_orbit" : "buster4_x3_orbit2",
+		0, 0, netProjId, player.ownedByLocalPlayer
+	) {
+		fadeSprite = "buster4_fade";
+		this.type = type;
+		reflectable = true;
+		maxTime = 1f;
+		fadeOnAutoDestroy = true;
+		projId = (int)ProjIds.BusterX3Proj3;
+		if (type == 0) vel = new Point(-450 * xDir, -75);
+		if (type == 1) vel = new Point(-400 * xDir, -50);
+		if (type == 2) vel = new Point(-400 * xDir, 50);
+		if (type == 3) vel = new Point(-450 * xDir, 75);
+		frameSpeed = 0;
+		frameIndex = 0;
+
+		if (rpc) {
+			byte[] extraArgs = new byte[] { (byte)type };
+
+			rpcCreate(pos, player, netProjId, xDir, extraArgs);
+		}
+	}
+
+	public static Projectile rpcInvoke(ProjParameters arg) {
+		return new BusterX3Proj3(
+			XBuster.netWeapon, arg.pos, arg.xDir, 
+			arg.extraData[0], arg.player, arg.netId
+		);
+	}
+
+	public override void update() {
+		base.update();
+		float maxSpeed = 600;
+		vel.inc(new Point(Global.spf * 1500 * xDir, 0));
+		if (MathF.Abs(vel.x) > maxSpeed) vel.x = maxSpeed * xDir;
+		lastPositions.Add(pos);
+		if (lastPositions.Count > 4) lastPositions.RemoveAt(0);
+	}
+
+	public override void render(float x, float y) {
+		string spriteName = type == 0 || type == 3 ? "buster4_x3_orbit" : "buster4_x3_orbit2";
+		//if (lastPositions.Count > 3) Global.sprites[spriteName].draw(1, lastPositions[3].x + x, lastPositions[3].y + y, 1, 1, null, 1, 1, 1, zIndex);
+		if (lastPositions.Count > 2) Global.sprites[spriteName].draw(2, lastPositions[2].x + x, lastPositions[2].y + y, 1, 1, null, 1, 1, 1, zIndex);
+		if (lastPositions.Count > 1) Global.sprites[spriteName].draw(3, lastPositions[1].x + x, lastPositions[1].y + y, 1, 1, null, 1, 1, 1, zIndex);
+		base.render(x, y);
 	}
 }

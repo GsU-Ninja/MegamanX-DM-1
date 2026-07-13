@@ -2211,7 +2211,7 @@ public partial class Player {
 		if (character is RagingChargeX or KaiserSigma or ViralSigma or WolfSigma) {
 			return;
 		}
-		if (character?.rideArmor?.raNum == 4 && character.charState is InRideArmor) {
+		if (character?.rideArmor?.isGoliath == true && character?.charState is InRideArmor) {
 			return;
 		}
 		if (character is MegamanX mmx && mmx.hasUltimateArmor) {

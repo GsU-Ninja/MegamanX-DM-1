@@ -18,6 +18,8 @@ public partial class RPCCreateProj : RPC {
 		{ (int)ProjIds.Buster4Giga2, Buster4Giga2Proj.rpcInvoke },
 		{ (int)ProjIds.Buster4Max, Buster4MaxProj.rpcInvoke },
 		{ (int)ProjIds.BusterX3Proj2, BusterX3Proj2.rpcInvoke },
+		{ (int)ProjIds.BusterX3Proj3, BusterX3Proj3.rpcInvoke },
+		{ (int)ProjIds.BusterX3Proj1, BusterX3Proj1.rpcInvoke },
 		{ (int)ProjIds.BusterX3Plasma, BusterPlasmaProj.rpcInvoke },
 		{ (int)ProjIds.BusterX3PlasmaHit, BusterPlasmaHitProj.rpcInvoke },
 
@@ -158,6 +160,7 @@ public partial class RPCCreateProj : RPC {
 		{ (int)ProjIds.QuakeBlazer, DanchienExplosionProj.rpcInvoke },
 		{ (int)ProjIds.QuakeBlazerFlame, QuakeBlazerFlamePart.rpcInvoke },
 		{ (int)ProjIds.HyorogaProj, HyorogaProj.rpcInvoke },
+		{ (int)ProjIds.GenmuHyorogaProj, GenmuHyorogaProj.rpcInvoke },
 
 		//Punchy Zero
 		{ (int)ProjIds.PZeroHadangeki, PZeroHadangeki.rpcInvoke },
@@ -273,6 +276,9 @@ public partial class RPCCreateProj : RPC {
 		{ (int)ProjIds.AssassinBulletEX, AssassinationProj.rpcInvoke },
 		// Rides
 		{ (int)ProjIds.MechTorpedo, TorpedoProjMech.rpcInvoke },
+		{ (int)ProjIds.MechMissile, MechMissileProj.rpcInvoke },
+		{ (int)ProjIds.MechBuster, MechBusterProj.rpcInvoke },
+		{ (int)ProjIds.MechBuster2, MechBusterProj2.rpcInvoke },
 
 	};
 

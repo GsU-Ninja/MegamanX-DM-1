@@ -84,11 +84,16 @@ public class HyperCharge : Weapon {
 		Player player = character.player;
 		MegamanX mmx = character as MegamanX ?? throw new NullReferenceException();
 		Weapon wep = character.weapons[player.hyperChargeSlot];
-
+		Point shootPos = character.getShootPos();
+		int shootDir = character.getShootXDir();
 		if (wep is XBuster) {
-			character.changeState(new X3ChargeShot(this), true);
-			if (!mmx.hasUltimateArmor)
-			character.playSound("buster3X3");
+			mmx.stockedMaxBusterLv += 1;
+			mmx.playSound("buster3X3", sendRpc: true);
+			if (mmx.charState is not WallSlide) {
+				mmx.changeState(new X3HyperBuster(this));
+			} else {
+				XBuster.shootMaxBuster4(mmx, shootPos, shootDir);
+			}
 		} else {
 			if (changeToWeaponSlot(wep)) player.changeWeaponSlot(player.hyperChargeSlot);
 			wep.shoot(character, [3, 0]);
@@ -101,5 +106,46 @@ public class HyperCharge : Weapon {
 				bs.hyperChargeDelay = 15;
 			}
 		}
+	}
+}
+public class X3HyperBuster : XState {
+	bool fired;
+	public HyperCharge? hyperBusterWeapon;
+
+	public X3HyperBuster(HyperCharge? hyperBusterWeapon) : base("cross_shot") {
+		this.hyperBusterWeapon = hyperBusterWeapon;
+		useDashJumpSpeed = true;
+		airMove = true;
+		canStopJump = true;
+		landSprite = "cross_shot";
+		airSprite = "cross_air_shot";
+		canJump = true;
+	}
+
+	public override void update() {
+		base.update();
+		character.turnToInput(player.input, player);
+		if (!fired && character.currentFrame.getBusterOffset() != null && player.ownedByLocalPlayer) {
+			fired = true;
+			Point shootPos = character.getShootPos();
+			int shootDir = character.getShootXDir();
+			XBuster.shootMaxBuster4(mmx, shootPos, shootDir);
+		}
+		if (character.isAnimOver()) {	
+			character.changeToIdleOrFall();
+		}
+	}
+
+	public override void onEnter(CharState oldState) {
+		base.onEnter(oldState);
+		mmx = character as MegamanX ?? throw new NullReferenceException();
+		if (mmx == null) {
+			throw new NullReferenceException();
+		}
+		if (!character.grounded) {
+			sprite = "cross_air_shot";
+            character.changeSpriteFromName(sprite, true);
+        }
+		character.changeSpriteFromName(sprite, true);
 	}
 }

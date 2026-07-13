@@ -170,6 +170,7 @@ public class MechChainWeapon : Weapon {
 }
 
 public class MechMissileWeapon : Weapon {
+	public static MechMissileWeapon netWeapon = new();
 	public MechMissileWeapon() : base() {
 		index = (int)WeaponIds.MechMissile;
 		killFeedIndex = 50;
@@ -177,16 +178,21 @@ public class MechMissileWeapon : Weapon {
 }
 
 public class MechMissileProj : Projectile, IDamagable {
-	public Character? target;
 	public float smokeTime = 0;
 	public bool isDown;
-	public MechMissileProj(Weapon weapon, Point pos, int xDir, bool isDown, Player player, ushort netProjId, bool rpc = false) :
-		base(weapon, pos, xDir, 400, 2, player, "hawk_missile", 0, 0f, netProjId, player.ownedByLocalPlayer) {
+	public MechMissileProj(
+		Point pos, int xDir, Actor owner, Player player, ushort? netId, bool isDown, bool rpc = false
+	) : base(
+		pos, xDir, owner, "hawk_missile", netId, player	
+	) {
+		weapon = MechMissileWeapon.netWeapon;
 		projId = (int)ProjIds.MechMissile;
+		vel = new Point(400 * xDir, 0);
+		damager.damage = 2;
 		maxTime = 0.5f;
 		fadeOnAutoDestroy = true;
 		fadeSprite = "explosion";
-		fadeSound = "explosion";
+		fadeSound = "explosionX3";
 		reflectableFBurner = true;
 		this.isDown = isDown;
 		if (isDown) {
@@ -197,8 +203,13 @@ public class MechMissileProj : Projectile, IDamagable {
 		}
 
 		if (rpc) {
-			rpcCreate(pos, player, netProjId, xDir);
+			rpcCreate(pos, owner, ownerPlayer, netId, xDir, isDown ? (byte) 1 : (byte) 0);
 		}
+	}
+	public static Projectile rpcInvoke(ProjParameters args) {
+		return new MechMissileProj(
+			args.pos, args.xDir, args.owner, args.player, args.netId, args.extraData[0] == 1
+		);
 	}
 
 	public override void preUpdate() {
@@ -271,6 +282,7 @@ public class MechChainProj : Projectile {
 }
 
 public class MechBusterWeapon : Weapon {
+	public static MechBusterWeapon netWeapon = new();
 	public MechBusterWeapon() : base() {
 		index = (int)WeaponIds.MechBuster;
 		weaponBarBaseIndex = 53;
@@ -280,29 +292,57 @@ public class MechBusterWeapon : Weapon {
 }
 
 public class MechBusterProj : Projectile {
-	public MechBusterProj(Weapon weapon, Point pos, int xDir, Player player, ushort netProjId, bool rpc = false) :
-		base(weapon, pos, xDir, 200, 4, player, "goliath_proj", Global.defFlinch, 0.25f, netProjId, player.ownedByLocalPlayer) {
+	public MechBusterProj(
+		Point pos, int xDir, Actor owner, Player player, ushort? netId, bool rpc = false
+	) : base(
+		pos, xDir, owner, "goliath_proj", netId, player	
+	) {
+		weapon = MechBusterWeapon.netWeapon;		
+		damager.damage = 4;
+		damager.flinch = Global.defFlinch;
+		damager.hitCooldown = 15;
+		vel = new Point(200, 0);
 		projId = (int)ProjIds.MechBuster;
 		maxTime = 0.75f;
 		if (rpc) {
-			rpcCreate(pos, player, netProjId, xDir);
+			rpcCreate(pos, owner, ownerPlayer, netId, xDir);
 		}
+	}
+	public static Projectile rpcInvoke(ProjParameters args) {
+		return new MechBusterProj(
+			args.pos, args.xDir, args.owner,
+			args.player, args.netId
+		);
 	}
 }
 
 public class MechBusterProj2 : Projectile {
 	int type = 0;
 	float startY;
-	public MechBusterProj2(Weapon weapon, Point pos, int xDir, int type, Player player, ushort netProjId, bool rpc = false) :
-		base(weapon, pos, xDir, 200, 4, player, "goliath_proj2", Global.defFlinch, 0.25f, netProjId, player.ownedByLocalPlayer) {
+	public MechBusterProj2(
+		Point pos, int xDir, Actor owner, Player player, int type, ushort? netId, bool rpc = false
+	) : base(
+		pos, xDir, owner, "goliath_proj2", netId, player	
+	) {
+		weapon = MechBusterWeapon.netWeapon;		
+		damager.damage = 4;
+		damager.flinch = Global.defFlinch;
+		damager.hitCooldown = 15;
+		vel = new Point(200, 0);
 		maxTime = 0.75f;
-		projId = (int)ProjIds.MechBuster;
+		projId = (int)ProjIds.MechBuster2;
 		startY = pos.y;
 		this.type = type;
-
 		if (rpc) {
-			rpcCreate(pos, player, netProjId, xDir);
+			rpcCreate(pos, owner, ownerPlayer, netId, xDir, (byte)type);
 		}
+		projId = (int)ProjIds.MechBuster;
+	}
+	public static Projectile rpcInvoke(ProjParameters args) {
+		return new MechBusterProj2(
+			args.pos, args.xDir, args.owner,
+			args.player, args.extraData[0], args.netId
+		);
 	}
 
 	public override void update() {

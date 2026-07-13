@@ -449,6 +449,8 @@ public class AI {
 	}
 
 	public void randomlyChangeStuff() {
+		if (character is WolfSigma or KaiserSigma or ViralSigma) return;
+
 		float stuckTime = (aiState as FindPlayer)?.stuckTime ?? 0;
 		bool inNodeTransition = (aiState as FindPlayer)?.nodeTransition != null;
 		if (player.weapon != null && player.weapon.ammo <= 0 && player.weapon is not XBuster and not AxlBullet) {
