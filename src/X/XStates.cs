@@ -501,10 +501,7 @@ public class X3ChargeShot : XState {
 	bool fired;
 	public int state = 0;
 	bool pressFire;
-	public HyperCharge? hyperBusterWeapon;
-
-	public X3ChargeShot(HyperCharge? hyperBusterWeapon) : base("cross_shot") {
-		this.hyperBusterWeapon = hyperBusterWeapon;
+	public X3ChargeShot() : base("cross_shot") {
 		useDashJumpSpeed = true;
 		airMove = true;
 		canStopJump = true;
@@ -566,6 +563,10 @@ public class X3ChargeShot : XState {
 				}
 				character.changeSpriteFromName(sprite, false);
 			}
+		}
+		if (sprite == "cross_air_shot2" && mmx.grounded) {
+			sprite = "cross_shot2";
+			character.changeSpriteFromName(sprite, false);
 		}
 	}
 

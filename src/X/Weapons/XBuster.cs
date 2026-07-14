@@ -117,7 +117,7 @@ public class XBuster : Weapon {
 		} else if (mmx.stockedMaxBusterLv >= 1) {
 			if (mmx.charState.attackCtrl && mmx.charState.normalCtrl) {
 				if (mmx.charState is not WallSlide) {
-					mmx.changeState(new X3ChargeShot(null));
+					mmx.changeState(new X3ChargeShot());
 				} else {
 					shootMaxBuster3(mmx, pos, xDir);
 					character.playSound("buster3X3", sendRpc: true);
@@ -145,7 +145,7 @@ public class XBuster : Weapon {
 			else if (mmx.armArmor == ArmorId.Max) {
 				mmx.stockedMaxBusterLv += 2;
 				if (mmx.charState is not WallSlide) {
-					mmx.changeState(new X3ChargeShot(null));
+					mmx.changeState(new X3ChargeShot());
 				} else {
 					shootMaxBuster4(mmx, pos, xDir);
 					mmx.stockedMaxBusterLv--;

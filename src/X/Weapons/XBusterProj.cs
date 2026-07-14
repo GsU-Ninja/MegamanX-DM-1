@@ -160,7 +160,7 @@ public class Buster3MaxProj : Projectile {
 					new BusterX3Proj3(weapon, pos, xDir, 1, owner, owner.getNextActorNetId(), rpc: true);
 					new BusterX3Proj3(weapon, pos, xDir, 2, owner, owner.getNextActorNetId(), rpc: true);
 					new BusterX3Proj3(weapon, pos, xDir, 3, owner, owner.getNextActorNetId(), rpc: true);
-				}, 20f / 60f ));
+				}, 19f / 60f ));
 			}, 1f / 60f ));
 		}
 	}
