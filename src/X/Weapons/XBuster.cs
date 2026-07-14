@@ -119,7 +119,11 @@ public class XBuster : Weapon {
 				if (mmx.charState is not WallSlide) {
 					mmx.changeState(new X3ChargeShot());
 				} else {
-					shootMaxBuster3(mmx, pos, xDir);
+					if (!mmx.hasUltimateArmor) {
+						shootMaxBuster3(mmx, pos, xDir);
+					} else {
+						shootGoldenUAXBuster3(mmx, pos, xDir);
+					}
 					character.playSound("buster3X3", sendRpc: true);
 					mmx.stockedMaxBusterLv--;
 				}
@@ -252,10 +256,14 @@ public class XBuster : Weapon {
 		Player player = mmx.player;
 		new BusterX3Proj1(pos, xDir, 0, mmx, player, player.getNextActorNetId(), rpc: true);
 	}
+	public static void shootGoldenUAXBuster3(MegamanX mmx, Point pos, int xDir) {
+		Player player = mmx.player;
+		new Buster3GoldenUAXProj(pos, xDir, mmx, player, player.getNextActorNetId(), true);
+	}
 	public static void shootPlasmaShot(MegamanX mmx, Point pos, int xDir) {
 		Player player = mmx.player;
 		new Anim(pos.addxy(-14 * xDir, 17), "buster4_muzzle_flash", xDir, player.getNextActorNetId(), true);
-		new BusterPlasmaProj(pos, xDir, mmx, player, player.getNextActorNetId(), true);
+		new BusterPlasmaProj(pos, xDir, mmx, player, 0, player.getNextActorNetId(), true);
 		mmx.playSound("plasmaShot", sendRpc: true);
 	}
 

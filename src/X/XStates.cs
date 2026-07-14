@@ -518,15 +518,15 @@ public class X3ChargeShot : XState {
 			Point shootPos = character.getShootPos();
 			int shootDir = character.getShootXDir();
 			if (state == 0) {
-				if (!mmx.hasUltimateArmor) {
-					XBuster.shootMaxBuster4(mmx, shootPos, shootDir);
-				} else {
-					XBuster.shootPlasmaShot(mmx, shootPos, shootDir);
-				}
+				XBuster.shootMaxBuster4(mmx, shootPos, shootDir);
 				mmx.stockedTime = 0;
 			} else {
 				character.playSound("buster3X3", sendRpc: true);
-				XBuster.shootMaxBuster3(mmx, shootPos, shootDir);
+				if (!mmx.hasUltimateArmor) {
+					XBuster.shootMaxBuster3(mmx, shootPos, shootDir);
+				} else {
+					XBuster.shootGoldenUAXBuster3(mmx, shootPos, shootDir);
+				}
 			}
 			mmx.stockedTime = 0;
 			if (mmx.stockedMaxBusterLv >= 1) {

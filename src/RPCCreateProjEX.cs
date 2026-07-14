@@ -22,6 +22,7 @@ public partial class RPCCreateProj : RPC {
 		{ (int)ProjIds.BusterX3Proj1, BusterX3Proj1.rpcInvoke },
 		{ (int)ProjIds.BusterX3Plasma, BusterPlasmaProj.rpcInvoke },
 		{ (int)ProjIds.BusterX3PlasmaHit, BusterPlasmaHitProj.rpcInvoke },
+		{ (int)ProjIds.Buster3GoldenUAXProj, Buster3GoldenUAXProj.rpcInvoke },
 
 		//X1 PROJS
 		{ (int)ProjIds.Torpedo, TorpedoProjX.rpcInvoke },

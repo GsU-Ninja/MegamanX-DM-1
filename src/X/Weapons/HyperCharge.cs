@@ -87,6 +87,8 @@ public class HyperCharge : Weapon {
 		Point shootPos = character.getShootPos();
 		int shootDir = character.getShootXDir();
 		if (wep is XBuster) {
+			mmx.stockedMaxBusterLv += 1;
+			mmx.playSound("buster3X3", sendRpc: true);
 			if (mmx.charState is not WallSlide) {
 				mmx.changeState(new X3HyperBuster(this));
 			} else {
@@ -127,8 +129,6 @@ public class X3HyperBuster : XState {
 			fired = true;
 			Point shootPos = character.getShootPos();
 			int shootDir = character.getShootXDir();
-			mmx.stockedMaxBusterLv += 1;
-			mmx.playSound("buster3X3", sendRpc: true);
 			mmx.shootAnimTime = 0;
 			XBuster.shootMaxBuster4(mmx, shootPos, shootDir);
 		}

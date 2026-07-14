@@ -315,6 +315,7 @@ public enum ProjIds {
 	BusterX3Proj3,
 	BusterX3Plasma,
 	BusterX3PlasmaHit,
+	Buster3GoldenUAXProj,
 	Torpedo,
 	TorpedoCharged,
 	MechTorpedo,

@@ -137,6 +137,11 @@ public class Buster3MaxProj : Projectile {
 			rpcCreate(pos, owner, ownerPlayer, netId, xDir);
 		}
 	}
+	public static Projectile rpcInvoke(ProjParameters args) {
+		return new Buster3MaxProj(
+			args.pos, args.xDir, args.owner, args.player, args.netId
+		);
+	}
 	public override void update() {
 		base.update();
 		partTime += Global.spf;
@@ -164,13 +169,8 @@ public class Buster3MaxProj : Projectile {
 			}, 1f / 60f ));
 		}
 	}
-
-	public static Projectile rpcInvoke(ProjParameters args) {
-		return new Buster3MaxProj(
-			args.pos, args.xDir, args.owner, args.player, args.netId
-		);
-	}
 }
+
 public class Buster4GigaProj: Projectile {
 	public Buster4GigaProj(
 		Point pos, int xDir, Actor owner, Player player, ushort? netId, bool rpc = false
@@ -278,6 +278,11 @@ public class Buster4MaxProj: Projectile {
 			rpcCreate(pos, owner, ownerPlayer, netId, xDir);
 		}
 	}
+	public static Projectile rpcInvoke(ProjParameters args) {
+		return new Buster4MaxProj(
+			args.pos, args.xDir, args.owner, args.player, args.netId
+		);
+	}
 	public override void update() {
 		base.update();
 		vel.x += Global.spf * xDir * 550;
@@ -287,11 +292,6 @@ public class Buster4MaxProj: Projectile {
 			partTime = 0;
 			new Anim(pos.addRand(0, 16), "buster4_x3_part", 1, null, true) { acc = new Point(-vel.x * 3f, 0) };
 		}
-	}
-	public static Projectile rpcInvoke(ProjParameters args) {
-		return new Buster4MaxProj(
-			args.pos, args.xDir, args.owner, args.player, args.netId
-		);
 	}
 }
 public class Buster4Proj : Projectile {
@@ -373,7 +373,7 @@ public class BusterX3Proj2 : Projectile {
 		}
 	}
 
-		public static Projectile rpcInvoke(ProjParameters arg) {
+	public static Projectile rpcInvoke(ProjParameters arg) {
 		return new BusterX3Proj2(
 			arg.pos, arg.xDir, 
 			arg.extraData[0], arg.owner, arg.player, arg.netId
@@ -399,18 +399,25 @@ public class BusterX3Proj2 : Projectile {
 }
 
 public class BusterPlasmaProj : Projectile {
+	public int type;
 	public HashSet<IDamagable> hitDamagables = new HashSet<IDamagable>();
 	public BusterPlasmaProj(
-		Point pos, int xDir, Actor owner, Player player, ushort? netId, bool rpc = false
+		Point pos, int xDir, Actor owner, Player player, int type, ushort? netId, bool rpc = false
 	) : base(
 		pos, xDir, owner, "buster_plasma", netId, player	
 	) {
+		this.type = type;
 		weapon = XBuster.netWeapon;
 		damager.damage = 4;
 		damager.flinch = Global.defFlinch;
 		damager.hitCooldown = 15;
-		vel = new Point(400 * xDir, 0);
-		maxTime = 0.5f;
+		if (type == 0) {
+			vel = new Point(400 * xDir, 0);
+			maxTime = 0.5f;
+		} else if (type == 1) {
+			maxTime = 0.85f;
+			vel.x = 0;
+		}
 		projId = (int)ProjIds.BusterX3Plasma;
 		fadeSprite = "buster4_x3_muzzle";
 		fadeOnAutoDestroy = true;
@@ -419,14 +426,28 @@ public class BusterPlasmaProj : Projectile {
 		yScale = 0.75f;
 
 		if (rpc) {
-			rpcCreate(pos, player, netId, xDir);
+			rpcCreate(pos, owner, ownerPlayer, netId, xDir, (byte)type);
 		}
 	}
 
 	public static Projectile rpcInvoke(ProjParameters args) {
 		return new BusterPlasmaProj(
-			args.pos, args.xDir, args.owner, args.player, args.netId
+			args.pos, args.xDir, args.owner, args.player, args.extraData[0], args.netId
 		);
+	}
+	public override void update() {
+		base.update();
+		if (type == 1) {
+			vel.x += Global.spf * xDir * 550;
+			if (MathF.Abs(vel.x) > 300) vel.x = 300 * xDir;
+		}
+	}
+
+	public override void onStart() {
+		base.onStart();
+		if (type == 1) {
+			playSound("plasmaShot", sendRpc: true); 
+		}
 	}
 
 	public override void onHitDamagable(IDamagable damagable) {
@@ -479,9 +500,11 @@ public class BusterX3Proj1 : Projectile {
 	float line1Y = 0;
 	float line2Y = -2;
 	float line3Y = 2;
-	float partTime;
-		public BusterX3Proj1(Point pos, int xDir, int type, Actor owner, Player player, ushort? netId, bool rpc = false) :
-		base(pos, xDir, owner, "buster4_max_orb2", netId, player) {
+	public BusterX3Proj1(
+		Point pos, int xDir, int type, Actor owner, Player player, ushort? netId, bool rpc = false
+		) : base(
+			pos, xDir, owner, "buster4_max_orb2", netId, player
+		) {
 		this.type = type;
 		damager.damage = 1;
 		damager.flinch = Global.halfFlinch;
@@ -493,16 +516,13 @@ public class BusterX3Proj1 : Projectile {
 		fadeOnAutoDestroy = true;
 		projId = (int)ProjIds.BusterX3Proj1;
 		reflectable = false;
-		
-			if (rpc) {
-			byte[] extraArgs = new byte[] { (byte)type };
 
-			rpcCreate(pos, player, netId, xDir, extraArgs);
+		if (rpc) {
+			rpcCreate(pos, owner, ownerPlayer, netId, xDir, (byte)type);
 		}
 	}
 
-
-		public static Projectile rpcInvoke(ProjParameters arg) {
+	public static Projectile rpcInvoke(ProjParameters arg) {
 		return new BusterX3Proj1(
 			arg.pos, arg.xDir, 
 			arg.extraData[0], arg.owner, arg.player, arg.netId
@@ -592,5 +612,58 @@ public class BusterX3Proj3 : Projectile {
 		if (lastPositions.Count > 2) Global.sprites[spriteName].draw(2, lastPositions[2].x + x, lastPositions[2].y + y, 1, 1, null, 1, 1, 1, zIndex);
 		if (lastPositions.Count > 1) Global.sprites[spriteName].draw(3, lastPositions[1].x + x, lastPositions[1].y + y, 1, 1, null, 1, 1, 1, zIndex);
 		base.render(x, y);
+	}
+}
+public class Buster3GoldenUAXProj : Projectile {
+	float partTime;
+	public Buster3GoldenUAXProj(
+		Point pos, int xDir, Actor owner, Player player, ushort? netId, bool rpc = false
+	) : base(
+		pos, xDir, owner, "buster4_hdm", netId, player	
+	) {
+		weapon = XBuster.netWeapon;
+		damager.damage = 3;
+		damager.flinch = Global.halfFlinch;
+		vel = new Point(350 * xDir, 0);
+		fadeOnAutoDestroy = true;
+		fadeSprite = "buster3_fade";
+		reflectable = true;
+		maxTime = 0.5f;
+		projId = (int)ProjIds.Buster3GoldenUAXProj;
+		if (rpc) {
+			rpcCreate(pos, owner, ownerPlayer, netId, xDir);
+		}
+	}
+	public static Projectile rpcInvoke(ProjParameters args) {
+		return new Buster3GoldenUAXProj(
+			args.pos, args.xDir, args.owner, args.player, args.netId
+		);
+	}
+	public override void update() {
+		base.update();
+		partTime += Global.spf;
+		if (partTime > 0.05f) {
+			partTime = 0;
+			new Anim(pos.addRand(0, 16), "buster4_x3_part", 1, null, true) { acc = new Point(-vel.x * 3f, 0) };
+		}
+	}
+
+	// Plasma Cross shot
+	public override void onCollision(CollideData other) {
+		base.onCollision(other);
+		if (other.gameObject is BusterX3Proj1 X3shot && X3shot.ownedByLocalPlayer && !destroyed) {
+			if (!ownedByLocalPlayer) return;
+				Global.level.delayedActions.Add(new DelayedAction(delegate {
+					new Anim(new Point(pos.x, pos.y), "buster4_x3_muzzle", xDir, owner.getNextActorNetId(), true, true);
+					destroySelfNoEffect(); X3shot.destroySelfNoEffect();
+					Global.level.delayedActions.Add(new DelayedAction(delegate { 
+					new BusterPlasmaProj(pos, xDir, this, owner, 1, owner.getNextActorNetId(), true);
+					new BusterX3Proj3(weapon, pos, xDir, 0, owner, owner.getNextActorNetId(), rpc: true);
+					new BusterX3Proj3(weapon, pos, xDir, 1, owner, owner.getNextActorNetId(), rpc: true);
+					new BusterX3Proj3(weapon, pos, xDir, 2, owner, owner.getNextActorNetId(), rpc: true);
+					new BusterX3Proj3(weapon, pos, xDir, 3, owner, owner.getNextActorNetId(), rpc: true);
+				}, 19f / 60f ));
+			}, 1f / 60f ));
+		}
 	}
 }
